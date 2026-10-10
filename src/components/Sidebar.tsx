@@ -53,6 +53,7 @@ interface SidebarProps {
   onOpenRedistributeModal?: () => void;
   onSplitSection?: (sectionId: string) => Promise<void>;
   onOpenAutoAssign?: () => void;
+  onOpenExcelImport?: () => void;
   activeStampHelperId?: string | null;
   onSelectStampHelper?: (id: string | null) => void;
   theme: 'dark' | 'light';
@@ -82,6 +83,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onOpenRedistributeModal,
   onSplitSection,
   onOpenAutoAssign,
+  onOpenExcelImport,
   activeStampHelperId,
   onSelectStampHelper,
   theme,
@@ -1058,7 +1060,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               />
               <button
                 type="button"
-                onClick={() => helperFileInputRef.current?.click()}
+                onClick={() => onOpenExcelImport ? onOpenExcelImport() : helperFileInputRef.current?.click()}
                 style={{
                   flex: 1,
                   display: 'flex',
@@ -1076,7 +1078,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 }}
               >
                 <FileUp size={14} />
-                Excel / CSV importieren
+                Excel (.xlsx) importieren
               </button>
 
               <button
@@ -1660,13 +1662,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
           gap: 8
         }}
       >
-        {/* Export formats row */}
+        {/* Export & Import formats row */}
         <div style={{ display: 'flex', gap: 6 }}>
           <button
             onClick={() => exportSectionsToExcel(sections, helpers, candleSpacing, candleBuffer)}
             title="Vollständigen Strecken- & Helferplan als echte Excel-Arbeitsmappe (.xlsx mit 3 Tabellenblättern) herunterladen"
             style={{
-              flex: 1.2,
+              flex: 1.1,
               background: 'rgba(16, 185, 129, 0.12)',
               border: '1px solid rgba(16, 185, 129, 0.4)',
               color: '#10B981',
@@ -1678,12 +1680,37 @@ export const Sidebar: React.FC<SidebarProps> = ({
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: 5
+              gap: 4
             }}
           >
-            <FileSpreadsheet size={14} color="#10B981" />
-            Excel (.xlsx)
+            <FileSpreadsheet size={13} color="#10B981" />
+            Excel Export
           </button>
+
+          {onOpenExcelImport && (
+            <button
+              onClick={onOpenExcelImport}
+              title="Excel-Arbeitsmappe (.xlsx) oder Helferliste importieren & synchronisieren"
+              style={{
+                flex: 1.1,
+                background: 'rgba(56, 189, 248, 0.12)',
+                border: '1px solid rgba(56, 189, 248, 0.4)',
+                color: '#38BDF8',
+                padding: '6px 8px',
+                borderRadius: 'var(--radius-sm)',
+                fontSize: 11,
+                fontWeight: 700,
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: 4
+              }}
+            >
+              <Upload size={13} color="#38BDF8" />
+              Excel Import
+            </button>
+          )}
 
           <button
             onClick={() => exportSectionsToGeoJSON(sections)}

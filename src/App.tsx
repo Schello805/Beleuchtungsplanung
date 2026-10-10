@@ -5,6 +5,7 @@ import { CapturePanel } from './components/CapturePanel';
 import { PrintView } from './components/PrintView';
 import { RedistributeModal } from './components/RedistributeModal';
 import { AutoAssignModal } from './components/AutoAssignModal';
+import { ExcelImportModal } from './components/ExcelImportModal';
 import { api, type Section, type Helper, type Street } from './utils/api';
 import { splitSectionInHalf, type GeneratedSection } from './utils/geo';
 import { Database, Wifi, Check, Copy, AlertCircle, X } from 'lucide-react';
@@ -37,6 +38,7 @@ export const App: React.FC = () => {
   const [isPrintOpen, setIsPrintOpen] = useState<boolean>(false);
   const [isRedistributeOpen, setIsRedistributeOpen] = useState<boolean>(false);
   const [isAutoAssignOpen, setIsAutoAssignOpen] = useState<boolean>(false);
+  const [isExcelImportOpen, setIsExcelImportOpen] = useState<boolean>(false);
 
   // Candle & Material Planning state
   const [candleSpacing, setCandleSpacing] = useState<number>(2.0);
@@ -500,6 +502,7 @@ export const App: React.FC = () => {
         activeStampHelperId={activeStampHelperId}
         onSelectStampHelper={setActiveStampHelperId}
         onOpenAutoAssign={() => setIsAutoAssignOpen(true)}
+        onOpenExcelImport={() => setIsExcelImportOpen(true)}
         theme={theme}
         onToggleTheme={handleToggleTheme}
         candleSpacing={candleSpacing}
@@ -702,6 +705,17 @@ export const App: React.FC = () => {
         sections={sections}
         helpers={helpers}
         onApply={handleBatchAssign}
+      />
+
+      {/* UNIVERSAL EXCEL IMPORT MODAL */}
+      <ExcelImportModal
+        isOpen={isExcelImportOpen}
+        onClose={() => setIsExcelImportOpen(false)}
+        sections={sections}
+        helpers={helpers}
+        onApplyAssignments={handleBatchAssign}
+        onImportHelpers={handleImportHelpers}
+        onRefreshData={loadData}
       />
     </div>
   );
