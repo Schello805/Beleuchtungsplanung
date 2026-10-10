@@ -123,6 +123,11 @@ button, input, select, textarea {
   font-family: var(--font-family-sans);
 }
 
+/* Modern Dark Mode Filter for OSM Tiles - 100% Free, NO Watermarks, NO API Key needed */
+.leaflet-container.dark-tiles .leaflet-tile-pane {
+  filter: brightness(0.65) invert(1) contrast(1.5) hue-rotate(190deg) saturate(0.5) brightness(0.85);
+}
+
 .custom-point-marker {
   display: flex;
   align-items: center;

@@ -82,32 +82,18 @@ export const MapComponent: React.FC<MapComponentProps> = ({
       }
     }
 
-    // Free Open/Community Providers (No API Key Required)
+    // Free Open/Community Providers (100% Free, NO Watermarks, NO API Key Required)
     if (theme === 'satellite') {
       return {
         url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
-        attribution: '&copy; Esri &copy; Maxar, Earthstar Geographics',
+        attribution: '&copy; Esri World Imagery &copy; Maxar',
         maxZoom: 19
       };
     }
-    if (theme === 'light') {
-      return {
-        url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-        attribution: '&copy; OpenStreetMap &copy; CARTO',
-        maxZoom: 19
-      };
-    }
-    if (theme === 'osm') {
-      return {
-        url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-        attribution: '&copy; OpenStreetMap contributors',
-        maxZoom: 19
-      };
-    }
-    // Default: Dark
+    // Default (Dark, Light, OSM): Standard OpenStreetMap
     return {
-      url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-      attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+      url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+      attribution: '&copy; OpenStreetMap contributors',
       maxZoom: 19
     };
   };
@@ -131,6 +117,16 @@ export const MapComponent: React.FC<MapComponentProps> = ({
       tileSize: cfg.tileSize || 256,
       zoomOffset: cfg.zoomOffset || 0
     }).addTo(map);
+
+    // Apply or remove dark tiles filter
+    const isDark = (mapTileTheme === 'dark' || mapTileTheme === 'mapbox_dark') && !mapboxToken.trim();
+    if (mapContainerRef.current) {
+      if (isDark) {
+        mapContainerRef.current.classList.add('dark-tiles');
+      } else {
+        mapContainerRef.current.classList.remove('dark-tiles');
+      }
+    }
 
     tileLayerRef.current = tileLayer;
 
@@ -162,6 +158,16 @@ export const MapComponent: React.FC<MapComponentProps> = ({
       tileSize: cfg.tileSize || 256,
       zoomOffset: cfg.zoomOffset || 0
     }).addTo(mapRef.current);
+
+    // Apply or remove dark tiles filter
+    const isDark = (mapTileTheme === 'dark' || mapTileTheme === 'mapbox_dark') && !mapboxToken.trim();
+    if (mapContainerRef.current) {
+      if (isDark) {
+        mapContainerRef.current.classList.add('dark-tiles');
+      } else {
+        mapContainerRef.current.classList.remove('dark-tiles');
+      }
+    }
 
     // Keep tiles at the back
     newLayer.bringToBack();
