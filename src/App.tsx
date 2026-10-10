@@ -4,6 +4,7 @@ import { MapComponent } from './components/MapComponent';
 import { CapturePanel } from './components/CapturePanel';
 import { PrintView } from './components/PrintView';
 import { RedistributeModal } from './components/RedistributeModal';
+import { AutoAssignModal } from './components/AutoAssignModal';
 import { api, type Section, type Helper, type Street } from './utils/api';
 import { splitSectionInHalf, type GeneratedSection } from './utils/geo';
 import { Database, Wifi, Check, Copy, AlertCircle, X } from 'lucide-react';
@@ -35,6 +36,7 @@ export const App: React.FC = () => {
   const [mapboxToken, setMapboxToken] = useState<string>('');
   const [isPrintOpen, setIsPrintOpen] = useState<boolean>(false);
   const [isRedistributeOpen, setIsRedistributeOpen] = useState<boolean>(false);
+  const [isAutoAssignOpen, setIsAutoAssignOpen] = useState<boolean>(false);
 
   // Candle & Material Planning state
   const [candleSpacing, setCandleSpacing] = useState<number>(2.0);
@@ -497,6 +499,7 @@ export const App: React.FC = () => {
         onSplitSection={handleSplitSection}
         activeStampHelperId={activeStampHelperId}
         onSelectStampHelper={setActiveStampHelperId}
+        onOpenAutoAssign={() => setIsAutoAssignOpen(true)}
         theme={theme}
         onToggleTheme={handleToggleTheme}
         candleSpacing={candleSpacing}
@@ -658,6 +661,7 @@ export const App: React.FC = () => {
           onSelectStampHelper={setActiveStampHelperId}
           autoAdvanceStamp={autoAdvanceStamp}
           onToggleAutoAdvanceStamp={setAutoAdvanceStamp}
+          onOpenAutoAssign={() => setIsAutoAssignOpen(true)}
           onRemovePreviewSection={handleRemovePreviewSection}
           focusedPreviewId={focusedPreviewId}
           onFocusPreviewSection={setFocusedPreviewId}
@@ -689,6 +693,15 @@ export const App: React.FC = () => {
         sections={sections}
         helpers={helpers}
         onApply={handleApplyRedistribute}
+      />
+
+      {/* 1-CLICK AUTO-ASSIGN MODAL */}
+      <AutoAssignModal
+        isOpen={isAutoAssignOpen}
+        onClose={() => setIsAutoAssignOpen(false)}
+        sections={sections}
+        helpers={helpers}
+        onApply={handleBatchAssign}
       />
     </div>
   );

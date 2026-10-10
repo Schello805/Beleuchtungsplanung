@@ -25,7 +25,8 @@ import {
   X,
   Flame,
   Scissors,
-  Paintbrush
+  Paintbrush,
+  Zap
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import type { Section, Helper, Street } from '../utils/api';
@@ -51,6 +52,7 @@ interface SidebarProps {
   onBatchAssign: (assignments: Array<{ sectionId: string; helperId: string; helperName: string }>) => Promise<void>;
   onOpenRedistributeModal?: () => void;
   onSplitSection?: (sectionId: string) => Promise<void>;
+  onOpenAutoAssign?: () => void;
   activeStampHelperId?: string | null;
   onSelectStampHelper?: (id: string | null) => void;
   theme: 'dark' | 'light';
@@ -79,6 +81,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onBatchAssign,
   onOpenRedistributeModal,
   onSplitSection,
+  onOpenAutoAssign,
   activeStampHelperId,
   onSelectStampHelper,
   theme,
@@ -674,6 +677,48 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </div>
             )}
 
+            {/* 1-Click Auto Assign Banner */}
+            {unassignedSections.length > 0 && onOpenAutoAssign && (
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  padding: '8px 12px',
+                  background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(5, 150, 105, 0.12))',
+                  border: '1px solid rgba(16, 185, 129, 0.35)',
+                  borderRadius: 'var(--radius-sm)',
+                  marginBottom: 12,
+                  gap: 8
+                }}
+              >
+                <div style={{ fontSize: 11, color: 'var(--text-main)' }}>
+                  <b style={{ color: '#10B981' }}>{unassignedSections.length} Abschnitte offen</b>
+                  <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Schnell an Helfer vergeben</div>
+                </div>
+                <button
+                  type="button"
+                  onClick={onOpenAutoAssign}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 5,
+                    padding: '5px 10px',
+                    borderRadius: 4,
+                    background: '#10B981',
+                    color: '#FFFFFF',
+                    border: 'none',
+                    fontSize: 11,
+                    fontWeight: 700,
+                    cursor: 'pointer'
+                  }}
+                >
+                  <Zap size={12} />
+                  ⚡ Auto-Zuweisen
+                </button>
+              </div>
+            )}
+
             {/* Empty State */}
             {filteredSections.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '30px 10px', color: 'var(--text-light)', fontSize: 13 }}>
@@ -974,6 +1019,34 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* TAB 2: HELFER VERWALTUNG */}
         {activeTab === 'helpers' && (
           <div>
+            {/* 1-Click Auto Assign Banner */}
+            {onOpenAutoAssign && unassignedSections.length > 0 && (
+              <button
+                type="button"
+                onClick={onOpenAutoAssign}
+                style={{
+                  width: '100%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
+                  padding: '9px 12px',
+                  borderRadius: 'var(--radius-sm)',
+                  background: 'linear-gradient(135deg, #F59E0B, #D97706)',
+                  border: 'none',
+                  color: '#0F172A',
+                  fontWeight: 800,
+                  fontSize: 12,
+                  cursor: 'pointer',
+                  marginBottom: 12,
+                  boxShadow: '0 0 14px rgba(245, 158, 11, 0.3)'
+                }}
+              >
+                <Zap size={15} />
+                ⚡ 1-Klick Auto-Zuweisung ({unassignedSections.length} offene Abschnitte)
+              </button>
+            )}
+
             {/* CSV / Excel Import & Template Bar */}
             <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
               <input

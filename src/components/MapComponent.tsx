@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import type { Section, Helper } from '../utils/api';
 import type { GeneratedSection } from '../utils/geo';
-import { Settings, Key, Check, Globe, Paintbrush, ChevronLeft, ChevronRight, X, Sparkles, UserCheck } from 'lucide-react';
+import { Settings, Key, Check, Globe, Paintbrush, ChevronLeft, ChevronRight, X, Sparkles, UserCheck, Zap } from 'lucide-react';
 
 interface MapComponentProps {
   sections: Section[];
@@ -17,6 +17,7 @@ interface MapComponentProps {
   onSelectStampHelper?: (id: string | null) => void;
   autoAdvanceStamp?: boolean;
   onToggleAutoAdvanceStamp?: (val: boolean) => void;
+  onOpenAutoAssign?: () => void;
   // Preview interaction props
   onRemovePreviewSection?: (id: string) => void;
   focusedPreviewId?: string | null;
@@ -43,6 +44,7 @@ export const MapComponent: React.FC<MapComponentProps> = ({
   onSelectStampHelper,
   autoAdvanceStamp,
   onToggleAutoAdvanceStamp,
+  onOpenAutoAssign,
   onRemovePreviewSection,
   focusedPreviewId,
   onFocusPreviewSection,
@@ -1125,6 +1127,33 @@ export const MapComponent: React.FC<MapComponentProps> = ({
               }}
             >
               <X size={14} />
+            </button>
+          )}
+
+          {/* Quick 1-Click Auto-Assign Button */}
+          {onOpenAutoAssign && (
+            <button
+              type="button"
+              onClick={onOpenAutoAssign}
+              title="1-Klick Auto-Verteilung: Alle Abschnitte automatisch an freie Helfer vergeben"
+              style={{
+                background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.2), rgba(217, 119, 6, 0.25))',
+                border: '1px solid rgba(245, 158, 11, 0.5)',
+                color: '#F59E0B',
+                borderRadius: 16,
+                padding: '4px 10px',
+                fontSize: 11,
+                fontWeight: 700,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 5,
+                cursor: 'pointer',
+                marginLeft: 4,
+                boxShadow: '0 0 10px rgba(245, 158, 11, 0.2)'
+              }}
+            >
+              <Zap size={13} />
+              Auto-Verteilen
             </button>
           )}
         </div>
