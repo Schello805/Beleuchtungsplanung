@@ -34,6 +34,7 @@ export const CapturePanel: React.FC<CapturePanelProps> = ({
   setSegmentPoints
 }) => {
   const [method, setMethod] = useState<'full_street' | 'batch' | 'segment' | 'point'>('full_street');
+  const [isCollapsed, setIsCollapsed] = useState<boolean>(false);
 
   // Parameters
   const [chunkLength, setChunkLength] = useState<number>(100);
@@ -408,13 +409,64 @@ export const CapturePanel: React.FC<CapturePanelProps> = ({
     return Array.from(map.entries());
   }, [previewSections]);
 
+  if (isCollapsed) {
+    return (
+      <div
+        className="glass-panel"
+        onClick={() => setIsCollapsed(false)}
+        style={{
+          padding: '8px 14px',
+          cursor: 'pointer',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          borderRadius: 'var(--radius-md)',
+          boxShadow: 'var(--shadow-md)',
+          border: '1px solid var(--border-subtle)',
+          background: 'var(--bg-card)',
+          marginBottom: 16
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <Scissors size={16} color="var(--accent-gold)" />
+          <span style={{ fontSize: 13, fontWeight: 700, color: 'var(--text-main)' }}>
+            Strecke erfassen & zerschneiden
+          </span>
+        </div>
+        <span style={{ fontSize: 11, color: 'var(--accent-gold)', fontWeight: 700 }}>
+          Ausklappen ▼
+        </span>
+      </div>
+    );
+  }
+
   return (
     <div className="glass-panel" style={{ padding: 16, marginBottom: 16 }}>
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-        <h3 style={{ fontSize: 16, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-main)' }}>
+        <h3 style={{ fontSize: 16, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-main)', margin: 0 }}>
           <Scissors size={18} color="var(--accent-gold)" />
           Strecke erfassen & zerschneiden
         </h3>
+        <button
+          type="button"
+          onClick={() => setIsCollapsed(true)}
+          title="Panel minimieren für volle Sicht auf die Karte"
+          style={{
+            background: 'var(--bg-secondary)',
+            border: '1px solid var(--border-subtle)',
+            color: 'var(--text-muted)',
+            fontSize: 11,
+            fontWeight: 600,
+            padding: '3px 8px',
+            borderRadius: 4,
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4
+          }}
+        >
+          Minimieren ▲
+        </button>
       </div>
 
       {/* Method Tabs */}

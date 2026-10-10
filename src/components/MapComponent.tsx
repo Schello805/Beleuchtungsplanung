@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import type { Section, Helper } from '../utils/api';
 import type { GeneratedSection } from '../utils/geo';
-import { Settings, Key, Check, Globe } from 'lucide-react';
+import { Settings, Key, Check, Globe, Paintbrush, ChevronLeft, ChevronRight, X, Sparkles, UserCheck } from 'lucide-react';
 
 interface MapComponentProps {
   sections: Section[];
@@ -12,6 +12,11 @@ interface MapComponentProps {
   onSelectSection: (id: string | null) => void;
   onUpdateSectionHelper: (sectionId: string, helperId: string | null, helperName: string | null) => void;
   onDeleteSection: (sectionId: string) => void;
+  // Stamp props (Direktes Zuweisen per Klick auf der Karte)
+  activeStampHelperId?: string | null;
+  onSelectStampHelper?: (id: string | null) => void;
+  autoAdvanceStamp?: boolean;
+  onToggleAutoAdvanceStamp?: (val: boolean) => void;
   // Preview interaction props
   onRemovePreviewSection?: (id: string) => void;
   focusedPreviewId?: string | null;
@@ -34,6 +39,10 @@ export const MapComponent: React.FC<MapComponentProps> = ({
   onSelectSection,
   onUpdateSectionHelper,
   onDeleteSection,
+  activeStampHelperId,
+  onSelectStampHelper,
+  autoAdvanceStamp,
+  onToggleAutoAdvanceStamp,
   onRemovePreviewSection,
   focusedPreviewId,
   onFocusPreviewSection,
@@ -52,6 +61,44 @@ export const MapComponent: React.FC<MapComponentProps> = ({
   const sectionsLayerGroupRef = useRef<L.LayerGroup | null>(null);
   const previewLayerGroupRef = useRef<L.LayerGroup | null>(null);
   const captureLayerGroupRef = useRef<L.LayerGroup | null>(null);
+
+  // Stamp state (Direktes Zuweisen per Klick)
+  const [internalStampHelperId, setInternalStampHelperId] = useState<string | null>(null);
+  const [internalAutoAdvance, setInternalAutoAdvance] = useState<boolean>(true);
+  const [stampFeedbackToast, setStampFeedbackToast] = useState<string | null>(null);
+
+  const activeHelperId = activeStampHelperId !== undefined ? activeStampHelperId : internalStampHelperId;
+  const isAutoAdvance = autoAdvanceStamp !== undefined ? autoAdvanceStamp : internalAutoAdvance;
+
+  const setStampHelper = (id: string | null) => {
+    if (onSelectStampHelper) onSelectStampHelper(id);
+    setInternalStampHelperId(id);
+  };
+
+  const setAutoAdvance = (val: boolean) => {
+    if (onToggleAutoAdvanceStamp) onToggleAutoAdvanceStamp(val);
+    setInternalAutoAdvance(val);
+  };
+
+  const handlePrevHelper = () => {
+    if (helpers.length === 0) return;
+    const idx = helpers.findIndex(h => h.id === activeHelperId);
+    if (idx > 0) {
+      setStampHelper(helpers[idx - 1].id);
+    } else {
+      setStampHelper(helpers[helpers.length - 1].id);
+    }
+  };
+
+  const handleNextHelper = () => {
+    if (helpers.length === 0) return;
+    const idx = helpers.findIndex(h => h.id === activeHelperId);
+    if (idx !== -1 && idx < helpers.length - 1) {
+      setStampHelper(helpers[idx + 1].id);
+    } else {
+      setStampHelper(helpers[0].id);
+    }
+  };
 
   // Settings modal
   const [showSettingsModal, setShowSettingsModal] = useState<boolean>(false);
@@ -382,7 +429,39 @@ export const MapComponent: React.FC<MapComponentProps> = ({
 
     sections.forEach(sec => {
       const isSelected = selectedSectionId === sec.id;
-      const helperName = sec.assigned_helper_name || 'Nicht zugewiesen';
+      const assignedHelper = helpers.find(h => h.id === sec.assigned_helper_id);
+      const isAssigned = !!sec.assigned_helper_id;
+      const helperName = assignedHelper?.name || sec.assigned_helper_name || 'Nicht zugewiesen';
+      const lineColor = assignedHelper?.color || sec.color || '#F59E0B';
+
+      // Function to handle stamping when clicking section
+      const handleSectionClick = (e: L.LeafletMouseEvent, element: L.Polyline | L.Marker) => {
+        onSelectSection(sec.id);
+
+        if (activeHelperId) {
+          const targetHelper = helpers.find(h => h.id === activeHelperId);
+          if (targetHelper) {
+            onUpdateSectionHelper(sec.id, targetHelper.id, targetHelper.name);
+            setStampFeedbackToast(`✓ "${sec.label}" zugewiesen an ${targetHelper.name}`);
+            setTimeout(() => setStampFeedbackToast(null), 2400);
+
+            if (isAutoAdvance) {
+              const currentIdx = helpers.findIndex(h => h.id === activeHelperId);
+              if (currentIdx !== -1 && currentIdx < helpers.length - 1) {
+                setStampHelper(helpers[currentIdx + 1].id);
+              } else if (helpers.length > 0) {
+                setStampHelper(helpers[0].id);
+              }
+            }
+            if (e && (e as any).originalEvent) {
+              L.DomEvent.stopPropagation(e as any);
+            }
+            element.closePopup();
+            return true;
+          }
+        }
+        return false;
+      };
 
       if (sec.type === 'line' && sec.geojson?.geometry?.type === 'LineString') {
         const coords = sec.geojson.geometry.coordinates.map(c => [c[1], c[0]] as [number, number]);
@@ -396,44 +475,80 @@ export const MapComponent: React.FC<MapComponentProps> = ({
         }
 
         const polyline = L.polyline(coords, {
-          color: sec.color,
+          color: lineColor,
           weight: isSelected ? 8 : 6,
           opacity: 0.95,
+          dashArray: isAssigned ? undefined : '8, 8', // Strichliert = unzugewiesen!
           lineCap: 'round',
           lineJoin: 'round'
         }).addTo(group);
 
-        polyline.on('click', () => onSelectSection(sec.id));
+        polyline.on('click', (e) => {
+          const stamped = handleSectionClick(e, polyline);
+          if (stamped) return;
+        });
 
         polyline.bindTooltip(
           `<div style="font-family: Outfit, sans-serif; font-size:12px;">
-            <strong>${sec.label}</strong><br/>
+            <strong style="font-size:13px;">${sec.label}</strong><br/>
             <span>Strecke: <b>${sec.lengthMeters} m</b></span><br/>
-            <span>Helfer: <b style="color:${sec.assigned_helper_name ? '#10B981' : '#F59E0B'}">${helperName}</b></span>
+            <div style="margin-top:3px;">
+              ${isAssigned 
+                ? `<span style="background:#10B98122; color:#10B981; font-weight:700; padding:2px 6px; border-radius:4px; font-size:11px;">✓ ${helperName}</span>` 
+                : `<span style="background:#F59E0B22; color:#D97706; font-weight:700; padding:2px 6px; border-radius:4px; font-size:11px;">⚠️ FREI (Klick zum Zuweisen)</span>`
+              }
+            </div>
+            ${activeHelperId ? `<div style="font-size:10px; color:#2563EB; margin-top:4px; font-weight:700;">🖌️ Klick stempelt aktiven Helfer!</div>` : ''}
           </div>`,
           { sticky: true }
         );
 
+        // Find available helpers without assignments for quick 1-click pills
+        const freeHelpers = helpers.filter(h => !sections.some(s => s.assigned_helper_id === h.id));
+        const quickPills = (freeHelpers.length > 0 ? freeHelpers : helpers).slice(0, 4);
+
         const popupDiv = document.createElement('div');
         popupDiv.style.fontFamily = 'Outfit, sans-serif';
-        popupDiv.style.minWidth = '220px';
+        popupDiv.style.minWidth = '230px';
         popupDiv.innerHTML = `
           <div style="margin-bottom: 8px;">
             <div style="display:flex; align-items:center; justify-content:space-between;">
               <strong style="font-size:14px; color:#0F172A;">${sec.label}</strong>
-              <span style="background:${sec.color}22; color:${sec.color}; font-weight:700; padding:2px 8px; border-radius:12px; font-size:12px;">${sec.lengthMeters} m</span>
+              <span style="background:${lineColor}22; color:${lineColor}; font-weight:700; padding:2px 8px; border-radius:12px; font-size:12px;">${sec.lengthMeters} m</span>
             </div>
             <div style="font-size:11px; color:#64748B; margin-top:2px;">Straße: ${sec.street_name}</div>
+            <div style="font-size:11px; margin-top:2px;">Status: ${isAssigned ? `<b style="color:#10B981;">✓ ${helperName}</b>` : `<b style="color:#D97706;">⚠️ Unzugewiesen</b>`}</div>
           </div>
+
+          ${quickPills.length > 0 ? `
+          <div style="margin-bottom: 8px; background:#F8FAFC; padding:6px; border-radius:6px; border:1px solid #E2E8F0;">
+            <div style="font-size:10px; font-weight:700; color:#475569; margin-bottom:4px; text-transform:uppercase; letter-spacing:0.5px;">⚡ Schnell-Zuweisung (1 Klick):</div>
+            <div style="display:flex; flex-wrap:wrap; gap:4px;">
+              ${quickPills.map(qh => `
+                <button type="button" class="quick-assign-btn-${sec.id}" data-hid="${qh.id}" data-hname="${qh.name}"
+                  style="background:#FFFFFF; border:1px solid #CBD5E1; color:#1E293B; border-radius:4px; padding:3px 6px; font-size:11px; font-weight:600; cursor:pointer; display:flex; align-items:center; gap:4px;">
+                  <span style="width:6px; height:6px; border-radius:50%; background:${qh.color || '#3B82F6'}; display:inline-block;"></span>
+                  ${qh.name}
+                </button>
+              `).join('')}
+            </div>
+          </div>
+          ` : ''}
+
           <div style="margin-bottom: 10px;">
-            <label style="font-size:11px; font-weight:600; color:#334155; display:block; margin-bottom:3px;">Helfer zuweisen:</label>
+            <label style="font-size:11px; font-weight:600; color:#334155; display:block; margin-bottom:3px;">Helfer wählen:</label>
             <select id="popup-helper-select-${sec.id}" style="width:100%; padding:5px 8px; border-radius:6px; border:1px solid #CBD5E1; font-size:12px; background:#F8FAFC;">
               <option value="">-- Nicht zugewiesen --</option>
               ${helpers.map(h => `<option value="${h.id}" ${h.id === sec.assigned_helper_id ? 'selected' : ''}>${h.name}</option>`).join('')}
             </select>
           </div>
           ${sec.notes ? `<div style="font-size:11px; background:#F1F5F9; padding:5px; border-radius:4px; margin-bottom:8px;"><b>Notiz:</b> ${sec.notes}</div>` : ''}
-          <div style="display:flex; justify-content:flex-end;">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            ${isAssigned ? `
+              <button id="popup-unassign-btn-${sec.id}" style="background:#FEF3C7; color:#92400E; border:none; padding:4px 8px; border-radius:4px; font-size:11px; cursor:pointer; font-weight:600;">
+                Zuweisung lösen
+              </button>
+            ` : '<span></span>'}
             <button id="popup-delete-btn-${sec.id}" style="background:#FEE2E2; color:#DC2626; border:none; padding:4px 8px; border-radius:4px; font-size:11px; cursor:pointer; font-weight:600;">Abschnitt löschen</button>
           </div>
         `;
@@ -441,14 +556,44 @@ export const MapComponent: React.FC<MapComponentProps> = ({
         polyline.bindPopup(popupDiv);
 
         polyline.on('popupopen', () => {
+          if (activeHelperId) {
+            polyline.closePopup();
+            return;
+          }
+
+          // Quick assign buttons
+          const quickBtns = document.querySelectorAll(`.quick-assign-btn-${sec.id}`);
+          quickBtns.forEach(btn => {
+            (btn as HTMLButtonElement).onclick = () => {
+              const hid = btn.getAttribute('data-hid');
+              const hname = btn.getAttribute('data-hname');
+              if (hid && hname) {
+                onUpdateSectionHelper(sec.id, hid, hname);
+                map.closePopup();
+              }
+            };
+          });
+
+          // Unassign button
+          const unassignBtn = document.getElementById(`popup-unassign-btn-${sec.id}`);
+          if (unassignBtn) {
+            unassignBtn.onclick = () => {
+              onUpdateSectionHelper(sec.id, null, null);
+              map.closePopup();
+            };
+          }
+
+          // Select dropdown
           const select = document.getElementById(`popup-helper-select-${sec.id}`) as HTMLSelectElement;
           if (select) {
             select.onchange = (e) => {
               const val = (e.target as HTMLSelectElement).value;
               const found = helpers.find(h => h.id === val);
               onUpdateSectionHelper(sec.id, val || null, found ? found.name : null);
+              map.closePopup();
             };
           }
+
           const delBtn = document.getElementById(`popup-delete-btn-${sec.id}`);
           if (delBtn) {
             delBtn.onclick = () => {
@@ -464,13 +609,16 @@ export const MapComponent: React.FC<MapComponentProps> = ({
 
         const icon = L.divIcon({
           className: 'custom-point-marker',
-          html: `<div style="background:${sec.color}; width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; box-shadow:0 0 12px ${sec.color}; border:2px solid ${isSelected ? '#FFFFFF' : '#0F172A'}; font-size:14px;">📍</div>`,
+          html: `<div style="background:${lineColor}; width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; box-shadow:0 0 12px ${lineColor}; border:2px solid ${isSelected ? '#FFFFFF' : '#0F172A'}; font-size:14px;">📍</div>`,
           iconSize: [28, 28],
           iconAnchor: [14, 14]
         });
 
         const marker = L.marker([lat, lon], { icon }).addTo(group);
-        marker.on('click', () => onSelectSection(sec.id));
+        marker.on('click', (e) => {
+          const stamped = handleSectionClick(e, marker);
+          if (stamped) return;
+        });
 
         marker.bindTooltip(`<strong>${sec.label}</strong> (Punkt)<br/>Helfer: <b>${helperName}</b>`, { sticky: true });
 
@@ -481,6 +629,7 @@ export const MapComponent: React.FC<MapComponentProps> = ({
           <div style="margin-bottom: 8px;">
             <strong style="font-size:14px; color:#0F172A;">${sec.label}</strong>
             <div style="font-size:11px; color:#64748B;">Einzelner Punkt</div>
+            <div style="font-size:11px; margin-top:2px;">Status: ${isAssigned ? `<b style="color:#10B981;">✓ ${helperName}</b>` : `<b style="color:#D97706;">⚠️ Unzugewiesen</b>`}</div>
           </div>
           <div style="margin-bottom: 8px;">
             <label style="font-size:11px; font-weight:600; color:#334155; display:block; margin-bottom:3px;">Helfer zuweisen:</label>
@@ -489,7 +638,12 @@ export const MapComponent: React.FC<MapComponentProps> = ({
               ${helpers.map(h => `<option value="${h.id}" ${h.id === sec.assigned_helper_id ? 'selected' : ''}>${h.name}</option>`).join('')}
             </select>
           </div>
-          <div style="display:flex; justify-content:flex-end;">
+          <div style="display:flex; justify-content:space-between; align-items:center;">
+            ${isAssigned ? `
+              <button id="popup-pt-unassign-${sec.id}" style="background:#FEF3C7; color:#92400E; border:none; padding:4px 8px; border-radius:4px; font-size:11px; cursor:pointer; font-weight:600;">
+                Lösen
+              </button>
+            ` : '<span></span>'}
             <button id="popup-pt-del-${sec.id}" style="background:#FEE2E2; color:#DC2626; border:none; padding:4px 8px; border-radius:4px; font-size:11px; cursor:pointer;">Löschen</button>
           </div>
         `;
@@ -497,12 +651,24 @@ export const MapComponent: React.FC<MapComponentProps> = ({
         marker.bindPopup(popupDiv);
 
         marker.on('popupopen', () => {
+          if (activeHelperId) {
+            marker.closePopup();
+            return;
+          }
+          const unassignBtn = document.getElementById(`popup-pt-unassign-${sec.id}`);
+          if (unassignBtn) {
+            unassignBtn.onclick = () => {
+              onUpdateSectionHelper(sec.id, null, null);
+              map.closePopup();
+            };
+          }
           const select = document.getElementById(`popup-pt-helper-${sec.id}`) as HTMLSelectElement;
           if (select) {
             select.onchange = (e) => {
               const val = (e.target as HTMLSelectElement).value;
               const found = helpers.find(h => h.id === val);
               onUpdateSectionHelper(sec.id, val || null, found ? found.name : null);
+              map.closePopup();
             };
           }
           const delBtn = document.getElementById(`popup-pt-del-${sec.id}`);
@@ -515,7 +681,7 @@ export const MapComponent: React.FC<MapComponentProps> = ({
         });
       }
     });
-  }, [sections, selectedSectionId, helpers, onSelectSection, onUpdateSectionHelper, onDeleteSection]);
+  }, [sections, selectedSectionId, helpers, activeHelperId, isAutoAdvance, onSelectSection, onUpdateSectionHelper, onDeleteSection]);
 
   // Zoom to selected section
   useEffect(() => {
@@ -765,6 +931,229 @@ export const MapComponent: React.FC<MapComponentProps> = ({
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* Floating Stempel-Modus Toolbar (Top Center) */}
+      {captureMode === 'none' && helpers.length > 0 && (
+        <div
+          className="no-print glass-panel"
+          style={{
+            position: 'absolute',
+            top: 16,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            zIndex: 1000,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+            padding: '6px 14px',
+            borderRadius: 30,
+            background: activeHelperId ? 'rgba(15, 23, 42, 0.95)' : 'rgba(15, 23, 42, 0.75)',
+            border: activeHelperId ? '2px solid var(--accent-gold)' : '1px solid var(--border-subtle)',
+            boxShadow: activeHelperId ? '0 0 20px rgba(245, 158, 11, 0.35), 0 8px 24px rgba(0,0,0,0.5)' : 'var(--shadow-md)',
+            backdropFilter: 'blur(10px)',
+            transition: 'all 0.2s ease'
+          }}
+        >
+          {/* Status Icon */}
+          <div
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 6,
+              color: activeHelperId ? 'var(--accent-gold)' : 'var(--text-muted)',
+              fontWeight: 700,
+              fontSize: 12
+            }}
+          >
+            <Paintbrush size={16} />
+            <span>Stempel-Modus</span>
+          </div>
+
+          {/* Helper Selector / Cycle */}
+          {activeHelperId ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <button
+                type="button"
+                onClick={handlePrevHelper}
+                title="Vorheriger Helfer"
+                style={{
+                  background: 'rgba(255, 255, 255, 0.08)',
+                  border: 'none',
+                  color: '#FFFFFF',
+                  borderRadius: '50%',
+                  width: 26,
+                  height: 26,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer'
+                }}
+              >
+                <ChevronLeft size={16} />
+              </button>
+
+              {/* Active Helper Pill */}
+              {(() => {
+                const cur = helpers.find(h => h.id === activeHelperId);
+                const assignedSecs = sections.filter(s => s.assigned_helper_id === activeHelperId);
+                const totalM = assignedSecs.reduce((sum, s) => sum + s.lengthMeters, 0);
+                return (
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      background: 'rgba(255, 255, 255, 0.1)',
+                      padding: '4px 10px',
+                      borderRadius: 20
+                    }}
+                  >
+                    <span
+                      style={{
+                        width: 10,
+                        height: 10,
+                        borderRadius: '50%',
+                        background: cur?.color || '#3B82F6',
+                        boxShadow: `0 0 8px ${cur?.color || '#3B82F6'}`
+                      }}
+                    />
+                    <span style={{ fontWeight: 800, fontSize: 13, color: '#FFFFFF' }}>
+                      {cur?.name || 'Unbekannt'}
+                    </span>
+                    <span style={{ fontSize: 11, color: 'var(--accent-gold)', fontWeight: 700 }}>
+                      ({totalM} m / {assignedSecs.length})
+                    </span>
+                  </div>
+                );
+              })()}
+
+              <button
+                type="button"
+                onClick={handleNextHelper}
+                title="Nächster Helfer"
+                style={{
+                  background: 'rgba(255, 255, 255, 0.08)',
+                  border: 'none',
+                  color: '#FFFFFF',
+                  borderRadius: '50%',
+                  width: 26,
+                  height: 26,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  cursor: 'pointer'
+                }}
+              >
+                <ChevronRight size={16} />
+              </button>
+            </div>
+          ) : (
+            <select
+              value=""
+              onChange={e => setStampHelper(e.target.value || null)}
+              style={{
+                background: 'rgba(255, 255, 255, 0.08)',
+                color: '#F8FAFC',
+                border: '1px solid rgba(255, 255, 255, 0.15)',
+                borderRadius: 16,
+                padding: '4px 10px',
+                fontSize: 12,
+                cursor: 'pointer',
+                outline: 'none'
+              }}
+            >
+              <option value="" style={{ background: '#0F172A', color: '#94A3B8' }}>
+                -- Helfer wählen zum Stempeln --
+              </option>
+              {helpers.map(h => {
+                const count = sections.filter(s => s.assigned_helper_id === h.id).length;
+                return (
+                  <option key={h.id} value={h.id} style={{ background: '#0F172A', color: '#FFFFFF' }}>
+                    {h.name} {count > 0 ? `(${count} Abschnitte)` : '(noch frei)'}
+                  </option>
+                );
+              })}
+            </select>
+          )}
+
+          {/* Auto-Advance Toggle */}
+          {activeHelperId && (
+            <label
+              title="Nach jedem Klick auf einen Abschnitt automatisch zum nächsten Helfer weiterspringen"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 5,
+                fontSize: 11,
+                color: isAutoAdvance ? 'var(--accent-gold)' : '#94A3B8',
+                cursor: 'pointer',
+                fontWeight: 600,
+                borderLeft: '1px solid rgba(255, 255, 255, 0.15)',
+                paddingLeft: 10
+              }}
+            >
+              <input
+                type="checkbox"
+                checked={isAutoAdvance}
+                onChange={e => setAutoAdvance(e.target.checked)}
+                style={{ accentColor: 'var(--accent-gold)', cursor: 'pointer' }}
+              />
+              ⚡ Auto-Weiter
+            </label>
+          )}
+
+          {/* Exit Stamp Mode Button */}
+          {activeHelperId && (
+            <button
+              type="button"
+              onClick={() => setStampHelper(null)}
+              title="Stempel-Modus beenden"
+              style={{
+                background: 'rgba(239, 68, 68, 0.2)',
+                border: 'none',
+                color: '#EF4444',
+                borderRadius: '50%',
+                width: 22,
+                height: 22,
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                cursor: 'pointer',
+                marginLeft: 4
+              }}
+            >
+              <X size={14} />
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Floating Stamping Toast Feedback */}
+      {stampFeedbackToast && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 76,
+            left: '50%',
+            transform: 'translateX(-50%)',
+            background: 'linear-gradient(135deg, #10B981, #059669)',
+            color: '#FFFFFF',
+            padding: '8px 18px',
+            borderRadius: 24,
+            fontWeight: 700,
+            fontSize: 13,
+            boxShadow: '0 8px 24px rgba(16, 185, 129, 0.4)',
+            zIndex: 1100,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 8,
+            pointerEvents: 'none'
+          }}
+        >
+          <UserCheck size={16} />
+          <span>{stampFeedbackToast}</span>
         </div>
       )}
 

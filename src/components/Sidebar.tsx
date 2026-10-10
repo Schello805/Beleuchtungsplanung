@@ -24,7 +24,8 @@ import {
   Check,
   X,
   Flame,
-  Scissors
+  Scissors,
+  Paintbrush
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import type { Section, Helper, Street } from '../utils/api';
@@ -50,6 +51,8 @@ interface SidebarProps {
   onBatchAssign: (assignments: Array<{ sectionId: string; helperId: string; helperName: string }>) => Promise<void>;
   onOpenRedistributeModal?: () => void;
   onSplitSection?: (sectionId: string) => Promise<void>;
+  activeStampHelperId?: string | null;
+  onSelectStampHelper?: (id: string | null) => void;
   theme: 'dark' | 'light';
   onToggleTheme: () => void;
   candleSpacing?: number;
@@ -76,6 +79,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onBatchAssign,
   onOpenRedistributeModal,
   onSplitSection,
+  activeStampHelperId,
+  onSelectStampHelper,
   theme,
   onToggleTheme,
   candleSpacing = 2.0,
@@ -1163,6 +1168,30 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       <span style={{ fontSize: 11, fontWeight: 700, color: assignedMeters > 0 ? 'var(--accent-gold)' : 'var(--text-light)' }}>
                         {assignedMeters > 0 ? `${assignedMeters} m (~${Math.max(1, Math.round(assignedMeters / candleSpacing))} 🕯️)` : '0 m'}
                       </span>
+
+                      {onSelectStampHelper && (
+                        <button
+                          type="button"
+                          onClick={() => onSelectStampHelper(activeStampHelperId === h.id ? null : h.id)}
+                          title={activeStampHelperId === h.id ? "Stempel-Modus für diesen Helfer deaktivieren" : `Stempel-Modus aktivieren: Klicke Abschnitte auf der Karte, um sie direkt ${h.name} zuzuweisen`}
+                          style={{
+                            background: activeStampHelperId === h.id ? 'var(--accent-gold)' : 'rgba(255, 255, 255, 0.06)',
+                            border: activeStampHelperId === h.id ? '1px solid var(--accent-gold)' : '1px solid var(--border-subtle)',
+                            color: activeStampHelperId === h.id ? '#0F172A' : 'var(--text-muted)',
+                            padding: '3px 6px',
+                            borderRadius: 4,
+                            fontSize: 10,
+                            fontWeight: 700,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: 3
+                          }}
+                        >
+                          <Paintbrush size={11} />
+                          {activeStampHelperId === h.id ? 'Aktiv' : 'Stempel'}
+                        </button>
+                      )}
 
                       <button
                         onClick={() => {

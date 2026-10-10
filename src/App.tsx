@@ -40,6 +40,10 @@ export const App: React.FC = () => {
   const [candleSpacing, setCandleSpacing] = useState<number>(2.0);
   const [candleBuffer, setCandleBuffer] = useState<number>(10);
 
+  // Stempel-Modus (Schnell-Zuweisung per Klick auf der Karte)
+  const [activeStampHelperId, setActiveStampHelperId] = useState<string | null>(null);
+  const [autoAdvanceStamp, setAutoAdvanceStamp] = useState<boolean>(true);
+
   const handleUpdateCandleConfig = async (spacing: number, buffer: number) => {
     setCandleSpacing(spacing);
     setCandleBuffer(buffer);
@@ -491,6 +495,8 @@ export const App: React.FC = () => {
         onBatchAssign={handleBatchAssign}
         onOpenRedistributeModal={() => setIsRedistributeOpen(true)}
         onSplitSection={handleSplitSection}
+        activeStampHelperId={activeStampHelperId}
+        onSelectStampHelper={setActiveStampHelperId}
         theme={theme}
         onToggleTheme={handleToggleTheme}
         candleSpacing={candleSpacing}
@@ -648,6 +654,10 @@ export const App: React.FC = () => {
           onSelectSection={setSelectedSectionId}
           onUpdateSectionHelper={handleUpdateSectionHelper}
           onDeleteSection={handleDeleteSection}
+          activeStampHelperId={activeStampHelperId}
+          onSelectStampHelper={setActiveStampHelperId}
+          autoAdvanceStamp={autoAdvanceStamp}
+          onToggleAutoAdvanceStamp={setAutoAdvanceStamp}
           onRemovePreviewSection={handleRemovePreviewSection}
           focusedPreviewId={focusedPreviewId}
           onFocusPreviewSection={setFocusedPreviewId}
