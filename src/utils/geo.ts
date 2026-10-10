@@ -140,3 +140,260 @@ export function createPointSection(
     geojson: pointFeature
   };
 }
+
+/**
+ * Splits a single section into two equal halves.
+ */
+export function splitSectionInHalf(section: any, colorOffset: number = 0): [any, any] | null {
+  if (section.type !== 'line') return null;
+
+  const rawGeo = typeof section.geojson === 'string' ? JSON.parse(section.geojson) : section.geojson;
+  const totalKm = turf.length(rawGeo, { units: 'kilometers' });
+  const totalMeters = Math.round(totalKm * 1000);
+  if (totalMeters < 16) return null; // Too small to split meaningfully
+
+  const halfKm = totalKm / 2;
+  const part1Geo = turf.lineSliceAlong(rawGeo, 0, halfKm, { units: 'kilometers' });
+  const part2Geo = turf.lineSliceAlong(rawGeo, halfKm, totalKm, { units: 'kilometers' });
+
+  const p1Len = Math.round(turf.length(part1Geo, { units: 'kilometers' }) * 1000);
+  const p2Len = Math.round(turf.length(part2Geo, { units: 'kilometers' }) * 1000);
+
+  const baseLabel = section.label.replace(/\s*\([a-z0-9]+\)$/i, '');
+
+  const part1 = {
+    ...section,
+    id: `sec-${Date.now()}-1`,
+    label: `${baseLabel} (Teil 1)`,
+    length_meters: p1Len,
+    lengthMeters: p1Len,
+    color: SECTION_COLORS[colorOffset % SECTION_COLORS.length],
+    geojson: part1Geo
+  };
+
+  const part2 = {
+    ...section,
+    id: `sec-${Date.now()}-2`,
+    label: `${baseLabel} (Teil 2)`,
+    length_meters: p2Len,
+    lengthMeters: p2Len,
+    color: SECTION_COLORS[(colorOffset + 1) % SECTION_COLORS.length],
+    geojson: part2Geo,
+    assigned_helper_id: null,
+    assigned_helper_name: null
+  };
+
+  return [part1, part2];
+}
+
+/**
+ * Fairly subdivides a collection of sections so that there are exactly (or at least) `targetCount` sections.
+ * Uses Longest-Edge-Bisection: repeatedly splits the longest remaining section in half.
+ * This preserves short alleyways and naturally scales down longer stretches to fit all participants!
+ */
+export function redistributeSectionsToTargetCount(
+  sections: any[],
+  targetCount: number,
+  options?: { autoAssignHelpers?: boolean; helpers?: any[] }
+): any[] {
+  if (!sections || sections.length === 0) return [];
+  if (targetCount <= sections.length) return [...sections];
+
+  // Deep clone items
+  let workingList = sections.map(s => ({
+    ...s,
+    geojson: typeof s.geojson === 'string' ? JSON.parse(s.geojson) : s.geojson,
+    length_meters: s.length_meters || s.lengthMeters || 0
+  }));
+
+  // Bisect the longest line section until we reach targetCount
+  while (workingList.length < targetCount) {
+    let longestIdx = -1;
+    let maxLen = -1;
+
+    for (let i = 0; i < workingList.length; i++) {
+      if (workingList[i].type === 'line' && workingList[i].length_meters > maxLen) {
+        maxLen = workingList[i].length_meters;
+        longestIdx = i;
+      }
+    }
+
+    if (longestIdx === -1 || maxLen < 16) {
+      // Cannot split further without creating micro-segments < 8m
+      break;
+    }
+
+    const item = workingList[longestIdx];
+    const totalKm = turf.length(item.geojson, { units: 'kilometers' });
+    const halfKm = totalKm / 2;
+
+    const p1Geo = turf.lineSliceAlong(item.geojson, 0, halfKm, { units: 'kilometers' });
+    const p2Geo = turf.lineSliceAlong(item.geojson, halfKm, totalKm, { units: 'kilometers' });
+
+    const p1Len = Math.round(turf.length(p1Geo, { units: 'kilometers' }) * 1000);
+    const p2Len = Math.round(turf.length(p2Geo, { units: 'kilometers' }) * 1000);
+
+    const p1 = {
+      ...item,
+      id: `sec-split-${Date.now()}-${Math.random().toString(36).slice(2, 6)}-1`,
+      length_meters: p1Len,
+      lengthMeters: p1Len,
+      geojson: p1Geo
+    };
+
+    const p2 = {
+      ...item,
+      id: `sec-split-${Date.now()}-${Math.random().toString(36).slice(2, 6)}-2`,
+      length_meters: p2Len,
+      lengthMeters: p2Len,
+      geojson: p2Geo,
+      assigned_helper_id: null,
+      assigned_helper_name: null
+    };
+
+    workingList.splice(longestIdx, 1, p1, p2);
+  }
+
+  // Group by street name and re-index & re-label nicely
+  const streetGroups = new Map<string, any[]>();
+  workingList.forEach(s => {
+    const stName = s.street_name || s.streetName || 'Unbenannt';
+    const list = streetGroups.get(stName) || [];
+    list.push(s);
+    streetGroups.set(stName, list);
+  });
+
+  const finalSections: any[] = [];
+  let globalColorIdx = 0;
+
+  for (const [stName, secs] of streetGroups.entries()) {
+    // Sort sections if they belong to the same street
+    secs.forEach((sec, idx) => {
+      const isMulti = secs.length > 1;
+      const label = isMulti ? `${stName} – Abschnitt ${idx + 1}` : `${stName} (Gesamt)`;
+      const color = SECTION_COLORS[globalColorIdx % SECTION_COLORS.length];
+      globalColorIdx++;
+
+      finalSections.push({
+        ...sec,
+        street_name: stName,
+        section_index: idx + 1,
+        label,
+        color,
+        type: sec.type || 'line',
+        geojson: sec.geojson
+      });
+    });
+  }
+
+  // Auto-assign helpers if requested
+  if (options?.autoAssignHelpers && options.helpers && options.helpers.length > 0) {
+    const helpers = options.helpers;
+    finalSections.forEach((sec, idx) => {
+      if (idx < helpers.length) {
+        sec.assigned_helper_id = helpers[idx].id;
+        sec.assigned_helper_name = helpers[idx].name;
+      } else {
+        sec.assigned_helper_id = null;
+        sec.assigned_helper_name = null;
+      }
+    });
+  }
+
+  return finalSections;
+}
+
+/**
+ * Re-partitions sections with a fixed target chunk length (e.g. 40m, 50m).
+ */
+export function rechunkSectionsByTargetLength(
+  sections: any[],
+  chunkMeters: number,
+  minMeters: number = 20,
+  options?: { autoAssignHelpers?: boolean; helpers?: any[] }
+): any[] {
+  if (!sections || sections.length === 0) return [];
+
+  const streetGroups = new Map<string, any[]>();
+  sections.forEach(s => {
+    const stName = s.street_name || s.streetName || 'Unbenannt';
+    const list = streetGroups.get(stName) || [];
+    list.push(s);
+    streetGroups.set(stName, list);
+  });
+
+  const finalSections: any[] = [];
+  let globalColorIdx = 0;
+
+  for (const [stName, secs] of streetGroups.entries()) {
+    // For each section of this street, chunk it if longer than chunkMeters
+    const streetChunks: any[] = [];
+
+    for (const sec of secs) {
+      if (sec.type !== 'line') {
+        streetChunks.push(sec);
+        continue;
+      }
+
+      const rawGeo = typeof sec.geojson === 'string' ? JSON.parse(sec.geojson) : sec.geojson;
+      const totalKm = turf.length(rawGeo, { units: 'kilometers' });
+      const totalLen = Math.round(totalKm * 1000);
+
+      if (totalLen <= chunkMeters) {
+        streetChunks.push({
+          ...sec,
+          geojson: rawGeo,
+          length_meters: totalLen,
+          lengthMeters: totalLen
+        });
+      } else {
+        const subChunks = chunkLineWithFairness(rawGeo, stName, chunkMeters, minMeters, globalColorIdx);
+        for (const sub of subChunks) {
+          streetChunks.push({
+            ...sec,
+            id: sub.id,
+            street_name: stName,
+            label: sub.label,
+            length_meters: sub.lengthMeters,
+            lengthMeters: sub.lengthMeters,
+            color: sub.color,
+            type: 'line',
+            geojson: sub.geojson,
+            assigned_helper_id: null,
+            assigned_helper_name: null
+          });
+        }
+      }
+    }
+
+    // Renumber
+    streetChunks.forEach((item, idx) => {
+      const isMulti = streetChunks.length > 1;
+      const color = SECTION_COLORS[globalColorIdx % SECTION_COLORS.length];
+      globalColorIdx++;
+      finalSections.push({
+        ...item,
+        street_name: stName,
+        section_index: idx + 1,
+        label: isMulti ? `${stName} – Abschnitt ${idx + 1}` : `${stName} (Gesamt)`,
+        color
+      });
+    });
+  }
+
+  // Auto-assign helpers if requested
+  if (options?.autoAssignHelpers && options.helpers && options.helpers.length > 0) {
+    const helpers = options.helpers;
+    finalSections.forEach((sec, idx) => {
+      if (idx < helpers.length) {
+        sec.assigned_helper_id = helpers[idx].id;
+        sec.assigned_helper_name = helpers[idx].name;
+      } else {
+        sec.assigned_helper_id = null;
+        sec.assigned_helper_name = null;
+      }
+    });
+  }
+
+  return finalSections;
+}

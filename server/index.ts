@@ -228,6 +228,22 @@ app.post('/api/streets/save-batch', (req, res) => {
   }
 });
 
+// Replace all sections (e.g. after redistribution / fair bisect)
+app.post('/api/sections/replace-all', (req, res) => {
+  try {
+    const { sections } = req.body;
+    if (!sections || !Array.isArray(sections)) {
+      return res.status(400).json({ error: 'Sections-Array erforderlich' });
+    }
+
+    dbService.replaceAllSections(sections);
+    res.json({ success: true, count: sections.length });
+  } catch (err: any) {
+    console.error('Error replacing sections:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Overpass: List of streets in Bechhofen
 app.get('/api/overpass/streets', async (req, res) => {
   try {

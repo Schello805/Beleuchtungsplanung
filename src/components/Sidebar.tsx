@@ -23,7 +23,8 @@ import {
   FileDown,
   Check,
   X,
-  Flame
+  Flame,
+  Scissors
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import type { Section, Helper, Street } from '../utils/api';
@@ -47,6 +48,8 @@ interface SidebarProps {
   onImportBackup: (file: File) => void;
   onResetDatabase: () => void;
   onBatchAssign: (assignments: Array<{ sectionId: string; helperId: string; helperName: string }>) => Promise<void>;
+  onOpenRedistributeModal?: () => void;
+  onSplitSection?: (sectionId: string) => Promise<void>;
   theme: 'dark' | 'light';
   onToggleTheme: () => void;
   candleSpacing?: number;
@@ -71,6 +74,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onImportBackup,
   onResetDatabase,
   onBatchAssign,
+  onOpenRedistributeModal,
+  onSplitSection,
   theme,
   onToggleTheme,
   candleSpacing = 2.0,
@@ -618,6 +623,52 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </div>
             </div>
 
+            {/* Fair Redistribution Action Banner */}
+            {sections.length > 0 && onOpenRedistributeModal && (
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                padding: '9px 12px',
+                background: 'rgba(245, 158, 11, 0.12)',
+                border: '1px solid rgba(245, 158, 11, 0.35)',
+                borderRadius: 'var(--radius-sm)',
+                marginBottom: 12,
+                gap: 8
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--text-main)' }}>
+                  <Scissors size={14} style={{ color: '#F59E0B' }} />
+                  <span>
+                    <b>{sections.length} Abschnitte</b>
+                    {helpers.length > sections.length ? (
+                      <span style={{ color: '#F59E0B', marginLeft: 4 }}>({helpers.length} Helfer vorhanden)</span>
+                    ) : ''}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={onOpenRedistributeModal}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 5,
+                    padding: '5px 10px',
+                    borderRadius: 4,
+                    background: '#F59E0B',
+                    color: '#000',
+                    border: 'none',
+                    fontSize: 11,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    boxShadow: 'var(--shadow-sm)'
+                  }}
+                >
+                  <Sparkles size={12} />
+                  Auf alle Helfer aufteilen
+                </button>
+              </div>
+            )}
+
             {/* Empty State */}
             {filteredSections.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '30px 10px', color: 'var(--text-light)', fontSize: 13 }}>
@@ -752,6 +803,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
                                       <option key={h.id} value={h.id}>{h.name}</option>
                                     ))}
                                   </select>
+                                  {sec.type === 'line' && (sec.length_meters || sec.lengthMeters || 0) >= 16 && onSplitSection && (
+                                    <button
+                                      title="Abschnitt in 2 Hälften teilen"
+                                      onClick={() => {
+                                        const len = sec.length_meters || sec.lengthMeters || 0;
+                                        if (confirm(`Abschnitt "${sec.label}" (${len} m) in 2 Hälften (je ~${Math.round(len / 2)} m) teilen?`)) {
+                                          onSplitSection(sec.id);
+                                        }
+                                      }}
+                                      style={{ background: 'transparent', border: 'none', color: '#F59E0B', cursor: 'pointer', padding: 2 }}
+                                    >
+                                      <Scissors size={13} />
+                                    </button>
+                                  )}
                                   <button
                                     onClick={() => {
                                       if (confirm(`Abschnitt "${sec.label}" löschen?`)) {
@@ -849,6 +914,28 @@ export const Sidebar: React.FC<SidebarProps> = ({
                             </option>
                           ))}
                         </select>
+
+                        {sec.type === 'line' && (sec.length_meters || sec.lengthMeters || 0) >= 16 && onSplitSection && (
+                          <button
+                            title="Abschnitt in 2 Hälften teilen"
+                            onClick={() => {
+                              const len = sec.length_meters || sec.lengthMeters || 0;
+                              if (confirm(`Abschnitt "${sec.label}" (${len} m) in 2 Hälften (je ~${Math.round(len / 2)} m) teilen?`)) {
+                                onSplitSection(sec.id);
+                              }
+                            }}
+                            style={{
+                              background: 'transparent',
+                              border: 'none',
+                              color: '#F59E0B',
+                              padding: 4,
+                              cursor: 'pointer',
+                              borderRadius: 4
+                            }}
+                          >
+                            <Scissors size={14} />
+                          </button>
+                        )}
 
                         <button
                           title="Abschnitt löschen"
@@ -1123,6 +1210,56 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* TAB 3: FAIRNESS & STATISTIK */}
         {activeTab === 'stats' && (
           <div>
+            {/* Section Redistribution Action Card */}
+            {onOpenRedistributeModal && sections.length > 0 && (
+              <div
+                style={{
+                  background: 'rgba(245, 158, 11, 0.12)',
+                  border: '1px solid rgba(245, 158, 11, 0.4)',
+                  padding: 14,
+                  borderRadius: 'var(--radius-sm)',
+                  marginBottom: 16
+                }}
+              >
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
+                  <Scissors size={18} color="#F59E0B" />
+                  <h4 style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-main)', margin: 0 }}>
+                    Strecken auf alle Helfer aufteilen ({helpers.length} Helfer)
+                  </h4>
+                </div>
+                <p style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 12, lineHeight: 1.4 }}>
+                  Aktuell: <b>{sections.length} Abschnitte</b> für <b>{helpers.length} Helfer</b>. 
+                  {helpers.length > sections.length 
+                    ? ` (${helpers.length - sections.length} Helfer gehen aktuell leer aus!)`
+                    : ''}
+                  <br />
+                  Verkleinert längere Strecken intelligent (z. B. auf ~40 m), damit jeder Helfer ein Teilstück bekommt.
+                </p>
+                <button
+                  type="button"
+                  onClick={onOpenRedistributeModal}
+                  style={{
+                    width: '100%',
+                    background: '#F59E0B',
+                    color: '#000',
+                    border: 'none',
+                    padding: '8px 12px',
+                    borderRadius: 4,
+                    fontSize: 12,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 6
+                  }}
+                >
+                  <Scissors size={14} />
+                  Jetzt auf {Math.max(sections.length, helpers.length)} Abschnitte zuschneiden
+                </button>
+              </div>
+            )}
+
             {/* Auto Assignment Action Card */}
             <div
               style={{

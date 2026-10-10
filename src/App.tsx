@@ -3,8 +3,9 @@ import { Sidebar } from './components/Sidebar';
 import { MapComponent } from './components/MapComponent';
 import { CapturePanel } from './components/CapturePanel';
 import { PrintView } from './components/PrintView';
+import { RedistributeModal } from './components/RedistributeModal';
 import { api, type Section, type Helper, type Street } from './utils/api';
-import type { GeneratedSection } from './utils/geo';
+import { splitSectionInHalf, type GeneratedSection } from './utils/geo';
 import { Database, Wifi, Check, Copy, AlertCircle, X } from 'lucide-react';
 
 export const App: React.FC = () => {
@@ -33,6 +34,7 @@ export const App: React.FC = () => {
   const [mapTileTheme, setMapTileTheme] = useState<string>('dark');
   const [mapboxToken, setMapboxToken] = useState<string>('');
   const [isPrintOpen, setIsPrintOpen] = useState<boolean>(false);
+  const [isRedistributeOpen, setIsRedistributeOpen] = useState<boolean>(false);
 
   // Candle & Material Planning state
   const [candleSpacing, setCandleSpacing] = useState<number>(2.0);
@@ -336,6 +338,34 @@ export const App: React.FC = () => {
     }
   };
 
+  // Fair Redistribution (Subdivide into N sections)
+  const handleApplyRedistribute = async (newSections: Section[]) => {
+    try {
+      await api.replaceAllSections(newSections);
+      await loadData();
+    } catch (err: any) {
+      alert(`Fehler beim Speichern der neuen Aufteilung: ${err.message}`);
+    }
+  };
+
+  // Split single section in half
+  const handleSplitSection = async (sectionId: string) => {
+    const target = sections.find(s => s.id === sectionId);
+    if (!target) return;
+    const parts = splitSectionInHalf(target, sections.length);
+    if (!parts) {
+      alert('Dieser Abschnitt ist zu kurz zum Teilen (unter 16 m).');
+      return;
+    }
+    const updated = sections.flatMap(s => (s.id === sectionId ? parts : [s]));
+    try {
+      await api.replaceAllSections(updated);
+      await loadData();
+    } catch (err: any) {
+      alert(`Fehler beim Halbieren: ${err.message}`);
+    }
+  };
+
   // Helper CRUD
   const handleAddHelper = async (name: string, color?: string, phone?: string) => {
     try {
@@ -459,6 +489,8 @@ export const App: React.FC = () => {
         onImportBackup={handleImportBackup}
         onResetDatabase={handleResetDatabase}
         onBatchAssign={handleBatchAssign}
+        onOpenRedistributeModal={() => setIsRedistributeOpen(true)}
+        onSplitSection={handleSplitSection}
         theme={theme}
         onToggleTheme={handleToggleTheme}
         candleSpacing={candleSpacing}
@@ -639,6 +671,15 @@ export const App: React.FC = () => {
           onClose={() => setIsPrintOpen(false)}
         />
       )}
+
+      {/* FAIR REDISTRIBUTION MODAL */}
+      <RedistributeModal
+        isOpen={isRedistributeOpen}
+        onClose={() => setIsRedistributeOpen(false)}
+        sections={sections}
+        helpers={helpers}
+        onApply={handleApplyRedistribute}
+      />
     </div>
   );
 };

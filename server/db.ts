@@ -281,6 +281,42 @@ export const dbService = {
     }
   },
 
+  replaceAllSections(sections: Omit<SectionRecord, 'created_at'>[]) {
+    const createdAt = new Date().toISOString();
+    db.exec('BEGIN TRANSACTION');
+    try {
+      db.prepare('DELETE FROM sections').run();
+      const insertSec = db.prepare(`
+        INSERT INTO sections (id, street_id, street_name, section_index, label, length_meters, color, type, geojson, assigned_helper_id, assigned_helper_name, notes, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      for (const sec of sections) {
+        insertSec.run(
+          sec.id,
+          sec.street_id || null,
+          sec.street_name,
+          sec.section_index,
+          sec.label,
+          sec.length_meters,
+          sec.color,
+          sec.type,
+          typeof sec.geojson === 'string' ? sec.geojson : JSON.stringify(sec.geojson),
+          sec.assigned_helper_id || null,
+          sec.assigned_helper_name || null,
+          sec.notes || null,
+          createdAt
+        );
+      }
+
+      db.exec('COMMIT');
+      return true;
+    } catch (err) {
+      db.exec('ROLLBACK');
+      throw err;
+    }
+  },
+
   updateSectionHelper(sectionId: string, helperId: string | null, helperName: string | null) {
     db.prepare('UPDATE sections SET assigned_helper_id = ?, assigned_helper_name = ? WHERE id = ?')
       .run(helperId || null, helperName || null, sectionId);

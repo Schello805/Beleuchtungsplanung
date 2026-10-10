@@ -297,6 +297,18 @@ export const api = {
     }
   },
 
+  async replaceAllSections(sections: any[]): Promise<void> {
+    const res = await fetch(`${API_BASE}/sections/replace-all`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sections })
+    });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error || 'Fehler beim Aktualisieren der Abschnitte in SQLite');
+    }
+  },
+
   // OVERPASS STREETS
   async getBechhofenStreets(): Promise<string[]> {
     try {
