@@ -54,4 +54,42 @@ npm run dev
 npm run build
 npm start
 ```
-Die App läuft unter einem einzigen Port auf [http://localhost:3001](http://localhost:3001).
+Die App läuft unter einem einzigen Port auf [http://localhost:3000](http://localhost:3000) (oder Port 3001).
+
+---
+
+## 🐧 Installation auf Debian 13 (Trixie) LXC (Proxmox / Linux Container)
+
+Die Anwendung ist für den autonomen Betrieb in einem Proxmox/Debian 13 Container optimiert.
+
+### One-Liner Installation:
+In der Konsole des Debian 13 LXC-Containers einfach folgenden Befehl ausführen:
+```bash
+curl -fsSL https://raw.githubusercontent.com/Schello805/Beleuchtungsplanung/master/install.sh | bash
+```
+
+**Was das Skript automatisch erledigt:**
+1. Installiert Node.js 22 LTS, Git und Systemtools.
+2. Klont das Repository nach `/opt/lichternacht`.
+3. Baut das Vite-Frontend und richtet die SQLite-Datenbank ein.
+4. Erstellt und aktiviert den Systemd-Dienst `lichternacht.service` mit automatischem Neustart bei Systemstart.
+5. Gibt die direkte IP-Adresse des Containers aus (z. B. `http://192.168.1.xxx:3000`).
+
+### One-Liner Update:
+Wann immer du Änderungen auf GitHub pushst, kannst du den Container mit einem einzigen Befehl aktualisieren (bestehende Datenbank wird automatisch gesichert):
+```bash
+/opt/lichternacht/update.sh
+```
+oder per Remote-Befehl:
+```bash
+curl -fsSL https://raw.githubusercontent.com/Schello805/Beleuchtungsplanung/master/update.sh | bash
+```
+
+---
+
+## 🕯️ Material- & Kerzenrechner
+- Einstellbarer Lichterabstand (Standard: **2,0 Meter**, konfigurierbar auf 1,5m, 2m, 2,5m, 3m).
+- Einstellbare Reserve (Standard: **+10%** Puffer für Wind/Bruch).
+- Automatische Berechnung der Gesamtanzahl an Windlichtern/Kerzen sowie Kartonrechner (Packungen à 50 und 100 Stück).
+- Anzeige des individuellen Materialbedarfs pro Helfer in der Helferliste, auf den ausgedruckten Laufzetteln und im CSV-Export.
+

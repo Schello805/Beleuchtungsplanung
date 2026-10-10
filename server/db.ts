@@ -53,6 +53,12 @@ db.exec(`
     value TEXT NOT NULL,
     updated_at TEXT NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  );
 `);
 
 // Pre-seed 30 initial helper slots if empty so the user immediately has the 30 dropdown choices ready
@@ -69,7 +75,7 @@ if (result && result.count === 0) {
     '#818CF8', '#34D399', '#F87171', '#60A5FA', '#A78BFA'
   ];
 
-  for (let i = 1; i <= 30; i++) {
+  for (let i = 1; i <= 35; i++) {
     const num = String(i).padStart(2, '0');
     insertHelper.run(`h-${i}`, `Helfer ${num}`, colors[(i - 1) % colors.length], new Date().toISOString());
   }
@@ -136,6 +142,49 @@ export const dbService = {
     return true;
   },
 
+  importHelpers(helpersList: Array<{ name: string; phone?: string; color?: string }>, mode: 'replace' | 'append' = 'replace'): number {
+    const colors = [
+      '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6',
+      '#EC4899', '#14B8A6', '#F97316', '#6366F1', '#84CC16',
+      '#06B6D4', '#D946EF', '#EAB308', '#22C55E', '#A855F7',
+      '#0EA5E9', '#F43F5E', '#10B981', '#FBBF24', '#38BDF8',
+      '#4ADE80', '#FB7185', '#C084FC', '#2DD4BF', '#F472B6',
+      '#818CF8', '#34D399', '#F87171', '#60A5FA', '#A78BFA'
+    ];
+
+    db.exec('BEGIN TRANSACTION');
+    try {
+      if (mode === 'replace') {
+        db.prepare('UPDATE sections SET assigned_helper_id = NULL, assigned_helper_name = NULL').run();
+        db.prepare('DELETE FROM helpers').run();
+      }
+
+      const insertStmt = db.prepare(`
+        INSERT INTO helpers (id, name, color, phone, created_at)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT(name) DO UPDATE SET
+          phone = CASE WHEN excluded.phone != '' THEN excluded.phone ELSE helpers.phone END,
+          color = COALESCE(excluded.color, helpers.color)
+      `);
+
+      let count = 0;
+      for (const h of helpersList) {
+        const trimmedName = (h.name || '').trim();
+        if (!trimmedName) continue;
+        const id = 'h-' + Date.now() + '-' + count + '-' + Math.random().toString(36).substring(2, 6);
+        const color = h.color || colors[count % colors.length];
+        insertStmt.run(id, trimmedName, color, h.phone || '', new Date().toISOString());
+        count++;
+      }
+
+      db.exec('COMMIT');
+      return count;
+    } catch (err) {
+      db.exec('ROLLBACK');
+      throw err;
+    }
+  },
+
   getStreets(): StreetRecord[] {
     return db.prepare('SELECT * FROM streets ORDER BY created_at DESC').all() as unknown as StreetRecord[];
   },
@@ -180,6 +229,58 @@ export const dbService = {
     return true;
   },
 
+  saveBatchStreetsWithSections(batch: Array<{ street: Omit<StreetRecord, 'created_at'>; sections: Omit<SectionRecord, 'created_at'>[] }>) {
+    const createdAt = new Date().toISOString();
+    db.exec('BEGIN TRANSACTION');
+    try {
+      const insertStreet = db.prepare(`
+        INSERT INTO streets (id, name, method, chunk_length, min_length, total_length, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      const insertSec = db.prepare(`
+        INSERT INTO sections (id, street_id, street_name, section_index, label, length_meters, color, type, geojson, assigned_helper_id, assigned_helper_name, notes, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      for (const item of batch) {
+        insertStreet.run(
+          item.street.id,
+          item.street.name,
+          item.street.method,
+          item.street.chunk_length,
+          item.street.min_length,
+          item.street.total_length,
+          createdAt
+        );
+
+        for (const sec of item.sections) {
+          insertSec.run(
+            sec.id,
+            item.street.id,
+            sec.street_name,
+            sec.section_index,
+            sec.label,
+            sec.length_meters,
+            sec.color,
+            sec.type,
+            typeof sec.geojson === 'string' ? sec.geojson : JSON.stringify(sec.geojson),
+            sec.assigned_helper_id || null,
+            sec.assigned_helper_name || null,
+            sec.notes || null,
+            createdAt
+          );
+        }
+      }
+
+      db.exec('COMMIT');
+      return true;
+    } catch (err) {
+      db.exec('ROLLBACK');
+      throw err;
+    }
+  },
+
   updateSectionHelper(sectionId: string, helperId: string | null, helperName: string | null) {
     db.prepare('UPDATE sections SET assigned_helper_id = ?, assigned_helper_name = ? WHERE id = ?')
       .run(helperId || null, helperName || null, sectionId);
@@ -210,16 +311,44 @@ export const dbService = {
     return true;
   },
 
+  getAllSettings(): Record<string, string> {
+    const rows = db.prepare('SELECT key, value FROM settings').all() as Array<{ key: string; value: string }>;
+    const result: Record<string, string> = {};
+    for (const r of rows) {
+      result[r.key] = r.value;
+    }
+    return result;
+  },
+
+  getSetting(key: string): string | null {
+    const row = db.prepare('SELECT value FROM settings WHERE key = ?').get(key) as { value: string } | undefined;
+    return row ? row.value : null;
+  },
+
+  setSetting(key: string, value: string): void {
+    const now = new Date().toISOString();
+    db.prepare(`
+      INSERT INTO settings (key, value, updated_at) VALUES (?, ?, ?)
+      ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+    `).run(key, value, now);
+  },
+
   exportDatabase() {
     return {
       exportedAt: new Date().toISOString(),
       helpers: this.getHelpers(),
       streets: this.getStreets(),
-      sections: this.getSections()
+      sections: this.getSections(),
+      settings: this.getAllSettings()
     };
   },
 
-  importDatabase(data: { helpers?: HelperRecord[]; streets?: StreetRecord[]; sections?: SectionRecord[] }) {
+  importDatabase(data: { helpers?: HelperRecord[]; streets?: StreetRecord[]; sections?: SectionRecord[]; settings?: Record<string, string> }) {
+    if (data.settings && typeof data.settings === 'object') {
+      for (const [k, v] of Object.entries(data.settings)) {
+        this.setSetting(k, v);
+      }
+    }
     if (data.helpers && Array.isArray(data.helpers)) {
       db.prepare('DELETE FROM helpers').run();
       const insertH = db.prepare('INSERT INTO helpers (id, name, color, phone, created_at) VALUES (?, ?, ?, ?, ?)');
@@ -261,6 +390,49 @@ export const dbService = {
     return true;
   },
 
+  mergeLocalData(data: { helpers?: HelperRecord[]; streets?: StreetRecord[]; sections?: SectionRecord[] }) {
+    let importedStreets = 0;
+    let importedSections = 0;
+
+    if (data.streets && Array.isArray(data.streets)) {
+      const insertS = db.prepare(`
+        INSERT OR IGNORE INTO streets (id, name, method, chunk_length, min_length, total_length, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `);
+      for (const s of data.streets) {
+        insertS.run(s.id, s.name, s.method, s.chunk_length, s.min_length, s.total_length, s.created_at || new Date().toISOString());
+        importedStreets++;
+      }
+    }
+
+    if (data.sections && Array.isArray(data.sections)) {
+      const insertSec = db.prepare(`
+        INSERT OR IGNORE INTO sections (id, street_id, street_name, section_index, label, length_meters, color, type, geojson, assigned_helper_id, assigned_helper_name, notes, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+      for (const sec of data.sections) {
+        insertSec.run(
+          sec.id,
+          sec.street_id || null,
+          sec.street_name,
+          sec.section_index,
+          sec.label,
+          sec.length_meters,
+          sec.color,
+          sec.type,
+          typeof sec.geojson === 'string' ? sec.geojson : JSON.stringify(sec.geojson),
+          sec.assigned_helper_id || null,
+          sec.assigned_helper_name || null,
+          sec.notes || null,
+          sec.created_at || new Date().toISOString()
+        );
+        importedSections++;
+      }
+    }
+
+    return { importedStreets, importedSections };
+  },
+
   resetDatabase() {
     db.prepare('DELETE FROM sections').run();
     db.prepare('DELETE FROM streets').run();
@@ -277,7 +449,7 @@ export const dbService = {
       '#818CF8', '#34D399', '#F87171', '#60A5FA', '#A78BFA'
     ];
 
-    for (let i = 1; i <= 30; i++) {
+    for (let i = 1; i <= 35; i++) {
       const num = String(i).padStart(2, '0');
       insertHelper.run(`h-${i}`, `Helfer ${num}`, colors[(i - 1) % colors.length], new Date().toISOString());
     }

@@ -5,28 +5,49 @@ import type { Section, Helper } from '../utils/api';
 interface PrintViewProps {
   sections: Section[];
   helpers: Helper[];
+  candleSpacing?: number;
+  candleBuffer?: number;
   onClose: () => void;
 }
 
-export const PrintView: React.FC<PrintViewProps> = ({ sections, helpers, onClose }) => {
+export const PrintView: React.FC<PrintViewProps> = ({
+  sections,
+  helpers,
+  candleSpacing = 2.0,
+  candleBuffer = 10,
+  onClose
+}) => {
   const [printLayout, setPrintLayout] = useState<'table' | 'cards'>('table');
 
-  const totalMeters = sections.reduce((sum, s) => sum + s.lengthMeters, 0);
+  const totalMeters = sections.reduce((sum, s) => sum + (s.length_meters ?? (s as any).lengthMeters ?? 0), 0);
   const unassignedSections = sections.filter(s => !s.assigned_helper_id);
 
   // Group sections by assigned helper
   const helperGroups = helpers
     .map(helper => {
       const assigned = sections.filter(s => s.assigned_helper_id === helper.id);
-      const meters = assigned.reduce((sum, s) => sum + s.lengthMeters, 0);
+      const meters = assigned.reduce((sum, s) => sum + (s.length_meters ?? (s as any).lengthMeters ?? 0), 0);
+      const candles = assigned.reduce((sum, s) => {
+        const len = s.length_meters ?? (s as any).lengthMeters ?? 0;
+        if (s.type === 'point') return sum + 20;
+        return sum + (len > 0 ? Math.max(1, Math.round(len / candleSpacing)) : 0);
+      }, 0);
       return {
         helper,
         sections: assigned,
-        meters
+        meters,
+        candles
       };
     })
     .filter(g => g.sections.length > 0)
     .sort((a, b) => a.helper.name.localeCompare(b.helper.name, 'de'));
+
+  const totalCandlesBase = sections.reduce((sum, s) => {
+    const len = s.length_meters ?? (s as any).lengthMeters ?? 0;
+    if (s.type === 'point') return sum + 20;
+    return sum + (len > 0 ? Math.max(1, Math.round(len / candleSpacing)) : 0);
+  }, 0);
+  const totalCandlesWithBuffer = Math.round(totalCandlesBase * (1 + candleBuffer / 100));
 
   const currentDate = new Date().toLocaleDateString('de-DE', {
     day: '2-digit',
@@ -172,7 +193,7 @@ export const PrintView: React.FC<PrintViewProps> = ({ sections, helpers, onClose
           <div
             style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(4, 1fr)',
+              gridTemplateColumns: 'repeat(5, 1fr)',
               gap: 12,
               marginTop: 18,
               background: '#F8FAFC',
@@ -183,19 +204,24 @@ export const PrintView: React.FC<PrintViewProps> = ({ sections, helpers, onClose
           >
             <div>
               <div style={{ fontSize: 10, color: '#64748B', textTransform: 'uppercase', fontWeight: 700 }}>Gesamtstrecke</div>
-              <div style={{ fontSize: 18, fontWeight: 800, color: '#0F172A' }}>{totalMeters.toLocaleString('de-DE')} m</div>
+              <div style={{ fontSize: 17, fontWeight: 800, color: '#0F172A' }}>{totalMeters.toLocaleString('de-DE')} m</div>
             </div>
             <div>
               <div style={{ fontSize: 10, color: '#64748B', textTransform: 'uppercase', fontWeight: 700 }}>Eingeteilte Helfer</div>
-              <div style={{ fontSize: 18, fontWeight: 800, color: '#0F172A' }}>{helperGroups.length} Personen</div>
+              <div style={{ fontSize: 17, fontWeight: 800, color: '#0F172A' }}>{helperGroups.length} Personen</div>
             </div>
             <div>
               <div style={{ fontSize: 10, color: '#64748B', textTransform: 'uppercase', fontWeight: 700 }}>Gesamtabschnitte</div>
-              <div style={{ fontSize: 18, fontWeight: 800, color: '#0F172A' }}>{sections.length} Abschnitte</div>
+              <div style={{ fontSize: 17, fontWeight: 800, color: '#0F172A' }}>{sections.length} Abschnitte</div>
+            </div>
+            <div>
+              <div style={{ fontSize: 10, color: '#D97706', textTransform: 'uppercase', fontWeight: 700 }}>Lichter-Bedarf</div>
+              <div style={{ fontSize: 17, fontWeight: 800, color: '#D97706' }}>{totalCandlesWithBuffer.toLocaleString('de-DE')} Stk.</div>
+              <div style={{ fontSize: 9, color: '#64748B' }}>inkl. {candleBuffer}% Reserve ({candleSpacing}m)</div>
             </div>
             <div>
               <div style={{ fontSize: 10, color: '#64748B', textTransform: 'uppercase', fontWeight: 700 }}>Offen / Unbesetzt</div>
-              <div style={{ fontSize: 18, fontWeight: 800, color: unassignedSections.length > 0 ? '#DC2626' : '#16A34A' }}>
+              <div style={{ fontSize: 17, fontWeight: 800, color: unassignedSections.length > 0 ? '#DC2626' : '#16A34A' }}>
                 {unassignedSections.length}
               </div>
             </div>
@@ -212,10 +238,11 @@ export const PrintView: React.FC<PrintViewProps> = ({ sections, helpers, onClose
             <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12, marginBottom: 30 }}>
               <thead>
                 <tr style={{ background: '#0F172A', color: '#FFFFFF', textAlign: 'left' }}>
-                  <th style={{ padding: '8px 10px', width: '22%' }}>Helfer-Name</th>
-                  <th style={{ padding: '8px 10px', width: '12%', textAlign: 'right' }}>Gesamtmeter</th>
-                  <th style={{ padding: '8px 10px', width: '46%' }}>Zugeteilte Straßen & Abschnitte</th>
-                  <th style={{ padding: '8px 10px', width: '20%', textAlign: 'center' }}>Ausgabe / Unterschrift</th>
+                  <th style={{ padding: '8px 10px', width: '20%' }}>Helfer-Name</th>
+                  <th style={{ padding: '8px 10px', width: '10%', textAlign: 'right' }}>Strecke</th>
+                  <th style={{ padding: '8px 10px', width: '12%', textAlign: 'right' }}>Lichter (ca.)</th>
+                  <th style={{ padding: '8px 10px', width: '40%' }}>Zugeteilte Straßen & Abschnitte</th>
+                  <th style={{ padding: '8px 10px', width: '18%', textAlign: 'center' }}>Ausgabe / Quittung</th>
                 </tr>
               </thead>
               <tbody>
@@ -239,6 +266,10 @@ export const PrintView: React.FC<PrintViewProps> = ({ sections, helpers, onClose
                       {group.meters} m
                     </td>
 
+                    <td style={{ padding: '10px 10px', fontWeight: 700, textAlign: 'right', verticalAlign: 'top', fontSize: 12, color: '#059669' }}>
+                      ~{group.candles} Stk.
+                    </td>
+
                     <td style={{ padding: '10px 10px', verticalAlign: 'top' }}>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
                         {group.sections.map(sec => (
@@ -248,15 +279,16 @@ export const PrintView: React.FC<PrintViewProps> = ({ sections, helpers, onClose
                               {sec.notes ? <span style={{ color: '#64748B', fontSize: 11 }}> ({sec.notes})</span> : ''}
                             </span>
                             <span style={{ color: '#475569', fontWeight: 600, fontSize: 11 }}>
-                              {sec.lengthMeters} m
+                              {Math.round(sec.length_meters ?? (sec as any).lengthMeters ?? 0)} m
                             </span>
                           </div>
                         ))}
                       </div>
                     </td>
 
-                    <td style={{ padding: '10px 10px', textAlign: 'center', verticalAlign: 'middle' }}>
-                      <div style={{ borderBottom: '1px dashed #94A3B8', height: 24, width: '90%', margin: '0 auto' }} />
+                    <td style={{ padding: '10px 10px', textAlign: 'center', verticalAlign: 'middle', fontSize: 11, color: '#64748B' }}>
+                      <div style={{ borderBottom: '1px dashed #94A3B8', height: 20, width: '90%', margin: '0 auto 4px' }} />
+                      <div style={{ fontSize: 9 }}>[ ] Ausgegeben: ____ Stk.</div>
                     </td>
                   </tr>
                 ))}
@@ -312,13 +344,16 @@ export const PrintView: React.FC<PrintViewProps> = ({ sections, helpers, onClose
                         <div style={{ fontSize: 17, fontWeight: 800, color: '#0F172A' }}>
                           {group.helper.name}
                         </div>
+                        {group.helper.phone && (
+                          <div style={{ fontSize: 10, color: '#64748B' }}>Tel: {group.helper.phone}</div>
+                        )}
                       </div>
                       <div style={{ textAlign: 'right' }}>
                         <div style={{ fontSize: 16, fontWeight: 800, color: '#D97706' }}>
                           {group.meters} m
                         </div>
-                        <div style={{ fontSize: 10, color: '#64748B' }}>
-                          {group.sections.length} {group.sections.length === 1 ? 'Abschnitt' : 'Abschnitte'}
+                        <div style={{ fontSize: 11, fontWeight: 700, color: '#059669', background: '#ECFDF5', padding: '1px 6px', borderRadius: 4, marginTop: 2 }}>
+                          🕯️ ~{group.candles} Lichter
                         </div>
                       </div>
                     </div>
@@ -327,23 +362,32 @@ export const PrintView: React.FC<PrintViewProps> = ({ sections, helpers, onClose
                     <div style={{ fontSize: 11, marginBottom: 10 }}>
                       <div style={{ fontWeight: 700, color: '#334155', marginBottom: 4 }}>Deine Streckenabschnitte:</div>
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
-                        {group.sections.map(sec => (
-                          <div key={sec.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 6px', background: '#F8FAFC', borderRadius: 4 }}>
-                            <span>● <b>{sec.label}</b></span>
-                            <span style={{ fontWeight: 700, color: '#475569' }}>{sec.lengthMeters} m</span>
-                          </div>
-                        ))}
+                        {group.sections.map(sec => {
+                          const sLen = Math.round(sec.length_meters ?? (sec as any).lengthMeters ?? 0);
+                          const sCandles = sec.type === 'point' ? 20 : (sLen > 0 ? Math.max(1, Math.round(sLen / candleSpacing)) : 0);
+                          return (
+                            <div key={sec.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 6px', background: '#F8FAFC', borderRadius: 4 }}>
+                              <span>● <b>{sec.label}</b></span>
+                              <span style={{ fontWeight: 700, color: '#475569' }}>
+                                {sLen} m <span style={{ color: '#059669', fontSize: 10 }}>({sCandles} L.)</span>
+                              </span>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   </div>
 
                   {/* Card Footer / Checklist */}
-                  <div style={{ borderTop: '1px solid #E2E8F0', paddingTop: 8, marginTop: 8, fontSize: 10, color: '#64748B', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                    <div>
-                      [ ] Lichter aufgestellt &bull; [ ] Lichter entzündet
+                  <div style={{ borderTop: '1px solid #E2E8F0', paddingTop: 8, marginTop: 8, fontSize: 10, color: '#475569', display: 'flex', flexDirection: 'column', gap: 4 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <span><b>[ ] Lichter erhalten:</b> _____ Stk.</span>
+                      <span><b>[ ] Aufgestellt</b></span>
+                      <span><b>[ ] Entzündet</b></span>
+                      <span><b>[ ] Reste retour</b></span>
                     </div>
-                    <div>
-                      Stand: {currentDate}
+                    <div style={{ textAlign: 'right', fontSize: 9, color: '#94A3B8' }}>
+                      Stand: {currentDate} &bull; Gemeinde Bechhofen
                     </div>
                   </div>
                 </div>
@@ -372,7 +416,7 @@ export const PrintView: React.FC<PrintViewProps> = ({ sections, helpers, onClose
                   <tr key={sec.id} style={{ borderBottom: '1px solid #FECACA' }}>
                     <td style={{ padding: '6px 8px', fontWeight: 600 }}>{sec.label}</td>
                     <td style={{ padding: '6px 8px' }}>{sec.street_name}</td>
-                    <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 700 }}>{sec.lengthMeters} m</td>
+                    <td style={{ padding: '6px 8px', textAlign: 'right', fontWeight: 700 }}>{Math.round(sec.length_meters ?? (sec as any).lengthMeters ?? 0)} m</td>
                     <td style={{ padding: '6px 8px', color: '#64748B' }}>{sec.notes || '—'}</td>
                   </tr>
                 ))}

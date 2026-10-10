@@ -3,15 +3,18 @@ import type { Section, Helper } from './api';
 /**
  * Exports sections as CSV with UTF-8 BOM for perfect Excel compatibility.
  */
-export function exportSectionsToCSV(sections: Section[], helpers: Helper[]): void {
-  const headers = ['Abschnitt', 'Straße', 'Länge (m)', 'Typ', 'Helfer', 'Telefon Helfer', 'Notizen'];
+export function exportSectionsToCSV(sections: Section[], helpers: Helper[], candleSpacing: number = 2.0): void {
+  const headers = ['Abschnitt', 'Straße', 'Länge (m)', 'Lichter (ca. Stk.)', 'Typ', 'Helfer', 'Telefon Helfer', 'Notizen'];
   
   const rows = sections.map(sec => {
     const helper = helpers.find(h => h.id === sec.assigned_helper_id);
+    const length = Math.round(sec.length_meters ?? (sec as any).lengthMeters ?? 0);
+    const candles = sec.type === 'point' ? 20 : (length > 0 ? Math.max(1, Math.round(length / candleSpacing)) : 0);
     return [
       `"${(sec.label || '').replace(/"/g, '""')}"`,
       `"${(sec.street_name || '').replace(/"/g, '""')}"`,
-      sec.lengthMeters,
+      length,
+      candles,
       sec.type === 'point' ? 'Punkt' : 'Linie',
       `"${(sec.assigned_helper_name || 'Nicht zugewiesen').replace(/"/g, '""')}"`,
       `"${(helper?.phone || '').replace(/"/g, '""')}"`,
@@ -44,7 +47,7 @@ export function exportSectionsToGeoJSON(sections: Section[]): void {
         label: sec.label,
         streetName: sec.street_name,
         sectionIndex: sec.section_index,
-        lengthMeters: sec.lengthMeters,
+        lengthMeters: Math.round(sec.length_meters ?? (sec as any).lengthMeters ?? 0),
         color: sec.color,
         type: sec.type,
         assignedHelper: sec.assigned_helper_name || null,
@@ -75,8 +78,9 @@ export function exportSectionsToGPX(sections: Section[]): void {
 `;
 
   sections.forEach(sec => {
+    const length = Math.round(sec.length_meters ?? (sec as any).lengthMeters ?? 0);
     if (sec.type === 'line' && sec.geojson.geometry.type === 'LineString') {
-      gpx += `  <trk>\n    <name>${escapeXml(sec.label)} (${sec.lengthMeters}m - ${escapeXml(sec.assigned_helper_name || 'Offen')})</name>\n    <trkseg>\n`;
+      gpx += `  <trk>\n    <name>${escapeXml(sec.label)} (${length}m - ${escapeXml(sec.assigned_helper_name || 'Offen')})</name>\n    <trkseg>\n`;
       sec.geojson.geometry.coordinates.forEach(([lon, lat]) => {
         gpx += `      <trkpt lat="${lat}" lon="${lon}"></trkpt>\n`;
       });

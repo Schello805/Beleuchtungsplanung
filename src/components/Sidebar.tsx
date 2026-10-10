@@ -18,8 +18,14 @@ import {
   Sun,
   Moon,
   FileSpreadsheet,
-  Compass
+  Compass,
+  FileUp,
+  FileDown,
+  Check,
+  X,
+  Flame
 } from 'lucide-react';
+import * as XLSX from 'xlsx';
 import type { Section, Helper, Street } from '../utils/api';
 import { exportSectionsToCSV, exportSectionsToGeoJSON, exportSectionsToGPX } from '../utils/export';
 import { calculateFairAssignment } from '../utils/fairness';
@@ -35,6 +41,7 @@ interface SidebarProps {
   onAddHelper: (name: string, color?: string, phone?: string) => Promise<void>;
   onUpdateHelper: (id: string, name: string, color?: string, phone?: string) => Promise<void>;
   onDeleteHelper: (id: string) => Promise<void>;
+  onImportHelpers?: (helpers: Array<{ name: string; phone?: string; color?: string }>, mode: 'replace' | 'append') => Promise<void>;
   onOpenPrintView: () => void;
   onExportBackup: () => void;
   onImportBackup: (file: File) => void;
@@ -42,6 +49,9 @@ interface SidebarProps {
   onBatchAssign: (assignments: Array<{ sectionId: string; helperId: string; helperName: string }>) => Promise<void>;
   theme: 'dark' | 'light';
   onToggleTheme: () => void;
+  candleSpacing?: number;
+  candleBuffer?: number;
+  onUpdateCandleConfig?: (spacing: number, buffer: number) => Promise<void>;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -55,13 +65,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onAddHelper,
   onUpdateHelper,
   onDeleteHelper,
+  onImportHelpers,
   onOpenPrintView,
   onExportBackup,
   onImportBackup,
   onResetDatabase,
   onBatchAssign,
   theme,
-  onToggleTheme
+  onToggleTheme,
+  candleSpacing = 2.0,
+  candleBuffer = 10,
+  onUpdateCandleConfig
 }) => {
   const [activeTab, setActiveTab] = useState<'sections' | 'helpers' | 'stats'>('sections');
 
@@ -78,6 +92,129 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   // Auto assign dialog state
   const [isAutoAssigning, setIsAutoAssigning] = useState<boolean>(false);
+
+  // Helper import from Excel / CSV (.xlsx / .csv)
+  const [showHelperImportModal, setShowHelperImportModal] = useState<boolean>(false);
+  const [importedHelperPreview, setImportedHelperPreview] = useState<Array<{ name: string; phone: string }>>([]);
+  const [importFileName, setImportFileName] = useState<string>('');
+  const [importHelperMode, setImportHelperMode] = useState<'replace' | 'append'>('replace');
+  const [isImportingHelpers, setIsImportingHelpers] = useState<boolean>(false);
+  const helperFileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const handleDownloadHelperTemplate = () => {
+    const wb = XLSX.utils.book_new();
+    const wsData = [
+      ['Name', 'Telefon'],
+      ['Anna Schmidt', '0171 1234567'],
+      ['Michael Weber', '0160 9876543'],
+      ['Thomas Müller', '09822 1234'],
+      ['Helfer 04', ''],
+      ['Helfer 05', '']
+    ];
+    const ws = XLSX.utils.aoa_to_sheet(wsData);
+    ws['!cols'] = [{ wch: 25 }, { wch: 20 }];
+    XLSX.utils.book_append_sheet(wb, ws, 'Helfer');
+    XLSX.writeFile(wb, 'lichternacht_helfer_vorlage.xlsx');
+  };
+
+  const handleHelperFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      const buffer = await file.arrayBuffer();
+      const workbook = XLSX.read(buffer, { type: 'array' });
+      const firstSheetName = workbook.SheetNames[0];
+      const worksheet = workbook.Sheets[firstSheetName];
+      const rawRows = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1, defval: '' });
+
+      if (rawRows.length === 0) {
+        alert('Die ausgewählte Datei enthält keine Daten.');
+        return;
+      }
+
+      // Detect header row
+      let headerRowIdx = -1;
+      let nameColIdx = 0;
+      let phoneColIdx = -1;
+      let vornameColIdx = -1;
+      let nachnameColIdx = -1;
+
+      for (let r = 0; r < Math.min(5, rawRows.length); r++) {
+        const row = (rawRows[r] || []).map(c => String(c).trim().toLowerCase());
+        const hasHeader = row.some(cell =>
+          cell.includes('name') || cell.includes('helfer') || cell.includes('telefon') || cell.includes('phone') || cell.includes('mobil')
+        );
+        if (hasHeader) {
+          headerRowIdx = r;
+          row.forEach((cell, idx) => {
+            if (cell === 'vorname') vornameColIdx = idx;
+            else if (cell === 'nachname') nachnameColIdx = idx;
+            else if (cell.includes('name') || cell.includes('helfer')) nameColIdx = idx;
+            else if (cell.includes('telefon') || cell.includes('phone') || cell.includes('mobil') || cell.includes('handy') || cell.includes('tel')) phoneColIdx = idx;
+          });
+          break;
+        }
+      }
+
+      const startRow = headerRowIdx !== -1 ? headerRowIdx + 1 : 0;
+      const parsed: Array<{ name: string; phone: string }> = [];
+
+      for (let r = startRow; r < rawRows.length; r++) {
+        const row = rawRows[r];
+        if (!row || row.length === 0) continue;
+
+        let name = '';
+        if (vornameColIdx !== -1 && nachnameColIdx !== -1) {
+          const v = String(row[vornameColIdx] || '').trim();
+          const n = String(row[nachnameColIdx] || '').trim();
+          name = `${v} ${n}`.trim();
+        } else {
+          name = String(row[nameColIdx] || '').trim();
+        }
+
+        if (!name || name.toLowerCase() === 'name' || name.toLowerCase() === 'vorname') continue;
+
+        let phone = '';
+        if (phoneColIdx !== -1) {
+          phone = String(row[phoneColIdx] || '').trim();
+        } else if (row.length > 1 && nameColIdx === 0) {
+          phone = String(row[1] || '').trim();
+        }
+
+        parsed.push({ name, phone });
+      }
+
+      if (parsed.length === 0) {
+        alert('Keine gültigen Helfernamen in der Datei gefunden. Bitte prüfe das Format (z.B. Spalte "Name").');
+        return;
+      }
+
+      setImportFileName(file.name);
+      setImportedHelperPreview(parsed);
+      setShowHelperImportModal(true);
+    } catch (err: any) {
+      alert(`Fehler beim Lesen der Datei: ${err.message}`);
+    } finally {
+      if (e.target) e.target.value = '';
+    }
+  };
+
+  const handleConfirmHelperImport = async () => {
+    if (importedHelperPreview.length === 0) return;
+    setIsImportingHelpers(true);
+    try {
+      if (onImportHelpers) {
+        await onImportHelpers(importedHelperPreview, importHelperMode);
+      }
+      setShowHelperImportModal(false);
+      setImportedHelperPreview([]);
+    } catch (err: any) {
+      alert(`Import fehlgeschlagen: ${err.message}`);
+    } finally {
+      setIsImportingHelpers(false);
+    }
+  };
 
   // Calculations
   const totalMeters = sections.reduce((sum, s) => sum + s.lengthMeters, 0);
@@ -101,6 +238,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
     ? Math.round(totalMeters / activeHelperCount)
     : 0;
   const maxMeters = Math.max(...helperStats.map(h => h.meters), 1);
+
+  // Candle / Material calculations
+  const totalCandlesBase = sections.reduce((sum, s) => {
+    const len = s.length_meters ?? (s as any).lengthMeters ?? 0;
+    if (s.type === 'point') return sum + 20;
+    return sum + (len > 0 ? Math.max(1, Math.round(len / candleSpacing)) : 0);
+  }, 0);
+  const totalCandlesBuffer = Math.round(totalCandlesBase * (candleBuffer / 100));
+  const totalCandlesWithBuffer = totalCandlesBase + totalCandlesBuffer;
+  const boxesOf50 = Math.ceil(totalCandlesWithBuffer / 50);
+  const boxesOf100 = Math.ceil(totalCandlesWithBuffer / 100);
 
   // Filtered Sections
   const filteredSections = sections.filter(s => {
@@ -734,6 +882,61 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* TAB 2: HELFER VERWALTUNG */}
         {activeTab === 'helpers' && (
           <div>
+            {/* CSV / Excel Import & Template Bar */}
+            <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
+              <input
+                type="file"
+                ref={helperFileInputRef}
+                accept=".xlsx, .xls, .csv"
+                style={{ display: 'none' }}
+                onChange={handleHelperFileUpload}
+              />
+              <button
+                type="button"
+                onClick={() => helperFileInputRef.current?.click()}
+                style={{
+                  flex: 1,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 6,
+                  padding: '7px 10px',
+                  borderRadius: 'var(--radius-sm)',
+                  background: 'rgba(16, 185, 129, 0.12)',
+                  border: '1px solid rgba(16, 185, 129, 0.35)',
+                  color: '#10B981',
+                  fontWeight: 700,
+                  fontSize: 12,
+                  cursor: 'pointer'
+                }}
+              >
+                <FileUp size={14} />
+                Excel / CSV importieren
+              </button>
+
+              <button
+                type="button"
+                onClick={handleDownloadHelperTemplate}
+                title="Muster-Excel-Vorlage für Helferliste herunterladen"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  padding: '7px 10px',
+                  borderRadius: 'var(--radius-sm)',
+                  background: 'var(--bg-secondary)',
+                  border: '1px solid var(--border-subtle)',
+                  color: 'var(--text-muted)',
+                  fontSize: 11,
+                  fontWeight: 600,
+                  cursor: 'pointer'
+                }}
+              >
+                <FileDown size={13} />
+                Vorlage (.xlsx)
+              </button>
+            </div>
+
             <form onSubmit={handleCreateHelper} style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
               <input
                 type="text"
@@ -871,7 +1074,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
                     <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
                       <span style={{ fontSize: 11, fontWeight: 700, color: assignedMeters > 0 ? 'var(--accent-gold)' : 'var(--text-light)' }}>
-                        {assignedMeters > 0 ? `${assignedMeters} m (${assigned.length})` : '0 m'}
+                        {assignedMeters > 0 ? `${assignedMeters} m (~${Math.max(1, Math.round(assignedMeters / candleSpacing))} 🕯️)` : '0 m'}
                       </span>
 
                       <button
@@ -979,6 +1182,108 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </div>
             </div>
 
+            {/* Material- & Kerzenrechner Card */}
+            <div
+              style={{
+                background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.12), rgba(239, 68, 68, 0.08))',
+                border: '1px solid rgba(245, 158, 11, 0.4)',
+                padding: 14,
+                borderRadius: 'var(--radius-sm)',
+                marginBottom: 16
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                  <Flame size={18} color="#F59E0B" />
+                  <h4 style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-main)', margin: 0 }}>
+                    Material- & Kerzenrechner
+                  </h4>
+                </div>
+                <span style={{ fontSize: 11, background: 'rgba(245, 158, 11, 0.15)', color: '#F59E0B', padding: '2px 8px', borderRadius: 10, fontWeight: 700 }}>
+                  Lichter-Planer
+                </span>
+              </div>
+
+              {/* Spacing & Buffer Inputs */}
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10, marginBottom: 12 }}>
+                <div>
+                  <label style={{ fontSize: 11, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>
+                    Abstand: <b>{candleSpacing} m</b>
+                  </label>
+                  <div style={{ display: 'flex', gap: 3 }}>
+                    {[1.5, 2.0, 2.5, 3.0].map(val => (
+                      <button
+                        key={val}
+                        onClick={() => onUpdateCandleConfig?.(val, candleBuffer)}
+                        style={{
+                          flex: 1,
+                          padding: '4px 0',
+                          fontSize: 10,
+                          fontWeight: 700,
+                          borderRadius: 4,
+                          border: candleSpacing === val ? '1px solid #F59E0B' : '1px solid var(--border-subtle)',
+                          background: candleSpacing === val ? '#F59E0B' : 'transparent',
+                          color: candleSpacing === val ? '#0F172A' : 'var(--text-main)',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        {val}m
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label style={{ fontSize: 11, color: 'var(--text-muted)', display: 'block', marginBottom: 4 }}>
+                    Reserve: <b>+{candleBuffer}%</b>
+                  </label>
+                  <div style={{ display: 'flex', gap: 3 }}>
+                    {[5, 10, 15, 20].map(val => (
+                      <button
+                        key={val}
+                        onClick={() => onUpdateCandleConfig?.(candleSpacing, val)}
+                        style={{
+                          flex: 1,
+                          padding: '4px 0',
+                          fontSize: 10,
+                          fontWeight: 700,
+                          borderRadius: 4,
+                          border: candleBuffer === val ? '1px solid #F59E0B' : '1px solid var(--border-subtle)',
+                          background: candleBuffer === val ? '#F59E0B' : 'transparent',
+                          color: candleBuffer === val ? '#0F172A' : 'var(--text-main)',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        +{val}%
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Results Metrics */}
+              <div style={{ background: 'var(--bg-secondary)', padding: '10px 12px', borderRadius: 6, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Strecken-Lichter ({totalMeters} m):</span>
+                  <span style={{ fontWeight: 700, color: 'var(--text-main)' }}>{totalCandlesBase.toLocaleString('de-DE')} Stk.</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12 }}>
+                  <span style={{ color: 'var(--text-muted)' }}>Puffer (+{candleBuffer}% Reserve):</span>
+                  <span style={{ fontWeight: 700, color: '#F59E0B' }}>+{totalCandlesBuffer.toLocaleString('de-DE')} Stk.</span>
+                </div>
+                <div style={{ borderTop: '1px solid var(--border-subtle)', paddingTop: 6, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ fontWeight: 800, fontSize: 12, color: 'var(--text-main)' }}>Gesamt-Bedarf:</span>
+                  <span style={{ fontWeight: 800, fontSize: 15, color: '#10B981' }}>
+                    {totalCandlesWithBuffer.toLocaleString('de-DE')} Lichter
+                  </span>
+                </div>
+                <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2, display: 'flex', justifyContent: 'space-between' }}>
+                  <span>📦 Kartons à 50 Stk.: <b>{boxesOf50}</b></span>
+                  <span>📦 Kartons à 100 Stk.: <b>{boxesOf100}</b></span>
+                </div>
+              </div>
+            </div>
+
             <div
               style={{
                 background: 'var(--bg-secondary)',
@@ -1008,7 +1313,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
 
             <h4 style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-muted)', marginBottom: 8, textTransform: 'uppercase' }}>
-              Meter-Verteilung pro Helfer:
+              Meter- & Lichter-Verteilung pro Helfer:
             </h4>
 
             {/* Helper distribution bars */}
@@ -1019,6 +1324,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   const percent = maxMeters > 0 ? (item.meters / maxMeters) * 100 : 0;
                   const isHigh = item.meters > avgMetersPerActiveHelper * 1.35;
                   const isLow = item.meters < avgMetersPerActiveHelper * 0.65;
+                  const hCandles = Math.max(1, Math.round(item.meters / candleSpacing));
 
                   return (
                     <div
@@ -1046,7 +1352,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                             </span>
                           )}
                           <span style={{ fontSize: 12, fontWeight: 800, color: 'var(--accent-gold)' }}>
-                            {item.meters} m
+                            {item.meters} m <span style={{ color: '#10B981', fontSize: 11, fontWeight: 600 }}> (~{hCandles} 🕯️)</span>
                           </span>
                         </div>
                       </div>
@@ -1096,8 +1402,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Export formats row */}
         <div style={{ display: 'flex', gap: 6 }}>
           <button
-            onClick={() => exportSectionsToCSV(sections, helpers)}
-            title="Excel / CSV Liste exportieren"
+            onClick={() => exportSectionsToCSV(sections, helpers, candleSpacing)}
+            title="Excel / CSV Liste exportieren (inkl. Lichteranzahl)"
             style={{
               flex: 1,
               background: 'transparent',
@@ -1237,6 +1543,258 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </button>
         </div>
       </div>
+
+      {/* Excel / CSV Helper Import Modal */}
+      {showHelperImportModal && (
+        <div
+          style={{
+            position: 'fixed',
+            inset: 0,
+            background: 'rgba(0, 0, 0, 0.7)',
+            backdropFilter: 'blur(5px)',
+            zIndex: 99999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 16
+          }}
+          onClick={() => !isImportingHelpers && setShowHelperImportModal(false)}
+        >
+          <div
+            style={{
+              background: 'var(--bg-card, #1A1F2C)',
+              border: '1px solid var(--border-subtle, rgba(255,255,255,0.1))',
+              borderRadius: 16,
+              maxWidth: 540,
+              width: '100%',
+              maxHeight: '85vh',
+              display: 'flex',
+              flexDirection: 'column',
+              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.6)',
+              overflow: 'hidden',
+              color: 'var(--text-main, #FFFFFF)'
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Modal Header */}
+            <div
+              style={{
+                padding: '16px 20px',
+                borderBottom: '1px solid var(--border-subtle, rgba(255,255,255,0.1))',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                background: 'rgba(255, 255, 255, 0.02)'
+              }}
+            >
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <div
+                  style={{
+                    width: 36,
+                    height: 36,
+                    borderRadius: 10,
+                    background: 'rgba(16, 185, 129, 0.15)',
+                    color: '#10B981',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center'
+                  }}
+                >
+                  <FileSpreadsheet size={20} />
+                </div>
+                <div>
+                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Helfer importieren</h3>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted, #94A3B8)' }}>
+                    Datei: <strong style={{ color: 'var(--accent-gold, #F59E0B)' }}>{importFileName}</strong> ({importedHelperPreview.length} Einträge erkannt)
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={() => !isImportingHelpers && setShowHelperImportModal(false)}
+                disabled={isImportingHelpers}
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: 'var(--text-muted, #94A3B8)',
+                  cursor: 'pointer',
+                  padding: 4,
+                  borderRadius: 6,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div style={{ padding: '16px 20px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 16 }}>
+              {/* Import Mode Selection */}
+              <div>
+                <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted, #94A3B8)', display: 'block', marginBottom: 8 }}>
+                  Import-Modus:
+                </label>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
+                  <div
+                    onClick={() => setImportHelperMode('replace')}
+                    style={{
+                      padding: 12,
+                      borderRadius: 10,
+                      border: `1.5px solid ${importHelperMode === 'replace' ? '#10B981' : 'var(--border-subtle, rgba(255,255,255,0.1))'}`,
+                      background: importHelperMode === 'replace' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(255,255,255,0.02)',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    <div style={{ fontWeight: 600, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                      <input
+                        type="radio"
+                        checked={importHelperMode === 'replace'}
+                        onChange={() => setImportHelperMode('replace')}
+                        style={{ accentColor: '#10B981', cursor: 'pointer' }}
+                      />
+                      Ersetzen (Empfohlen)
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted, #94A3B8)', lineHeight: 1.3 }}>
+                      Bestehende {helpers.length} Helfer komplett durch die {importedHelperPreview.length} neuen ersetzen.
+                    </div>
+                  </div>
+
+                  <div
+                    onClick={() => setImportHelperMode('append')}
+                    style={{
+                      padding: 12,
+                      borderRadius: 10,
+                      border: `1.5px solid ${importHelperMode === 'append' ? '#10B981' : 'var(--border-subtle, rgba(255,255,255,0.1))'}`,
+                      background: importHelperMode === 'append' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(255,255,255,0.02)',
+                      cursor: 'pointer',
+                      transition: 'all 0.15s ease'
+                    }}
+                  >
+                    <div style={{ fontWeight: 600, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
+                      <input
+                        type="radio"
+                        checked={importHelperMode === 'append'}
+                        onChange={() => setImportHelperMode('append')}
+                        style={{ accentColor: '#10B981', cursor: 'pointer' }}
+                      />
+                      Anhängen
+                    </div>
+                    <div style={{ fontSize: 11, color: 'var(--text-muted, #94A3B8)', lineHeight: 1.3 }}>
+                      {importedHelperPreview.length} neue Helfer an die vorhandenen {helpers.length} anhängen.
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Data Preview Table */}
+              <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                  <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted, #94A3B8)' }}>
+                    Vorschau der erkannten Daten ({importedHelperPreview.length}):
+                  </label>
+                  <span style={{ fontSize: 11, color: 'var(--accent-gold, #F59E0B)' }}>
+                    Automatisch formatiert
+                  </span>
+                </div>
+                <div
+                  style={{
+                    maxHeight: 240,
+                    overflowY: 'auto',
+                    border: '1px solid var(--border-subtle, rgba(255,255,255,0.1))',
+                    borderRadius: 8,
+                    background: 'rgba(0, 0, 0, 0.2)'
+                  }}
+                >
+                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
+                    <thead>
+                      <tr style={{ background: 'rgba(255, 255, 255, 0.05)', textAlign: 'left', borderBottom: '1px solid var(--border-subtle, rgba(255,255,255,0.1))' }}>
+                        <th style={{ padding: '8px 12px', width: 40, color: 'var(--text-muted, #94A3B8)' }}>#</th>
+                        <th style={{ padding: '8px 12px', color: 'var(--text-main, #FFFFFF)' }}>Name</th>
+                        <th style={{ padding: '8px 12px', color: 'var(--text-muted, #94A3B8)' }}>Telefon</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {importedHelperPreview.map((h, idx) => (
+                        <tr
+                          key={idx}
+                          style={{
+                            borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
+                            background: idx % 2 === 0 ? 'transparent' : 'rgba(255, 255, 255, 0.015)'
+                          }}
+                        >
+                          <td style={{ padding: '6px 12px', color: 'var(--text-muted, #94A3B8)', fontSize: 11 }}>
+                            {idx + 1}
+                          </td>
+                          <td style={{ padding: '6px 12px', fontWeight: 600 }}>
+                            {h.name}
+                          </td>
+                          <td style={{ padding: '6px 12px', color: h.phone ? 'var(--text-main, #FFFFFF)' : 'var(--text-light, #64748B)', fontFamily: 'monospace', fontSize: 11 }}>
+                            {h.phone || '–'}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+
+            {/* Modal Footer */}
+            <div
+              style={{
+                padding: '14px 20px',
+                borderTop: '1px solid var(--border-subtle, rgba(255,255,255,0.1))',
+                background: 'rgba(255, 255, 255, 0.02)',
+                display: 'flex',
+                justifyContent: 'flex-end',
+                gap: 10
+              }}
+            >
+              <button
+                onClick={() => setShowHelperImportModal(false)}
+                disabled={isImportingHelpers}
+                style={{
+                  padding: '8px 14px',
+                  borderRadius: 8,
+                  border: '1px solid var(--border-subtle, rgba(255,255,255,0.15))',
+                  background: 'transparent',
+                  color: 'var(--text-main, #FFFFFF)',
+                  fontSize: 13,
+                  fontWeight: 600,
+                  cursor: isImportingHelpers ? 'not-allowed' : 'pointer'
+                }}
+              >
+                Abbrechen
+              </button>
+              <button
+                onClick={handleConfirmHelperImport}
+                disabled={isImportingHelpers}
+                style={{
+                  padding: '8px 18px',
+                  borderRadius: 8,
+                  border: 'none',
+                  background: '#10B981',
+                  color: '#FFFFFF',
+                  fontSize: 13,
+                  fontWeight: 700,
+                  cursor: isImportingHelpers ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6,
+                  boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)'
+                }}
+              >
+                <Check size={16} />
+                {isImportingHelpers
+                  ? 'Wird importiert...'
+                  : `${importedHelperPreview.length} Helfer jetzt importieren`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </aside>
   );
 };

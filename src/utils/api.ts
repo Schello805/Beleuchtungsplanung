@@ -25,6 +25,7 @@ export interface Section {
   section_index: number;
   label: string;
   length_meters: number;
+  lengthMeters?: number;
   color: string;
   type: 'line' | 'point';
   geojson: GeoJSON.Feature<GeoJSON.LineString | GeoJSON.Point>;
@@ -146,171 +147,154 @@ function clientStitchWays(ways: Array<{ geometry: Array<{ lat: number; lon: numb
 }
 
 export const api = {
-  // HELPERS
-  async getHelpers(): Promise<Helper[]> {
+  // Auto-migration: Check if current browser has legacy data stored in localStorage and push to SQLite
+  async checkAndMigrateLocalStorage(): Promise<{ migrated: boolean; importedStreets: number; importedSections: number }> {
     try {
-      const res = await fetch(`${API_BASE}/helpers`);
-      if (res.ok) return await res.json();
-    } catch {
-      // Backend unavailable, fallback to local storage
+      const localStreets = localDB.getStreets();
+      const localSecs = localDB.getSections();
+      if (localStreets.length > 0 || localSecs.length > 0) {
+        console.log(`[Migration] Lokale Daten gefunden: ${localStreets.length} Straßen, ${localSecs.length} Abschnitte. Übertrage in zentrale SQLite-DB...`);
+        const res = await fetch(`${API_BASE}/database/migrate-local`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ streets: localStreets, sections: localSecs })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          // Successfully migrated to SQLite, clear localStorage
+          localStorage.removeItem('ln_streets');
+          localStorage.removeItem('ln_sections');
+          console.log(`[Migration] Erfolgreich in SQLite übertragen:`, data);
+          return { migrated: true, importedStreets: data.importedStreets || 0, importedSections: data.importedSections || 0 };
+        }
+      }
+    } catch (e) {
+      console.warn('[Migration] Fehler beim Migrieren lokaler Daten:', e);
     }
-    return localDB.getHelpers();
+    return { migrated: false, importedStreets: 0, importedSections: 0 };
+  },
+
+  // Database Status
+  async getStatus(): Promise<{ status: string; database: string; helpersCount: number; streetsCount: number; sectionsCount: number }> {
+    const res = await fetch(`${API_BASE}/status`);
+    if (!res.ok) throw new Error('Backend nicht erreichbar');
+    return await res.json();
+  },
+
+  // HELPERS (Zentral in SQLite)
+  async getHelpers(): Promise<Helper[]> {
+    const res = await fetch(`${API_BASE}/helpers`);
+    if (!res.ok) throw new Error('Fehler beim Laden der Helfer aus SQLite');
+    const data = await res.json();
+    return data;
   },
 
   async addHelper(name: string, color?: string, phone?: string): Promise<Helper> {
-    try {
-      const res = await fetch(`${API_BASE}/helpers`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, color, phone })
-      });
-      if (res.ok) return await res.json();
-    } catch {}
-
-    const list = localDB.getHelpers();
-    const created: Helper = {
-      id: `h-${Date.now()}`,
-      name: name.trim(),
-      color: color || '#3B82F6',
-      phone: phone || '',
-      created_at: new Date().toISOString()
-    };
-    list.push(created);
-    localDB.saveHelpers(list);
-    return created;
+    const res = await fetch(`${API_BASE}/helpers`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, color, phone })
+    });
+    if (!res.ok) throw new Error('Fehler beim Speichern des Helfers in SQLite');
+    return await res.json();
   },
 
   async updateHelper(id: string, name: string, color?: string, phone?: string): Promise<void> {
-    try {
-      const res = await fetch(`${API_BASE}/helpers/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name, color, phone })
-      });
-      if (res.ok) return;
-    } catch {}
-
-    const list = localDB.getHelpers();
-    const idx = list.findIndex(h => h.id === id);
-    if (idx !== -1) {
-      list[idx] = { ...list[idx], name: name.trim(), color: color || list[idx].color, phone: phone || list[idx].phone };
-      localDB.saveHelpers(list);
-    }
-    // Update assigned name in sections
-    const secs = localDB.getSections();
-    secs.forEach(s => {
-      if (s.assigned_helper_id === id) s.assigned_helper_name = name.trim();
+    const res = await fetch(`${API_BASE}/helpers/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name, color, phone })
     });
-    localDB.saveSections(secs);
+    if (!res.ok) throw new Error('Fehler beim Aktualisieren des Helfers in SQLite');
   },
 
   async deleteHelper(id: string): Promise<void> {
-    try {
-      const res = await fetch(`${API_BASE}/helpers/${id}`, { method: 'DELETE' });
-      if (res.ok) return;
-    } catch {}
-
-    const list = localDB.getHelpers().filter(h => h.id !== id);
-    localDB.saveHelpers(list);
+    const res = await fetch(`${API_BASE}/helpers/${id}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error('Fehler beim Löschen des Helfers in SQLite');
   },
 
-  // STREETS
+  async importHelpers(helpers: Array<{ name: string; phone?: string; color?: string }>, mode: 'replace' | 'append' = 'replace'): Promise<number> {
+    const res = await fetch(`${API_BASE}/helpers/import`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ helpers, mode })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Fehler beim Importieren der Helfer in SQLite');
+    }
+    const data = await res.json();
+    return data.count;
+  },
+
+  // STREETS (Zentral in SQLite)
   async getStreets(): Promise<Street[]> {
-    try {
-      const res = await fetch(`${API_BASE}/streets`);
-      if (res.ok) return await res.json();
-    } catch {}
-    return localDB.getStreets();
+    const res = await fetch(`${API_BASE}/streets`);
+    if (!res.ok) throw new Error('Fehler beim Laden der Straßen aus SQLite');
+    return await res.json();
   },
 
   async deleteStreet(id: string): Promise<void> {
-    try {
-      const res = await fetch(`${API_BASE}/streets/${id}`, { method: 'DELETE' });
-      if (res.ok) return;
-    } catch {}
-    localDB.saveStreets(localDB.getStreets().filter(s => s.id !== id));
-    localDB.saveSections(localDB.getSections().filter(s => s.street_id !== id));
+    const res = await fetch(`${API_BASE}/streets/${id}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error('Fehler beim Löschen der Straße in SQLite');
   },
 
-  // SECTIONS
   async getSections(): Promise<Section[]> {
-    try {
-      const res = await fetch(`${API_BASE}/sections`);
-      if (res.ok) return await res.json();
-    } catch {}
-    return localDB.getSections();
+    const res = await fetch(`${API_BASE}/sections`);
+    if (!res.ok) throw new Error('Fehler beim Laden der Abschnitte aus SQLite');
+    const data: Section[] = await res.json();
+    return data.map(s => ({
+      ...s,
+      lengthMeters: s.lengthMeters ?? s.length_meters ?? 0,
+      length_meters: s.length_meters ?? s.lengthMeters ?? 0
+    }));
   },
 
   async updateSection(id: string, updates: { assigned_helper_id?: string | null; assigned_helper_name?: string | null; notes?: string }): Promise<void> {
-    try {
-      const res = await fetch(`${API_BASE}/sections/${id}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updates)
-      });
-      if (res.ok) return;
-    } catch {}
-
-    const list = localDB.getSections();
-    const idx = list.findIndex(s => s.id === id);
-    if (idx !== -1) {
-      list[idx] = {
-        ...list[idx],
-        assigned_helper_id: updates.assigned_helper_id !== undefined ? updates.assigned_helper_id : list[idx].assigned_helper_id,
-        assigned_helper_name: updates.assigned_helper_name !== undefined ? updates.assigned_helper_name : list[idx].assigned_helper_name,
-        notes: updates.notes !== undefined ? updates.notes : list[idx].notes
-      };
-      localDB.saveSections(list);
-    }
+    const res = await fetch(`${API_BASE}/sections/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(updates)
+    });
+    if (!res.ok) throw new Error('Fehler beim Aktualisieren des Abschnitts in SQLite');
   },
 
   async batchAssignHelpers(assignments: Array<{ sectionId: string; helperId: string; helperName: string }>): Promise<void> {
-    try {
-      const res = await fetch(`${API_BASE}/sections/batch-assign`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ assignments })
-      });
-      if (res.ok) return;
-    } catch {}
-
-    const list = localDB.getSections();
-    const map = new Map(assignments.map(a => [a.sectionId, a]));
-    list.forEach(s => {
-      const item = map.get(s.id);
-      if (item) {
-        s.assigned_helper_id = item.helperId || null;
-        s.assigned_helper_name = item.helperName || null;
-      }
+    const res = await fetch(`${API_BASE}/sections/batch-assign`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ assignments })
     });
-    localDB.saveSections(list);
+    if (!res.ok) throw new Error('Fehler beim Speichern der Zuweisungen in SQLite');
   },
 
   async deleteSection(id: string): Promise<void> {
-    try {
-      const res = await fetch(`${API_BASE}/sections/${id}`, { method: 'DELETE' });
-      if (res.ok) return;
-    } catch {}
-    localDB.saveSections(localDB.getSections().filter(s => s.id !== id));
+    const res = await fetch(`${API_BASE}/sections/${id}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error('Fehler beim Löschen des Abschnitts in SQLite');
   },
 
   async saveStreetWithSections(street: any, sections: any[]): Promise<void> {
-    try {
-      const res = await fetch(`${API_BASE}/streets/save-with-sections`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ street, sections })
-      });
-      if (res.ok) return;
-    } catch {}
+    const res = await fetch(`${API_BASE}/streets/save-with-sections`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ street, sections })
+    });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error || 'Fehler beim Speichern in der zentralen SQLite-Datenbank');
+    }
+  },
 
-    const streets = localDB.getStreets();
-    streets.unshift({ ...street, created_at: new Date().toISOString() });
-    localDB.saveStreets(streets);
-
-    const existingSecs = localDB.getSections();
-    const newSecs = sections.map(s => ({ ...s, created_at: new Date().toISOString() }));
-    localDB.saveSections([...existingSecs, ...newSecs]);
+  async saveBatchStreetsWithSections(batch: Array<{ street: any; sections: any[] }>): Promise<void> {
+    const res = await fetch(`${API_BASE}/streets/save-batch`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ batch })
+    });
+    if (!res.ok) {
+      const errData = await res.json().catch(() => ({}));
+      throw new Error(errData.error || 'Fehler beim Speichern des Straßen-Batches in SQLite');
+    }
   },
 
   // OVERPASS STREETS
@@ -434,5 +418,23 @@ export const api = {
     localDB.saveSections([]);
     localDB.saveStreets([]);
     localDB.saveHelpers(getDefaultHelpers());
+  },
+
+  async getSettings(): Promise<Record<string, string>> {
+    try {
+      const res = await fetch(`${API_BASE}/settings`);
+      if (res.ok) return await res.json();
+    } catch {}
+    return {};
+  },
+
+  async setSetting(key: string, value: string): Promise<void> {
+    try {
+      await fetch(`${API_BASE}/settings/${key}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ value })
+      });
+    } catch {}
   }
 };

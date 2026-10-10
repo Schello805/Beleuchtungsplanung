@@ -26,6 +26,7 @@ export const SECTION_COLORS = [
 
 export interface GeneratedSection {
   id: string;
+  streetName?: string;
   sectionIndex: number;
   label: string;
   lengthMeters: number;
@@ -53,9 +54,10 @@ export function chunkLineWithFairness(
     const color = SECTION_COLORS[colorOffset % SECTION_COLORS.length];
     return [
       {
-        id: `sec-${Date.now()}-1`,
+        id: `sec-${Date.now()}-${colorOffset}-1`,
+        streetName,
         sectionIndex: 1,
-        label: `${streetName} – Abschnitt 1`,
+        label: `${streetName} (Gesamt)`,
         lengthMeters: totalLengthMeters,
         color,
         type: 'line',
@@ -72,9 +74,10 @@ export function chunkLineWithFairness(
     const color = SECTION_COLORS[colorOffset % SECTION_COLORS.length];
     return [
       {
-        id: `sec-${Date.now()}-1`,
+        id: `sec-${Date.now()}-${colorOffset}-1`,
+        streetName,
         sectionIndex: 1,
-        label: `${streetName} – Abschnitt 1`,
+        label: `${streetName} (Gesamt)`,
         lengthMeters: totalLengthMeters,
         color,
         type: 'line',
@@ -106,7 +109,8 @@ export function chunkLineWithFairness(
     const len = Math.round(turf.length(feat, { units: 'kilometers' }) * 1000);
     const color = SECTION_COLORS[(colorOffset + idx) % SECTION_COLORS.length];
     return {
-      id: `sec-${Date.now()}-${idx + 1}`,
+      id: `sec-${Date.now()}-${colorOffset + idx + 1}`,
+      streetName,
       sectionIndex: idx + 1,
       label: `${streetName} – Abschnitt ${idx + 1}`,
       lengthMeters: len,

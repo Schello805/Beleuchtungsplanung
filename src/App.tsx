@@ -5,7 +5,7 @@ import { CapturePanel } from './components/CapturePanel';
 import { PrintView } from './components/PrintView';
 import { api, type Section, type Helper, type Street } from './utils/api';
 import type { GeneratedSection } from './utils/geo';
-import { Layers } from 'lucide-react';
+import { Database, Wifi, Check, Copy, AlertCircle, X } from 'lucide-react';
 
 export const App: React.FC = () => {
   const [sections, setSections] = useState<Section[]>([]);
@@ -26,48 +26,140 @@ export const App: React.FC = () => {
   const [captureMode, setCaptureMode] = useState<'none' | 'segment' | 'point'>('none');
   const [segmentPoints, setSegmentPoints] = useState<[number, number][]>([]);
   const [isSaving, setIsSaving] = useState<boolean>(false);
+  const [focusedPreviewId, setFocusedPreviewId] = useState<string | null>(null);
 
-  // Theme & Map Layer
+  // Theme & Map Layer (Synced directly with SQLite DB)
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [mapTileTheme, setMapTileTheme] = useState<string>('dark');
-  const [mapboxToken, setMapboxToken] = useState<string>(() => localStorage.getItem('ln_mapbox_token') || '');
+  const [mapboxToken, setMapboxToken] = useState<string>('');
   const [isPrintOpen, setIsPrintOpen] = useState<boolean>(false);
 
-  const handleSaveMapboxToken = (token: string) => {
-    setMapboxToken(token);
-    localStorage.setItem('ln_mapbox_token', token);
+  // Candle & Material Planning state
+  const [candleSpacing, setCandleSpacing] = useState<number>(2.0);
+  const [candleBuffer, setCandleBuffer] = useState<number>(10);
+
+  const handleUpdateCandleConfig = async (spacing: number, buffer: number) => {
+    setCandleSpacing(spacing);
+    setCandleBuffer(buffer);
+    await api.setSetting('candle_spacing', String(spacing));
+    await api.setSetting('candle_buffer', String(buffer));
   };
+
+  const handleSaveMapboxToken = async (token: string) => {
+    setMapboxToken(token);
+    await api.setSetting('mapbox_token', token);
+  };
+
+  const handleMapTileThemeChange = async (newTileTheme: string) => {
+    setMapTileTheme(newTileTheme);
+    await api.setSetting('map_tile_theme', newTileTheme);
+  };
+
+  const handleToggleTheme = async () => {
+    const nextTheme = theme === 'dark' ? 'light' : 'dark';
+    setTheme(nextTheme);
+    await api.setSetting('theme', nextTheme);
+  };
+
+  // Database status & multi-PC network access
+  const [dbStatus, setDbStatus] = useState<{
+    online: boolean;
+    networkIps: string[];
+    helpersCount: number;
+    streetsCount: number;
+    sectionsCount: number;
+  } | null>(null);
+  const [migrationNotice, setMigrationNotice] = useState<string | null>(null);
+  const [copiedUrl, setCopiedUrl] = useState<boolean>(false);
 
   // Apply theme to document
   useEffect(() => {
     document.documentElement.setAttribute('data-theme', theme);
-    // Align default map layer with theme
-    if (theme === 'dark') {
-      setMapTileTheme('dark');
-    } else {
-      setMapTileTheme('light');
-    }
   }, [theme]);
 
-  // Load Initial Data
+  // Load Initial Data & Settings from SQLite Database
   const loadData = useCallback(async () => {
     try {
-      const [h, s, sec] = await Promise.all([
+      // 1. Check for legacy localStorage data and auto-migrate to SQLite
+      const mig = await api.checkAndMigrateLocalStorage();
+      if (mig.migrated) {
+        setMigrationNotice(`Alte Browser-Daten wurden erfolgreich in die zentrale SQLite-Datenbank übertragen (${mig.importedStreets} Straßen, ${mig.importedSections} Abschnitte)!`);
+      }
+
+      // 2. Fetch all data directly from SQLite
+      const [h, s, sec, settings, status] = await Promise.all([
         api.getHelpers(),
         api.getStreets(),
-        api.getSections()
+        api.getSections(),
+        api.getSettings(),
+        api.getStatus().catch(() => null)
       ]);
+
       setHelpers(h);
       setStreets(s);
       setSections(sec);
+
+      if (status) {
+        setDbStatus({
+          online: true,
+          networkIps: (status as any).networkIps || [],
+          helpersCount: h.length,
+          streetsCount: s.length,
+          sectionsCount: sec.length
+        });
+      } else {
+        setDbStatus({
+          online: false,
+          networkIps: [],
+          helpersCount: h.length,
+          streetsCount: s.length,
+          sectionsCount: sec.length
+        });
+      }
+
+      if (settings.mapbox_token !== undefined) {
+        setMapboxToken(settings.mapbox_token);
+      }
+      if (settings.map_tile_theme) {
+        setMapTileTheme(settings.map_tile_theme);
+      }
+      if (settings.theme === 'dark' || settings.theme === 'light') {
+        setTheme(settings.theme);
+      }
+      if (settings.candle_spacing) {
+        setCandleSpacing(parseFloat(settings.candle_spacing) || 2.0);
+      }
+      if (settings.candle_buffer) {
+        setCandleBuffer(parseInt(settings.candle_buffer, 10) || 10);
+      }
     } catch (err) {
-      console.error('Failed to load data:', err);
+      console.error('Failed to load data from database:', err);
     }
   }, []);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  // Automatic multi-PC synchronization: Poll every 4 seconds and refresh on window focus
+  useEffect(() => {
+    const handleFocus = () => {
+      loadData();
+    };
+    window.addEventListener('focus', handleFocus);
+
+    const interval = setInterval(() => {
+      // Only sync in background when user is not currently clicking/capturing a segment
+      if (captureMode === 'none' && previewSections.length === 0) {
+        loadData();
+      }
+    }, 4000);
+
+    return () => {
+      window.removeEventListener('focus', handleFocus);
+      clearInterval(interval);
+    };
+  }, [loadData, captureMode, previewSections.length]);
 
   // Map Click Handler for interactive capture
   const handleMapClick = (lat: number, lon: number) => {
@@ -98,6 +190,21 @@ export const App: React.FC = () => {
     setPreviewSections([]);
     setCurrentStreetInfo(null);
     setSegmentPoints([]);
+    setFocusedPreviewId(null);
+  };
+
+  // Remove a single section from preview ("raus-xen")
+  const handleRemovePreviewSection = (sectionId: string) => {
+    setPreviewSections(prev => {
+      const remaining = prev.filter(s => s.id !== sectionId);
+      if (remaining.length === 0) {
+        setCurrentStreetInfo(null);
+      }
+      return remaining;
+    });
+    if (focusedPreviewId === sectionId) {
+      setFocusedPreviewId(null);
+    }
   };
 
   // Save Preview to Database
@@ -106,32 +213,78 @@ export const App: React.FC = () => {
     setIsSaving(true);
 
     try {
-      const streetId = `st-${Date.now()}`;
-      const streetRecord = {
-        id: streetId,
-        name: currentStreetInfo.name,
-        method: currentStreetInfo.method,
-        chunk_length: currentStreetInfo.chunkLength,
-        min_length: currentStreetInfo.minLength,
-        total_length: currentStreetInfo.totalLength
-      };
+      if (currentStreetInfo.method === 'batch') {
+        // Group previewSections by their streetName
+        const streetMap = new Map<string, GeneratedSection[]>();
+        previewSections.forEach(sec => {
+          const streetName = (sec as any).streetName || currentStreetInfo.name;
+          const list = streetMap.get(streetName) || [];
+          list.push(sec);
+          streetMap.set(streetName, list);
+        });
 
-      const sectionRecords = previewSections.map(sec => ({
-        id: sec.id,
-        street_id: streetId,
-        street_name: currentStreetInfo.name,
-        section_index: sec.sectionIndex,
-        label: sec.label,
-        length_meters: sec.lengthMeters,
-        color: sec.color,
-        type: sec.type,
-        geojson: sec.geojson,
-        assigned_helper_id: null,
-        assigned_helper_name: null,
-        notes: null
-      }));
+        const batch: Array<{ street: any; sections: any[] }> = [];
+        let sIdx = 0;
+        for (const [stName, secs] of streetMap.entries()) {
+          const streetId = `st-b-${Date.now()}-${sIdx++}`;
+          const streetTotal = secs.reduce((sum, s) => sum + (s.lengthMeters || 0), 0);
+          const streetRecord = {
+            id: streetId,
+            name: stName,
+            method: 'batch',
+            chunk_length: currentStreetInfo.chunkLength,
+            min_length: currentStreetInfo.minLength,
+            total_length: streetTotal
+          };
 
-      await api.saveStreetWithSections(streetRecord, sectionRecords);
+          const sectionRecords = secs.map((sec, idx) => ({
+            id: sec.id,
+            street_id: streetId,
+            street_name: stName,
+            section_index: idx + 1,
+            label: sec.label,
+            length_meters: sec.lengthMeters,
+            color: sec.color,
+            type: sec.type,
+            geojson: sec.geojson,
+            assigned_helper_id: null,
+            assigned_helper_name: null,
+            notes: null
+          }));
+
+          batch.push({ street: streetRecord, sections: sectionRecords });
+        }
+
+        await api.saveBatchStreetsWithSections(batch);
+      } else {
+        const streetId = `st-${Date.now()}`;
+        const streetTotal = previewSections.reduce((sum, s) => sum + (s.lengthMeters || 0), 0);
+        const streetRecord = {
+          id: streetId,
+          name: currentStreetInfo.name,
+          method: currentStreetInfo.method,
+          chunk_length: currentStreetInfo.chunkLength,
+          min_length: currentStreetInfo.minLength,
+          total_length: streetTotal
+        };
+
+        const sectionRecords = previewSections.map((sec, idx) => ({
+          id: sec.id,
+          street_id: streetId,
+          street_name: sec.streetName || currentStreetInfo.name,
+          section_index: idx + 1,
+          label: sec.label,
+          length_meters: sec.lengthMeters,
+          color: sec.color,
+          type: sec.type,
+          geojson: sec.geojson,
+          assigned_helper_id: null,
+          assigned_helper_name: null,
+          notes: null
+        }));
+
+        await api.saveStreetWithSections(streetRecord, sectionRecords);
+      }
 
       // Reset capture and preview
       handleClearPreview();
@@ -208,6 +361,16 @@ export const App: React.FC = () => {
       await loadData();
     } catch (err: any) {
       alert(err.message);
+    }
+  };
+
+  const handleImportHelpers = async (helperList: Array<{ name: string; phone?: string; color?: string }>, mode: 'replace' | 'append') => {
+    try {
+      const count = await api.importHelpers(helperList, mode);
+      await loadData();
+      alert(`Erfolgreich ${count} Helfer in die zentrale SQLite-Datenbank importiert!`);
+    } catch (err: any) {
+      alert(`Fehler beim Importieren: ${err.message}`);
     }
   };
 
@@ -290,13 +453,17 @@ export const App: React.FC = () => {
         onAddHelper={handleAddHelper}
         onUpdateHelper={handleUpdateHelper}
         onDeleteHelper={handleDeleteHelper}
+        onImportHelpers={handleImportHelpers}
         onOpenPrintView={() => setIsPrintOpen(true)}
         onExportBackup={handleExportBackup}
         onImportBackup={handleImportBackup}
         onResetDatabase={handleResetDatabase}
         onBatchAssign={handleBatchAssign}
         theme={theme}
-        onToggleTheme={() => setTheme(prev => (prev === 'dark' ? 'light' : 'dark'))}
+        onToggleTheme={handleToggleTheme}
+        candleSpacing={candleSpacing}
+        candleBuffer={candleBuffer}
+        onUpdateCandleConfig={handleUpdateCandleConfig}
       />
 
       {/* MAP & CAPTURE AREA */}
@@ -318,6 +485,9 @@ export const App: React.FC = () => {
             onPreviewGenerated={handlePreviewGenerated}
             onClearPreview={handleClearPreview}
             previewSections={previewSections}
+            onRemovePreviewSection={handleRemovePreviewSection}
+            focusedPreviewId={focusedPreviewId}
+            onFocusPreviewSection={setFocusedPreviewId}
             onSavePreview={handleSavePreview}
             isSaving={isSaving}
             captureMode={captureMode}
@@ -326,6 +496,116 @@ export const App: React.FC = () => {
             setSegmentPoints={setSegmentPoints}
           />
         </div>
+
+        {/* Central Database & Multi-PC Status Badge */}
+        <div
+          className="no-print"
+          style={{
+            position: 'absolute',
+            top: 16,
+            left: 412,
+            zIndex: 900,
+            display: 'flex',
+            alignItems: 'center',
+            flexWrap: 'wrap',
+            gap: 8,
+            background: 'var(--bg-panel)',
+            border: '1px solid var(--border-subtle)',
+            borderRadius: 8,
+            padding: '6px 12px',
+            boxShadow: 'var(--shadow-card)',
+            backdropFilter: 'blur(12px)',
+            fontSize: 12
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+            <span
+              style={{
+                width: 8,
+                height: 8,
+                borderRadius: '50%',
+                background: dbStatus?.online !== false ? '#10B981' : '#EF4444',
+                boxShadow: dbStatus?.online !== false ? '0 0 8px #10B981' : '0 0 8px #EF4444'
+              }}
+            />
+            <Database size={14} color="var(--accent-gold)" />
+            <span style={{ fontWeight: 600, color: 'var(--text-main)' }}>
+              SQLite Zentral
+            </span>
+            <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>
+              ({sections.length} Abschnitte | {streets.length} Straßen)
+            </span>
+          </div>
+
+          <div style={{ width: 1, height: 16, background: 'var(--border-subtle)', margin: '0 4px' }} />
+
+          {/* Network URL for multi-PC access */}
+          {dbStatus?.networkIps && dbStatus.networkIps.length > 0 && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+              <Wifi size={13} color="#3B82F6" />
+              <span style={{ color: 'var(--text-muted)', fontSize: 11 }}>
+                Auf anderen PCs:
+              </span>
+              <code style={{ fontSize: 11, background: 'rgba(255,255,255,0.06)', padding: '2px 6px', borderRadius: 4, color: '#38BDF8' }}>
+                http://{dbStatus.networkIps[0]}:5173
+              </code>
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(`http://${dbStatus.networkIps[0]}:5173`);
+                  setCopiedUrl(true);
+                  setTimeout(() => setCopiedUrl(false), 2000);
+                }}
+                title="Netzwerk-Link kopieren, um ihn auf anderem PC im Browser zu öffnen"
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: copiedUrl ? '#10B981' : 'var(--text-muted)',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 3,
+                  fontSize: 11,
+                  padding: '2px 4px'
+                }}
+              >
+                {copiedUrl ? <Check size={12} /> : <Copy size={12} />}
+                {copiedUrl ? 'Kopiert!' : 'Kopieren'}
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Migration notice banner */}
+        {migrationNotice && (
+          <div
+            className="no-print"
+            style={{
+              position: 'absolute',
+              top: 56,
+              left: 412,
+              zIndex: 950,
+              display: 'flex',
+              alignItems: 'center',
+              gap: 8,
+              background: '#065F46',
+              border: '1px solid #10B981',
+              color: '#ECFDF5',
+              padding: '6px 14px',
+              borderRadius: 6,
+              fontSize: 12,
+              boxShadow: '0 4px 12px rgba(0,0,0,0.3)'
+            }}
+          >
+            <Check size={14} color="#10B981" />
+            <span>{migrationNotice}</span>
+            <button
+              onClick={() => setMigrationNotice(null)}
+              style={{ background: 'transparent', border: 'none', color: '#ECFDF5', cursor: 'pointer', marginLeft: 8 }}
+            >
+              <X size={14} />
+            </button>
+          </div>
+        )}
 
         {/* Interactive Map */}
         <MapComponent
@@ -336,11 +616,14 @@ export const App: React.FC = () => {
           onSelectSection={setSelectedSectionId}
           onUpdateSectionHelper={handleUpdateSectionHelper}
           onDeleteSection={handleDeleteSection}
+          onRemovePreviewSection={handleRemovePreviewSection}
+          focusedPreviewId={focusedPreviewId}
+          onFocusPreviewSection={setFocusedPreviewId}
           captureMode={captureMode}
           segmentPoints={segmentPoints}
           onMapClick={handleMapClick}
           mapTileTheme={mapTileTheme}
-          onMapTileThemeChange={setMapTileTheme}
+          onMapTileThemeChange={handleMapTileThemeChange}
           mapboxToken={mapboxToken}
           onSaveMapboxToken={handleSaveMapboxToken}
         />
@@ -351,6 +634,8 @@ export const App: React.FC = () => {
         <PrintView
           sections={sections}
           helpers={helpers}
+          candleSpacing={candleSpacing}
+          candleBuffer={candleBuffer}
           onClose={() => setIsPrintOpen(false)}
         />
       )}

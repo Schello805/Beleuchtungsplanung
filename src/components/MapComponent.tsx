@@ -12,6 +12,10 @@ interface MapComponentProps {
   onSelectSection: (id: string | null) => void;
   onUpdateSectionHelper: (sectionId: string, helperId: string | null, helperName: string | null) => void;
   onDeleteSection: (sectionId: string) => void;
+  // Preview interaction props
+  onRemovePreviewSection?: (id: string) => void;
+  focusedPreviewId?: string | null;
+  onFocusPreviewSection?: (id: string | null) => void;
   // Interactive capture props
   captureMode: 'none' | 'segment' | 'point';
   segmentPoints: [number, number][];
@@ -30,6 +34,9 @@ export const MapComponent: React.FC<MapComponentProps> = ({
   onSelectSection,
   onUpdateSectionHelper,
   onDeleteSection,
+  onRemovePreviewSection,
+  focusedPreviewId,
+  onFocusPreviewSection,
   captureMode,
   segmentPoints,
   onMapClick,
@@ -241,23 +248,68 @@ export const MapComponent: React.FC<MapComponentProps> = ({
     const bounds = L.latLngBounds([]);
 
     previewSections.forEach(sec => {
+      const isFocused = focusedPreviewId === sec.id;
+
       if (sec.type === 'line' && sec.geojson.geometry.type === 'LineString') {
         const coords = sec.geojson.geometry.coordinates.map(c => [c[1], c[0]] as [number, number]);
         coords.forEach(pt => bounds.extend(pt));
 
+        // Highlight halo if focused
+        if (isFocused) {
+          L.polyline(coords, {
+            color: '#FFFFFF',
+            weight: 12,
+            opacity: 0.9
+          }).addTo(group);
+        }
+
         const polyline = L.polyline(coords, {
           color: sec.color,
-          weight: 7,
+          weight: isFocused ? 9 : 7,
           opacity: 0.95,
           dashArray: '8, 6',
           lineCap: 'round',
           lineJoin: 'round'
         }).addTo(group);
 
+        polyline.on('click', () => {
+          onFocusPreviewSection?.(sec.id);
+        });
+
         polyline.bindTooltip(
-          `<strong>${sec.label}</strong> (Vorschau)<br/>Länge: <strong>${sec.lengthMeters} m</strong>`,
+          `<strong>${sec.label}</strong> (Vorschau)<br/>Länge: <strong>${sec.lengthMeters} m</strong><br/><span style="color:#EF4444; font-size:10px;">Klicken zum Raus-xen</span>`,
           { sticky: true }
         );
+
+        const popupDiv = document.createElement('div');
+        popupDiv.style.fontFamily = 'Outfit, sans-serif';
+        popupDiv.style.minWidth = '220px';
+        popupDiv.innerHTML = `
+          <div style="margin-bottom: 8px;">
+            <div style="display:flex; align-items:center; justify-content:space-between;">
+              <strong style="font-size:13px; color:#0F172A;">${sec.label}</strong>
+              <span style="background:${sec.color}22; color:${sec.color}; font-weight:700; padding:2px 8px; border-radius:12px; font-size:12px;">${sec.lengthMeters} m</span>
+            </div>
+            <div style="font-size:11px; color:#64748B; margin-top:2px;">(Vorschau – noch nicht in DB gespeichert)</div>
+          </div>
+          <div style="display:flex; justify-content:flex-end;">
+            <button id="preview-popup-remove-${sec.id}" style="width:100%; background:#EF4444; color:#FFFFFF; border:none; padding:7px 10px; border-radius:6px; font-size:12px; cursor:pointer; font-weight:700; display:flex; align-items:center; justify-content:center; gap:6px; box-shadow:0 2px 6px rgba(239,68,68,0.3);">
+              ❌ Diesen Abschnitt entfernen (raus-xen)
+            </button>
+          </div>
+        `;
+
+        polyline.bindPopup(popupDiv);
+
+        polyline.on('popupopen', () => {
+          const btn = document.getElementById(`preview-popup-remove-${sec.id}`);
+          if (btn) {
+            btn.onclick = () => {
+              onRemovePreviewSection?.(sec.id);
+              map.closePopup();
+            };
+          }
+        });
       } else if (sec.type === 'point' && sec.geojson.geometry.type === 'Point') {
         const [lon, lat] = sec.geojson.geometry.coordinates;
         bounds.extend([lat, lon]);
@@ -269,14 +321,57 @@ export const MapComponent: React.FC<MapComponentProps> = ({
           iconAnchor: [14, 14]
         });
 
-        L.marker([lat, lon], { icon }).addTo(group).bindTooltip(`<strong>${sec.label}</strong> (Punkt-Vorschau)`);
+        const marker = L.marker([lat, lon], { icon }).addTo(group);
+        marker.bindTooltip(`<strong>${sec.label}</strong> (Punkt-Vorschau)`);
+
+        const popupDiv = document.createElement('div');
+        popupDiv.style.fontFamily = 'Outfit, sans-serif';
+        popupDiv.style.minWidth = '200px';
+        popupDiv.innerHTML = `
+          <div style="margin-bottom: 8px;">
+            <strong style="font-size:13px; color:#0F172A;">${sec.label}</strong>
+            <div style="font-size:11px; color:#64748B; margin-top:2px;">(Punkt-Vorschau)</div>
+          </div>
+          <button id="preview-popup-remove-${sec.id}" style="width:100%; background:#EF4444; color:#FFFFFF; border:none; padding:6px 10px; border-radius:6px; font-size:11px; cursor:pointer; font-weight:700;">
+            ❌ Punkt entfernen (raus-xen)
+          </button>
+        `;
+        marker.bindPopup(popupDiv);
+
+        marker.on('popupopen', () => {
+          const btn = document.getElementById(`preview-popup-remove-${sec.id}`);
+          if (btn) {
+            btn.onclick = () => {
+              onRemovePreviewSection?.(sec.id);
+              map.closePopup();
+            };
+          }
+        });
       }
     });
 
-    if (bounds.isValid()) {
+    if (bounds.isValid() && !focusedPreviewId) {
       map.fitBounds(bounds, { padding: [50, 50], maxZoom: 17 });
     }
-  }, [previewSections]);
+  }, [previewSections, focusedPreviewId]);
+
+  // Smoothly zoom to focused preview section if clicked in sidebar
+  useEffect(() => {
+    if (!focusedPreviewId || !previewSections || previewSections.length === 0) return;
+    const sec = previewSections.find(s => s.id === focusedPreviewId);
+    if (!sec || !mapRef.current) return;
+
+    if (sec.type === 'line' && sec.geojson?.geometry?.type === 'LineString') {
+      const coords = sec.geojson.geometry.coordinates.map(c => [c[1], c[0]] as [number, number]);
+      const bounds = L.latLngBounds(coords);
+      if (bounds.isValid()) {
+        mapRef.current.fitBounds(bounds, { padding: [80, 80], maxZoom: 18 });
+      }
+    } else if (sec.type === 'point' && sec.geojson?.geometry?.type === 'Point') {
+      const [lon, lat] = sec.geojson.geometry.coordinates;
+      mapRef.current.setView([lat, lon], 17);
+    }
+  }, [focusedPreviewId, previewSections]);
 
   // Render Saved Sections
   useEffect(() => {
