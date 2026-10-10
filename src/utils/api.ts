@@ -304,50 +304,106 @@ export const api = {
       if (res.ok) return await res.json();
     } catch {}
 
-    // Direct client fallback to Overpass
+    // Fallback: load pre-compiled local Bechhofen streets dataset
     try {
-      const q = `[out:json][timeout:20];way["highway"]["name"](${BECHHOFEN_BBOX});out tags;`;
-      const res = await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(q)}`);
+      const res = await fetch('/data/bechhofen_streets_osm.json');
       if (res.ok) {
         const data = await res.json();
-        const set = new Set<string>();
-        data.elements?.forEach((el: any) => { if (el.tags?.name) set.add(el.tags.name.trim()); });
-        return Array.from(set).sort((a, b) => a.localeCompare(b, 'de'));
+        return Object.keys(data).sort((a, b) => a.localeCompare(b, 'de'));
       }
     } catch {}
 
     return [
       'Ansbacher Straße', 'Dinkelsbühler Straße', 'Feuchtwanger Straße',
-      'Gunzenhausener Straße', 'Marktplatz', 'Kirchenallee', 'Am Plärrer',
-      'Goethestraße', 'Schillerstraße', 'Krummweiherweg'
+      'Gunzenhausener Straße', 'Kirchstraße', 'Marktplatz', 'Kirchenallee',
+      'Am Plärrer', 'Schloßstraße', 'Goethestraße', 'Schillerstraße', 'Krummweiherweg'
     ];
   },
 
-  // OVERPASS GEOMETRY (with ss/ß tolerance)
+  // OVERPASS GEOMETRY (with ss/ß and str. tolerance)
   async getStreetGeometry(streetName: string): Promise<{ streetName: string; features: GeoJSON.Feature<GeoJSON.LineString>[]; totalLengthMeters: number }> {
+    // 1. Try backend API first
     try {
       const res = await fetch(`${API_BASE}/overpass/street-geometry?name=${encodeURIComponent(streetName)}`);
       if (res.ok) return await res.json();
     } catch {}
 
-    // Direct browser Overpass query with ss/ß tolerance regex
-    const regex = streetName.trim().replace(/ß|ss/gi, '(ß|ss)');
-    const q = `[out:json][timeout:25];way["highway"]["name"~"${regex}",i](${BECHHOFEN_BBOX});out body geom;`;
-    const res = await fetch(`https://overpass-api.de/api/interpreter?data=${encodeURIComponent(q)}`);
-    if (!res.ok) throw new Error(`Straße "${streetName}" konnte nicht geladen werden.`);
+    // 2. Direct client fallback: load pre-compiled local Bechhofen street dataset
+    try {
+      const localRes = await fetch('/data/bechhofen_streets_osm.json');
+      if (localRes.ok) {
+        const localData = await localRes.json();
+        const normalize = (s: string) => s.trim().toLowerCase()
+          .replace(/str\./g, 'straße')
+          .replace(/straße\b/g, 'str')
+          .replace(/strasse\b/g, 'str')
+          .replace(/ß|ss/g, '#')
+          .replace(/[^a-z0-9#]/g, '');
 
-    const data = await res.json();
-    const ways = data.elements?.filter((el: any) => el.type === 'way' && el.geometry?.length > 0) || [];
-    if (ways.length === 0) throw new Error(`Keine Geometrie für "${streetName}" gefunden.`);
+        const targetNorm = normalize(streetName);
 
-    const features = clientStitchWays(ways);
-    const totalLengthMeters = features.reduce((sum, f) => sum + Math.round(turf.length(f, { units: 'kilometers' }) * 1000), 0);
+        // Exact or normalized match
+        for (const [key, ways] of Object.entries(localData as Record<string, any[]>)) {
+          if (normalize(key) === targetNorm && ways.length > 0) {
+            const features = clientStitchWays(ways);
+            const totalLengthMeters = features.reduce((sum, f) => sum + Math.round(turf.length(f, { units: 'kilometers' }) * 1000), 0);
+            return {
+              streetName: key,
+              features,
+              totalLengthMeters
+            };
+          }
+        }
+      }
+    } catch {}
 
-    return {
-      streetName: ways[0]?.tags?.name || streetName,
-      features,
-      totalLengthMeters
+    // 3. Fallback to Overpass API via POST with global bbox
+    const endpoints = [
+      'https://overpass-api.de/api/interpreter',
+      'https://overpass.kumi.systems/api/interpreter'
+    ];
+
+    const generateVariants = (input: string): string[] => {
+      const trimmed = input.trim();
+      const set = new Set<string>([trimmed]);
+      set.add(trimmed.replace(/ß/gi, 'ss'));
+      set.add(trimmed.replace(/ss/gi, 'ß'));
+      set.add(trimmed.replace(/str\./gi, 'straße'));
+      set.add(trimmed.replace(/str\./gi, 'strasse'));
+      return Array.from(set).map(s => s.charAt(0).toUpperCase() + s.slice(1));
     };
+
+    const variants = generateVariants(streetName);
+    const q = `[out:json][timeout:25][bbox:${BECHHOFEN_BBOX}];
+(
+${variants.map(v => `  way["highway"]["name"="${v}"];`).join('\n')}
+);
+out body geom;`;
+
+    for (const ep of endpoints) {
+      try {
+        const res = await fetch(ep, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: 'data=' + encodeURIComponent(q)
+        });
+        if (res.ok) {
+          const data = await res.json();
+          const ways = data.elements?.filter((el: any) => el.type === 'way' && el.geometry?.length > 0) || [];
+          if (ways.length > 0) {
+            const features = clientStitchWays(ways);
+            const totalLengthMeters = features.reduce((sum, f) => sum + Math.round(turf.length(f, { units: 'kilometers' }) * 1000), 0);
+            return {
+              streetName: ways[0]?.tags?.name || streetName,
+              features,
+              totalLengthMeters
+            };
+          }
+        }
+      } catch {}
+    }
+
+    throw new Error(`Straße "${streetName}" konnte nicht geladen werden.`);
   },
 
   // ROUTING (Foot / Pedestrian)

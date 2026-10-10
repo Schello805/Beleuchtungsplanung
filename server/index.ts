@@ -249,7 +249,12 @@ app.get('/api/overpass/street-geometry', async (req, res) => {
     const result = await getStreetGeometry(name.trim());
     res.json(result);
   } catch (err: any) {
-    res.status(404).json({ error: err.message });
+    const msg = err.message || 'Fehler beim Laden der Straße';
+    if (msg.includes('Keine Straße') || msg.includes('nicht gefunden')) {
+      res.status(404).json({ error: msg });
+    } else {
+      res.status(502).json({ error: msg });
+    }
   }
 });
 
