@@ -12,6 +12,12 @@ const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3001;
 app.use(cors());
 app.use(express.json({ limit: '50mb' }));
 
+// Logging middleware
+app.use((req, res, next) => {
+  console.log(`[${new Date().toLocaleTimeString('de-DE')}] ${req.method} ${req.url}`);
+  next();
+});
+
 // Health Check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', time: new Date().toISOString() });

@@ -29,8 +29,14 @@ export const App: React.FC = () => {
 
   // Theme & Map Layer
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
-  const [mapTileTheme, setMapTileTheme] = useState<'dark' | 'light' | 'osm'>('dark');
+  const [mapTileTheme, setMapTileTheme] = useState<string>('dark');
+  const [mapboxToken, setMapboxToken] = useState<string>(() => localStorage.getItem('ln_mapbox_token') || '');
   const [isPrintOpen, setIsPrintOpen] = useState<boolean>(false);
+
+  const handleSaveMapboxToken = (token: string) => {
+    setMapboxToken(token);
+    localStorage.setItem('ln_mapbox_token', token);
+  };
 
   // Apply theme to document
   useEffect(() => {
@@ -321,75 +327,6 @@ export const App: React.FC = () => {
           />
         </div>
 
-        {/* Map Layer Switcher Button (Top Right) */}
-        <div
-          className="no-print"
-          style={{
-            position: 'absolute',
-            top: 16,
-            right: 16,
-            zIndex: 1000,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 6,
-            background: 'var(--bg-card)',
-            backdropFilter: 'blur(8px)',
-            border: '1px solid var(--border-subtle)',
-            borderRadius: 'var(--radius-sm)',
-            padding: 4,
-            boxShadow: 'var(--shadow-md)'
-          }}
-        >
-          <button
-            onClick={() => setMapTileTheme('dark')}
-            title="Dunkle Karte (Nachtansicht)"
-            style={{
-              padding: '5px 10px',
-              fontSize: 11,
-              fontWeight: 700,
-              borderRadius: 4,
-              border: 'none',
-              background: mapTileTheme === 'dark' ? 'var(--accent-gold)' : 'transparent',
-              color: mapTileTheme === 'dark' ? '#0F172A' : 'var(--text-muted)',
-              cursor: 'pointer'
-            }}
-          >
-            Dunkel
-          </button>
-          <button
-            onClick={() => setMapTileTheme('light')}
-            title="Helle Karte"
-            style={{
-              padding: '5px 10px',
-              fontSize: 11,
-              fontWeight: 700,
-              borderRadius: 4,
-              border: 'none',
-              background: mapTileTheme === 'light' ? 'var(--accent-gold)' : 'transparent',
-              color: mapTileTheme === 'light' ? '#0F172A' : 'var(--text-muted)',
-              cursor: 'pointer'
-            }}
-          >
-            Hell
-          </button>
-          <button
-            onClick={() => setMapTileTheme('osm')}
-            title="Standard OpenStreetMap"
-            style={{
-              padding: '5px 10px',
-              fontSize: 11,
-              fontWeight: 700,
-              borderRadius: 4,
-              border: 'none',
-              background: mapTileTheme === 'osm' ? 'var(--accent-gold)' : 'transparent',
-              color: mapTileTheme === 'osm' ? '#0F172A' : 'var(--text-muted)',
-              cursor: 'pointer'
-            }}
-          >
-            OSM
-          </button>
-        </div>
-
         {/* Interactive Map */}
         <MapComponent
           sections={sections}
@@ -403,6 +340,9 @@ export const App: React.FC = () => {
           segmentPoints={segmentPoints}
           onMapClick={handleMapClick}
           mapTileTheme={mapTileTheme}
+          onMapTileThemeChange={setMapTileTheme}
+          mapboxToken={mapboxToken}
+          onSaveMapboxToken={handleSaveMapboxToken}
         />
       </main>
 

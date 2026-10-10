@@ -1,7 +1,8 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import type { Section, Helper } from '../utils/api';
 import type { GeneratedSection } from '../utils/geo';
+import { Settings, Key, Check, Globe } from 'lucide-react';
 
 interface MapComponentProps {
   sections: Section[];
@@ -13,25 +14,13 @@ interface MapComponentProps {
   onDeleteSection: (sectionId: string) => void;
   // Interactive capture props
   captureMode: 'none' | 'segment' | 'point';
-  segmentPoints: [number, number][]; // [[lat, lon], ...]
+  segmentPoints: [number, number][];
   onMapClick: (lat: number, lon: number) => void;
-  mapTileTheme: 'dark' | 'light' | 'osm';
+  mapTileTheme: string;
+  onMapTileThemeChange: (theme: string) => void;
+  mapboxToken: string;
+  onSaveMapboxToken: (token: string) => void;
 }
-
-const TILE_LAYERS = {
-  dark: {
-    url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
-    attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
-  },
-  light: {
-    url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
-    attribution: '&copy; OpenStreetMap contributors &copy; CARTO'
-  },
-  osm: {
-    url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
-    attribution: '&copy; OpenStreetMap contributors'
-  }
-};
 
 export const MapComponent: React.FC<MapComponentProps> = ({
   sections,
@@ -44,7 +33,10 @@ export const MapComponent: React.FC<MapComponentProps> = ({
   captureMode,
   segmentPoints,
   onMapClick,
-  mapTileTheme
+  mapTileTheme,
+  onMapTileThemeChange,
+  mapboxToken,
+  onSaveMapboxToken
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -54,11 +46,76 @@ export const MapComponent: React.FC<MapComponentProps> = ({
   const previewLayerGroupRef = useRef<L.LayerGroup | null>(null);
   const captureLayerGroupRef = useRef<L.LayerGroup | null>(null);
 
+  // Settings modal
+  const [showSettingsModal, setShowSettingsModal] = useState<boolean>(false);
+  const [tokenInput, setTokenInput] = useState<string>(mapboxToken);
+
+  // Helper to get tile configuration
+  const getTileConfig = (theme: string, token: string) => {
+    if (token.trim()) {
+      if (theme === 'mapbox_satellite' || theme === 'satellite') {
+        return {
+          url: `https://api.mapbox.com/styles/v1/mapbox/satellite-streets-v12/tiles/{z}/{x}/{y}?access_token=${token.trim()}`,
+          attribution: '&copy; Mapbox &copy; OpenStreetMap &copy; Maxar',
+          maxZoom: 21,
+          tileSize: 512,
+          zoomOffset: -1
+        };
+      }
+      if (theme === 'mapbox_streets' || theme === 'light' || theme === 'osm') {
+        return {
+          url: `https://api.mapbox.com/styles/v1/mapbox/streets-v12/tiles/{z}/{x}/{y}?access_token=${token.trim()}`,
+          attribution: '&copy; Mapbox &copy; OpenStreetMap',
+          maxZoom: 21,
+          tileSize: 512,
+          zoomOffset: -1
+        };
+      }
+      if (theme === 'mapbox_dark' || theme === 'dark') {
+        return {
+          url: `https://api.mapbox.com/styles/v1/mapbox/dark-v11/tiles/{z}/{x}/{y}?access_token=${token.trim()}`,
+          attribution: '&copy; Mapbox &copy; OpenStreetMap',
+          maxZoom: 21,
+          tileSize: 512,
+          zoomOffset: -1
+        };
+      }
+    }
+
+    // Free Open/Community Providers (No API Key Required)
+    if (theme === 'satellite') {
+      return {
+        url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+        attribution: '&copy; Esri &copy; Maxar, Earthstar Geographics',
+        maxZoom: 19
+      };
+    }
+    if (theme === 'light') {
+      return {
+        url: 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png',
+        attribution: '&copy; OpenStreetMap &copy; CARTO',
+        maxZoom: 19
+      };
+    }
+    if (theme === 'osm') {
+      return {
+        url: 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png',
+        attribution: '&copy; OpenStreetMap contributors',
+        maxZoom: 19
+      };
+    }
+    // Default: Dark
+    return {
+      url: 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png',
+      attribution: '&copy; OpenStreetMap contributors &copy; CARTO',
+      maxZoom: 19
+    };
+  };
+
   // Initialize Map
   useEffect(() => {
     if (!mapContainerRef.current || mapRef.current) return;
 
-    // Bechhofen coordinates: Lat 49.17056, Lon 10.56494
     const map = L.map(mapContainerRef.current, {
       center: [49.17056, 10.56494],
       zoom: 15,
@@ -67,10 +124,12 @@ export const MapComponent: React.FC<MapComponentProps> = ({
 
     L.control.zoom({ position: 'bottomright' }).addTo(map);
 
-    const tileCfg = TILE_LAYERS[mapTileTheme];
-    const tileLayer = L.tileLayer(tileCfg.url, {
-      attribution: tileCfg.attribution,
-      maxZoom: 19
+    const cfg = getTileConfig(mapTileTheme, mapboxToken);
+    const tileLayer = L.tileLayer(cfg.url, {
+      attribution: cfg.attribution,
+      maxZoom: cfg.maxZoom || 19,
+      tileSize: cfg.tileSize || 256,
+      zoomOffset: cfg.zoomOffset || 0
     }).addTo(map);
 
     tileLayerRef.current = tileLayer;
@@ -88,12 +147,26 @@ export const MapComponent: React.FC<MapComponentProps> = ({
     };
   }, []);
 
-  // Update Tile Layer when mapTileTheme changes
+  // Update Tile Layer when mapTileTheme or token changes
   useEffect(() => {
-    if (!mapRef.current || !tileLayerRef.current) return;
-    const tileCfg = TILE_LAYERS[mapTileTheme];
-    tileLayerRef.current.setUrl(tileCfg.url);
-  }, [mapTileTheme]);
+    if (!mapRef.current) return;
+    const cfg = getTileConfig(mapTileTheme, mapboxToken);
+
+    if (tileLayerRef.current) {
+      mapRef.current.removeLayer(tileLayerRef.current);
+    }
+
+    const newLayer = L.tileLayer(cfg.url, {
+      attribution: cfg.attribution,
+      maxZoom: cfg.maxZoom || 19,
+      tileSize: cfg.tileSize || 256,
+      zoomOffset: cfg.zoomOffset || 0
+    }).addTo(mapRef.current);
+
+    // Keep tiles at the back
+    newLayer.bringToBack();
+    tileLayerRef.current = newLayer;
+  }, [mapTileTheme, mapboxToken]);
 
   // Handle map click events
   useEffect(() => {
@@ -112,24 +185,19 @@ export const MapComponent: React.FC<MapComponentProps> = ({
     };
   }, [captureMode, onMapClick]);
 
-  // Cursor style depending on capture mode
+  // Cursor style
   useEffect(() => {
     if (!mapContainerRef.current) return;
-    if (captureMode !== 'none') {
-      mapContainerRef.current.style.cursor = 'crosshair';
-    } else {
-      mapContainerRef.current.style.cursor = 'grab';
-    }
+    mapContainerRef.current.style.cursor = captureMode !== 'none' ? 'crosshair' : 'grab';
   }, [captureMode]);
 
-  // Render Interactive Capture Points (Start/End markers)
+  // Render Interactive Capture Points
   useEffect(() => {
     const group = captureLayerGroupRef.current;
     if (!group) return;
     group.clearLayers();
 
     if (segmentPoints.length > 0) {
-      // Point 1: Start
       const start = segmentPoints[0];
       const startIcon = L.divIcon({
         className: 'custom-step-marker',
@@ -143,7 +211,6 @@ export const MapComponent: React.FC<MapComponentProps> = ({
     }
 
     if (segmentPoints.length > 1) {
-      // Point 2: End
       const end = segmentPoints[1];
       const endIcon = L.divIcon({
         className: 'custom-step-marker',
@@ -165,7 +232,6 @@ export const MapComponent: React.FC<MapComponentProps> = ({
     group.clearLayers();
 
     if (!previewSections || previewSections.length === 0) return;
-
     const bounds = L.latLngBounds([]);
 
     previewSections.forEach(sec => {
@@ -217,10 +283,9 @@ export const MapComponent: React.FC<MapComponentProps> = ({
       const isSelected = selectedSectionId === sec.id;
       const helperName = sec.assigned_helper_name || 'Nicht zugewiesen';
 
-      if (sec.type === 'line' && sec.geojson && sec.geojson.geometry && sec.geojson.geometry.type === 'LineString') {
+      if (sec.type === 'line' && sec.geojson?.geometry?.type === 'LineString') {
         const coords = sec.geojson.geometry.coordinates.map(c => [c[1], c[0]] as [number, number]);
 
-        // Background line for glow/selection
         if (isSelected) {
           L.polyline(coords, {
             color: '#FFFFFF',
@@ -237,11 +302,8 @@ export const MapComponent: React.FC<MapComponentProps> = ({
           lineJoin: 'round'
         }).addTo(group);
 
-        polyline.on('click', () => {
-          onSelectSection(sec.id);
-        });
+        polyline.on('click', () => onSelectSection(sec.id));
 
-        // Hover tooltip
         polyline.bindTooltip(
           `<div style="font-family: Outfit, sans-serif; font-size:12px;">
             <strong>${sec.label}</strong><br/>
@@ -251,7 +313,6 @@ export const MapComponent: React.FC<MapComponentProps> = ({
           { sticky: true }
         );
 
-        // Interactive Popup
         const popupDiv = document.createElement('div');
         popupDiv.style.fontFamily = 'Outfit, sans-serif';
         popupDiv.style.minWidth = '220px';
@@ -287,7 +348,6 @@ export const MapComponent: React.FC<MapComponentProps> = ({
               onUpdateSectionHelper(sec.id, val || null, found ? found.name : null);
             };
           }
-
           const delBtn = document.getElementById(`popup-delete-btn-${sec.id}`);
           if (delBtn) {
             delBtn.onclick = () => {
@@ -298,7 +358,7 @@ export const MapComponent: React.FC<MapComponentProps> = ({
             };
           }
         });
-      } else if (sec.type === 'point' && sec.geojson && sec.geojson.geometry && sec.geojson.geometry.type === 'Point') {
+      } else if (sec.type === 'point' && sec.geojson?.geometry?.type === 'Point') {
         const [lon, lat] = sec.geojson.geometry.coordinates;
 
         const icon = L.divIcon({
@@ -311,10 +371,7 @@ export const MapComponent: React.FC<MapComponentProps> = ({
         const marker = L.marker([lat, lon], { icon }).addTo(group);
         marker.on('click', () => onSelectSection(sec.id));
 
-        marker.bindTooltip(
-          `<strong>${sec.label}</strong> (Punkt)<br/>Helfer: <b>${helperName}</b>`,
-          { sticky: true }
-        );
+        marker.bindTooltip(`<strong>${sec.label}</strong> (Punkt)<br/>Helfer: <b>${helperName}</b>`, { sticky: true });
 
         const popupDiv = document.createElement('div');
         popupDiv.style.fontFamily = 'Outfit, sans-serif';
@@ -322,7 +379,7 @@ export const MapComponent: React.FC<MapComponentProps> = ({
         popupDiv.innerHTML = `
           <div style="margin-bottom: 8px;">
             <strong style="font-size:14px; color:#0F172A;">${sec.label}</strong>
-            <div style="font-size:11px; color:#64748B;">Einzelner Punkt (z.B. Brunnen)</div>
+            <div style="font-size:11px; color:#64748B;">Einzelner Punkt</div>
           </div>
           <div style="margin-bottom: 8px;">
             <label style="font-size:11px; font-weight:600; color:#334155; display:block; margin-bottom:3px;">Helfer zuweisen:</label>
@@ -359,7 +416,7 @@ export const MapComponent: React.FC<MapComponentProps> = ({
     });
   }, [sections, selectedSectionId, helpers, onSelectSection, onUpdateSectionHelper, onDeleteSection]);
 
-  // Zoom to selected section when requested
+  // Zoom to selected section
   useEffect(() => {
     if (!selectedSectionId || !mapRef.current) return;
     const sec = sections.find(s => s.id === selectedSectionId);
@@ -379,7 +436,238 @@ export const MapComponent: React.FC<MapComponentProps> = ({
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
       <div ref={mapContainerRef} style={{ width: '100%', height: '100%' }} />
 
-      {/* Crosshair instruction overlay during capture mode */}
+      {/* Layer Switcher & Settings Button (Top Right) */}
+      <div
+        className="no-print"
+        style={{
+          position: 'absolute',
+          top: 16,
+          right: 16,
+          zIndex: 1000,
+          display: 'flex',
+          alignItems: 'center',
+          gap: 6,
+          background: 'var(--bg-card)',
+          backdropFilter: 'blur(8px)',
+          border: '1px solid var(--border-subtle)',
+          borderRadius: 'var(--radius-sm)',
+          padding: 4,
+          boxShadow: 'var(--shadow-md)'
+        }}
+      >
+        <button
+          onClick={() => onMapTileThemeChange('dark')}
+          title="Dunkle Karte"
+          style={{
+            padding: '5px 10px',
+            fontSize: 11,
+            fontWeight: 700,
+            borderRadius: 4,
+            border: 'none',
+            background: mapTileTheme === 'dark' || mapTileTheme === 'mapbox_dark' ? 'var(--accent-gold)' : 'transparent',
+            color: mapTileTheme === 'dark' || mapTileTheme === 'mapbox_dark' ? '#0F172A' : 'var(--text-muted)',
+            cursor: 'pointer'
+          }}
+        >
+          Dunkel
+        </button>
+
+        <button
+          onClick={() => onMapTileThemeChange('light')}
+          title="Helle Karte"
+          style={{
+            padding: '5px 10px',
+            fontSize: 11,
+            fontWeight: 700,
+            borderRadius: 4,
+            border: 'none',
+            background: mapTileTheme === 'light' || mapTileTheme === 'mapbox_streets' ? 'var(--accent-gold)' : 'transparent',
+            color: mapTileTheme === 'light' || mapTileTheme === 'mapbox_streets' ? '#0F172A' : 'var(--text-muted)',
+            cursor: 'pointer'
+          }}
+        >
+          Hell
+        </button>
+
+        <button
+          onClick={() => onMapTileThemeChange('satellite')}
+          title="Satellitenansicht / Luftbild (hochaufgelöst)"
+          style={{
+            padding: '5px 10px',
+            fontSize: 11,
+            fontWeight: 700,
+            borderRadius: 4,
+            border: 'none',
+            background: mapTileTheme === 'satellite' || mapTileTheme === 'mapbox_satellite' ? 'var(--accent-gold)' : 'transparent',
+            color: mapTileTheme === 'satellite' || mapTileTheme === 'mapbox_satellite' ? '#0F172A' : 'var(--text-muted)',
+            cursor: 'pointer'
+          }}
+        >
+          Satellit
+        </button>
+
+        <button
+          onClick={() => onMapTileThemeChange('osm')}
+          title="OpenStreetMap Standard"
+          style={{
+            padding: '5px 10px',
+            fontSize: 11,
+            fontWeight: 700,
+            borderRadius: 4,
+            border: 'none',
+            background: mapTileTheme === 'osm' ? 'var(--accent-gold)' : 'transparent',
+            color: mapTileTheme === 'osm' ? '#0F172A' : 'var(--text-muted)',
+            cursor: 'pointer'
+          }}
+        >
+          OSM
+        </button>
+
+        <div style={{ width: 1, height: 18, background: 'var(--border-subtle)', margin: '0 2px' }} />
+
+        <button
+          onClick={() => setShowSettingsModal(true)}
+          title="Karten-API & Mapbox Key konfigurieren"
+          style={{
+            padding: '5px 8px',
+            fontSize: 11,
+            fontWeight: 600,
+            borderRadius: 4,
+            border: 'none',
+            background: mapboxToken ? 'rgba(16, 185, 129, 0.2)' : 'transparent',
+            color: mapboxToken ? '#10B981' : 'var(--text-muted)',
+            cursor: 'pointer',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4
+          }}
+        >
+          <Key size={13} />
+          {mapboxToken ? 'Mapbox Aktiv' : 'API Key'}
+        </button>
+      </div>
+
+      {/* Map API Key Modal */}
+      {showSettingsModal && (
+        <div
+          style={{
+            position: 'absolute',
+            inset: 0,
+            zIndex: 2000,
+            background: 'rgba(0,0,0,0.65)',
+            backdropFilter: 'blur(6px)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 20
+          }}
+        >
+          <div
+            className="glass-panel"
+            style={{
+              width: 480,
+              maxWidth: '100%',
+              background: 'var(--bg-secondary)',
+              border: '1px solid var(--border-subtle)',
+              borderRadius: 'var(--radius-md)',
+              padding: 24,
+              boxShadow: 'var(--shadow-lg)'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+              <h3 style={{ fontSize: 17, fontWeight: 800, display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-main)' }}>
+                <Key size={18} color="var(--accent-gold)" />
+                Karten-API & Mapbox Integration
+              </h3>
+              <button
+                onClick={() => setShowSettingsModal(false)}
+                style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', fontSize: 18, cursor: 'pointer' }}
+              >
+                ✕
+              </button>
+            </div>
+
+            <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16, lineHeight: 1.5 }}>
+              Die App funktioniert standardmäßig <b>ohne API-Key</b> (über OpenStreetMap, CartoDB und Esri-Satellit).
+              Wenn du einen <b>Mapbox Access Token</b> hast, kannst du ihn hier eintragen, um die originalen Mapbox Streets, Dark und Satellite Vektorkacheln freizuschalten.
+            </p>
+
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--text-main)', marginBottom: 6 }}>
+                Mapbox Access Token (pk.eyJ...):
+              </label>
+              <input
+                type="text"
+                placeholder="pk.eyJ1Ijo..."
+                value={tokenInput}
+                onChange={e => setTokenInput(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '9px 12px',
+                  borderRadius: 'var(--radius-sm)',
+                  border: '1px solid var(--border-subtle)',
+                  background: 'var(--bg-input)',
+                  fontSize: 12,
+                  color: 'var(--text-main)',
+                  outline: 'none',
+                  fontFamily: 'monospace'
+                }}
+              />
+              <div style={{ fontSize: 11, color: 'var(--text-light)', marginTop: 4 }}>
+                Wird dauerhaft im Browser gespeichert. Frei lassen für Standard-Karten.
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+              {mapboxToken && (
+                <button
+                  onClick={() => {
+                    setTokenInput('');
+                    onSaveMapboxToken('');
+                    setShowSettingsModal(false);
+                  }}
+                  style={{
+                    background: 'transparent',
+                    border: '1px solid #EF4444',
+                    color: '#EF4444',
+                    padding: '8px 14px',
+                    borderRadius: 'var(--radius-sm)',
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: 'pointer'
+                  }}
+                >
+                  Token löschen
+                </button>
+              )}
+              <button
+                onClick={() => {
+                  onSaveMapboxToken(tokenInput.trim());
+                  setShowSettingsModal(false);
+                }}
+                style={{
+                  background: 'var(--accent-gold)',
+                  color: '#0F172A',
+                  border: 'none',
+                  padding: '8px 18px',
+                  borderRadius: 'var(--radius-sm)',
+                  fontSize: 12,
+                  fontWeight: 700,
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 6
+                }}
+              >
+                <Check size={14} />
+                Speichern
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Crosshair instruction overlay */}
       {captureMode !== 'none' && (
         <div
           style={{
