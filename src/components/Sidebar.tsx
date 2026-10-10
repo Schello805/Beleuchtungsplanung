@@ -30,7 +30,7 @@ import {
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import type { Section, Helper, Street } from '../utils/api';
-import { exportSectionsToCSV, exportSectionsToGeoJSON, exportSectionsToGPX } from '../utils/export';
+import { exportSectionsToExcel, exportHelpersToExcel, exportSectionsToCSV, exportSectionsToGeoJSON, exportSectionsToGPX } from '../utils/export';
 import { calculateFairAssignment } from '../utils/fairness';
 
 interface SidebarProps {
@@ -1100,6 +1100,28 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <FileDown size={13} />
                 Vorlage (.xlsx)
               </button>
+
+              <button
+                type="button"
+                onClick={() => exportHelpersToExcel(helpers, sections, candleSpacing)}
+                title="Aktuelle Helferliste mit zugewiesenen Abschnitten & Metern als Excel (.xlsx) herunterladen"
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: 4,
+                  padding: '7px 10px',
+                  borderRadius: 'var(--radius-sm)',
+                  background: 'var(--bg-secondary)',
+                  border: '1px solid var(--border-subtle)',
+                  color: '#10B981',
+                  fontSize: 11,
+                  fontWeight: 700,
+                  cursor: 'pointer'
+                }}
+              >
+                <FileSpreadsheet size={13} color="#10B981" />
+                Helfer (.xlsx)
+              </button>
             </div>
 
             <form onSubmit={handleCreateHelper} style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
@@ -1641,26 +1663,26 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* Export formats row */}
         <div style={{ display: 'flex', gap: 6 }}>
           <button
-            onClick={() => exportSectionsToCSV(sections, helpers, candleSpacing)}
-            title="Excel / CSV Liste exportieren (inkl. Lichteranzahl)"
+            onClick={() => exportSectionsToExcel(sections, helpers, candleSpacing, candleBuffer)}
+            title="Vollständigen Strecken- & Helferplan als echte Excel-Arbeitsmappe (.xlsx mit 3 Tabellenblättern) herunterladen"
             style={{
-              flex: 1,
-              background: 'transparent',
-              border: '1px solid var(--border-subtle)',
-              color: 'var(--text-main)',
-              padding: '5px 8px',
+              flex: 1.2,
+              background: 'rgba(16, 185, 129, 0.12)',
+              border: '1px solid rgba(16, 185, 129, 0.4)',
+              color: '#10B981',
+              padding: '6px 8px',
               borderRadius: 'var(--radius-sm)',
               fontSize: 11,
-              fontWeight: 600,
+              fontWeight: 700,
               cursor: 'pointer',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              gap: 4
+              gap: 5
             }}
           >
-            <FileSpreadsheet size={13} color="#10B981" />
-            CSV (Excel)
+            <FileSpreadsheet size={14} color="#10B981" />
+            Excel (.xlsx)
           </button>
 
           <button
