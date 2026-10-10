@@ -60,6 +60,15 @@ app.put('/api/helpers/:id', (req, res) => {
   }
 });
 
+app.delete('/api/helpers/all', (req, res) => {
+  try {
+    dbService.deleteAllHelpers();
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 app.delete('/api/helpers/:id', (req, res) => {
   try {
     const { id } = req.params;

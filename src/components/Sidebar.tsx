@@ -54,6 +54,8 @@ interface SidebarProps {
   onSplitSection?: (sectionId: string) => Promise<void>;
   onOpenAutoAssign?: () => void;
   onOpenExcelImport?: () => void;
+  onOpenHelperImport?: (method?: 'file' | 'paste') => void;
+  onDeleteAllHelpers?: () => Promise<void>;
   activeStampHelperId?: string | null;
   onSelectStampHelper?: (id: string | null) => void;
   theme: 'dark' | 'light';
@@ -84,6 +86,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onSplitSection,
   onOpenAutoAssign,
   onOpenExcelImport,
+  onOpenHelperImport,
+  onDeleteAllHelpers,
   activeStampHelperId,
   onSelectStampHelper,
   theme,
@@ -1049,81 +1053,137 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </button>
             )}
 
-            {/* CSV / Excel Import & Template Bar */}
-            <div style={{ display: 'flex', gap: 6, marginBottom: 12 }}>
-              <input
-                type="file"
-                ref={helperFileInputRef}
-                accept=".xlsx, .xls, .csv"
-                style={{ display: 'none' }}
-                onChange={handleHelperFileUpload}
-              />
-              <button
-                type="button"
-                onClick={() => onOpenExcelImport ? onOpenExcelImport() : helperFileInputRef.current?.click()}
-                style={{
-                  flex: 1,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 6,
-                  padding: '7px 10px',
-                  borderRadius: 'var(--radius-sm)',
-                  background: 'rgba(16, 185, 129, 0.12)',
-                  border: '1px solid rgba(16, 185, 129, 0.35)',
-                  color: '#10B981',
-                  fontWeight: 700,
-                  fontSize: 12,
-                  cursor: 'pointer'
-                }}
-              >
-                <FileUp size={14} />
-                Excel (.xlsx) importieren
-              </button>
+            {/* Helfer Import & Verwaltung Toolbar */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
+              {/* Row 1: Importieren / Überschreiben + Copy-Paste */}
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button
+                  type="button"
+                  onClick={() => onOpenHelperImport ? onOpenHelperImport('file') : onOpenExcelImport?.()}
+                  style={{
+                    flex: 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 6,
+                    padding: '8px 10px',
+                    borderRadius: 'var(--radius-sm)',
+                    background: 'rgba(16, 185, 129, 0.15)',
+                    border: '1.5px solid rgba(16, 185, 129, 0.4)',
+                    color: '#10B981',
+                    fontWeight: 800,
+                    fontSize: 12,
+                    cursor: 'pointer'
+                  }}
+                  title="Helferliste per Excel oder CSV hochladen und alte Platzhalter überschreiben"
+                >
+                  <FileUp size={15} />
+                  📥 Helferliste importieren / überschreiben
+                </button>
 
-              <button
-                type="button"
-                onClick={handleDownloadHelperTemplate}
-                title="Muster-Excel-Vorlage für Helferliste herunterladen"
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 4,
-                  padding: '7px 10px',
-                  borderRadius: 'var(--radius-sm)',
-                  background: 'var(--bg-secondary)',
-                  border: '1px solid var(--border-subtle)',
-                  color: 'var(--text-muted)',
-                  fontSize: 11,
-                  fontWeight: 600,
-                  cursor: 'pointer'
-                }}
-              >
-                <FileDown size={13} />
-                Vorlage (.xlsx)
-              </button>
+                <button
+                  type="button"
+                  onClick={() => onOpenHelperImport ? onOpenHelperImport('paste') : onOpenExcelImport?.()}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 5,
+                    padding: '8px 10px',
+                    borderRadius: 'var(--radius-sm)',
+                    background: 'rgba(56, 189, 248, 0.12)',
+                    border: '1px solid rgba(56, 189, 248, 0.35)',
+                    color: '#38BDF8',
+                    fontWeight: 700,
+                    fontSize: 12,
+                    cursor: 'pointer'
+                  }}
+                  title="Namen direkt per Textfeld aus WhatsApp, Word oder E-Mail einfügen"
+                >
+                  <ClipboardList size={14} />
+                  📋 Namen einfügen
+                </button>
+              </div>
 
-              <button
-                type="button"
-                onClick={() => exportHelpersToExcel(helpers, sections, candleSpacing)}
-                title="Aktuelle Helferliste mit zugewiesenen Abschnitten & Metern als Excel (.xlsx) herunterladen"
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 4,
-                  padding: '7px 10px',
-                  borderRadius: 'var(--radius-sm)',
-                  background: 'var(--bg-secondary)',
-                  border: '1px solid var(--border-subtle)',
-                  color: '#10B981',
-                  fontSize: 11,
-                  fontWeight: 700,
-                  cursor: 'pointer'
-                }}
-              >
-                <FileSpreadsheet size={13} color="#10B981" />
-                Helfer (.xlsx)
-              </button>
+              {/* Row 2: Vorlage, Export & Alle Helfer löschen */}
+              <div style={{ display: 'flex', gap: 6 }}>
+                <button
+                  type="button"
+                  onClick={handleDownloadHelperTemplate}
+                  title="Muster-Excel-Vorlage für Helferliste herunterladen"
+                  style={{
+                    flex: 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 4,
+                    padding: '6px 8px',
+                    borderRadius: 'var(--radius-sm)',
+                    background: 'var(--bg-secondary)',
+                    border: '1px solid var(--border-subtle)',
+                    color: 'var(--text-muted)',
+                    fontSize: 11,
+                    fontWeight: 600,
+                    cursor: 'pointer'
+                  }}
+                >
+                  <FileDown size={12} />
+                  Vorlage (.xlsx)
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => exportHelpersToExcel(helpers, sections, candleSpacing)}
+                  title="Aktuelle Helferliste mit Abschnitten als Excel (.xlsx) herunterladen"
+                  style={{
+                    flex: 1,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: 4,
+                    padding: '6px 8px',
+                    borderRadius: 'var(--radius-sm)',
+                    background: 'var(--bg-secondary)',
+                    border: '1px solid var(--border-subtle)',
+                    color: '#10B981',
+                    fontSize: 11,
+                    fontWeight: 700,
+                    cursor: 'pointer'
+                  }}
+                >
+                  <FileSpreadsheet size={12} color="#10B981" />
+                  Export (.xlsx)
+                </button>
+
+                {onDeleteAllHelpers && helpers.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={async () => {
+                      if (window.confirm(`⚠️ Achtung:\nMöchtest du wirklich alle ${helpers.length} Helfer löschen?\n\nAlle bestehenden Zuweisungen zu Straßenabschnitten werden aufgehoben.`)) {
+                        await onDeleteAllHelpers();
+                      }
+                    }}
+                    title="Alle bestehenden Helfer (z.B. Platzhalter 'Helfer 01' - '35') löschen und Liste leeren"
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 4,
+                      padding: '6px 8px',
+                      borderRadius: 'var(--radius-sm)',
+                      background: 'rgba(239, 68, 68, 0.1)',
+                      border: '1px solid rgba(239, 68, 68, 0.3)',
+                      color: '#EF4444',
+                      fontSize: 11,
+                      fontWeight: 700,
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <Trash2 size={12} />
+                    Liste leeren
+                  </button>
+                )}
+              </div>
             </div>
 
             <form onSubmit={handleCreateHelper} style={{ display: 'flex', gap: 6, marginBottom: 14 }}>

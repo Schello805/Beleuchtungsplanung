@@ -213,6 +213,11 @@ export const api = {
     if (!res.ok) throw new Error('Fehler beim Löschen des Helfers in SQLite');
   },
 
+  async deleteAllHelpers(): Promise<void> {
+    const res = await fetch(`${API_BASE}/helpers/all`, { method: 'DELETE' });
+    if (!res.ok) throw new Error('Fehler beim Löschen aller Helfer in SQLite');
+  },
+
   async importHelpers(helpers: Array<{ name: string; phone?: string; color?: string }>, mode: 'replace' | 'append' = 'replace'): Promise<number> {
     const res = await fetch(`${API_BASE}/helpers/import`, {
       method: 'POST',

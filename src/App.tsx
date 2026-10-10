@@ -39,6 +39,8 @@ export const App: React.FC = () => {
   const [isRedistributeOpen, setIsRedistributeOpen] = useState<boolean>(false);
   const [isAutoAssignOpen, setIsAutoAssignOpen] = useState<boolean>(false);
   const [isExcelImportOpen, setIsExcelImportOpen] = useState<boolean>(false);
+  const [excelImportInitialTab, setExcelImportInitialTab] = useState<'helpers' | 'schedule'>('helpers');
+  const [excelImportInputMethod, setExcelImportInputMethod] = useState<'file' | 'paste'>('file');
 
   // Candle & Material Planning state
   const [candleSpacing, setCandleSpacing] = useState<number>(2.0);
@@ -412,6 +414,22 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleOpenHelperImport = (method: 'file' | 'paste' = 'file') => {
+    setExcelImportInitialTab('helpers');
+    setExcelImportInputMethod(method);
+    setIsExcelImportOpen(true);
+  };
+
+  const handleDeleteAllHelpers = async () => {
+    try {
+      await api.deleteAllHelpers();
+      await loadData();
+      alert('Alle Helfer wurden erfolgreich gelöscht. Zugewiesene Abschnitte wurden freigegeben.');
+    } catch (err: any) {
+      alert(`Fehler beim Löschen aller Helfer: ${err.message}`);
+    }
+  };
+
   // Backup & Restore
   const handleExportBackup = async () => {
     try {
@@ -502,7 +520,13 @@ export const App: React.FC = () => {
         activeStampHelperId={activeStampHelperId}
         onSelectStampHelper={setActiveStampHelperId}
         onOpenAutoAssign={() => setIsAutoAssignOpen(true)}
-        onOpenExcelImport={() => setIsExcelImportOpen(true)}
+        onOpenExcelImport={() => {
+          setExcelImportInitialTab('schedule');
+          setExcelImportInputMethod('file');
+          setIsExcelImportOpen(true);
+        }}
+        onOpenHelperImport={handleOpenHelperImport}
+        onDeleteAllHelpers={handleDeleteAllHelpers}
         theme={theme}
         onToggleTheme={handleToggleTheme}
         candleSpacing={candleSpacing}
@@ -711,11 +735,14 @@ export const App: React.FC = () => {
       <ExcelImportModal
         isOpen={isExcelImportOpen}
         onClose={() => setIsExcelImportOpen(false)}
+        initialTab={excelImportInitialTab}
+        initialInputMethod={excelImportInputMethod}
         sections={sections}
         helpers={helpers}
         onApplyAssignments={handleBatchAssign}
         onImportHelpers={handleImportHelpers}
         onRefreshData={loadData}
+        onDeleteAllHelpers={handleDeleteAllHelpers}
       />
     </div>
   );

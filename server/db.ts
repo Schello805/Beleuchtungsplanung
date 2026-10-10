@@ -142,6 +142,18 @@ export const dbService = {
     return true;
   },
 
+  deleteAllHelpers(): void {
+    db.exec('BEGIN TRANSACTION');
+    try {
+      db.prepare('UPDATE sections SET assigned_helper_id = NULL, assigned_helper_name = NULL').run();
+      db.prepare('DELETE FROM helpers').run();
+      db.exec('COMMIT');
+    } catch (err) {
+      db.exec('ROLLBACK');
+      throw err;
+    }
+  },
+
   importHelpers(helpersList: Array<{ name: string; phone?: string; color?: string }>, mode: 'replace' | 'append' = 'replace'): number {
     const colors = [
       '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6',
