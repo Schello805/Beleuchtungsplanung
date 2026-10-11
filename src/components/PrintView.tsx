@@ -23,27 +23,40 @@ const AssignmentOverviewMap: React.FC<{ sections: Section[]; helpers: Helper[] }
   const points = sections.filter(section => section.geojson?.geometry?.type === 'Point');
   const coordinates = [...lines.flatMap(line => line.coordinates), ...points.map(point => point.geojson.geometry.coordinates as number[])];
   if (!coordinates.length) return <p style={{ color: '#64748B', padding: 32 }}>Für die Gesamtkarte sind noch keine Abschnitte vorhanden.</p>;
-  const lons = coordinates.map(coordinate => coordinate[0]);
-  const lats = coordinates.map(coordinate => coordinate[1]);
-  const minLon = Math.min(...lons), maxLon = Math.max(...lons), minLat = Math.min(...lats), maxLat = Math.max(...lats);
-  const lonRange = Math.max(maxLon - minLon, 0.001), latRange = Math.max(maxLat - minLat, 0.001);
-  const project = ([lon, lat]: number[]) => [55 + ((lon - minLon) / lonRange) * 990, 590 - ((lat - minLat) / latRange) * 500];
-  const colorFor = (section: Section) => helpers.find(helper => helper.id === section.assigned_helper_id)?.color || '#94A3B8';
-  const activeHelpers = helpers.filter(helper => sections.some(section => section.assigned_helper_id === helper.id));
+  const zoom = 14;
+  const tileSize = 256;
+  const worldSize = tileSize * (2 ** zoom);
+  const toWorld = ([lon, lat]: number[]) => [((lon + 180) / 360) * worldSize, ((1 - Math.asinh(Math.tan(lat * Math.PI / 180)) / Math.PI) / 2) * worldSize];
+  const worldCoordinates = coordinates.map(toWorld);
+  let minX = Math.min(...worldCoordinates.map(point => point[0])); let maxX = Math.max(...worldCoordinates.map(point => point[0]));
+  let minY = Math.min(...worldCoordinates.map(point => point[1])); let maxY = Math.max(...worldCoordinates.map(point => point[1]));
+  const pad = Math.max(maxX - minX, maxY - minY, 500) * 0.16;
+  minX -= pad; maxX += pad; minY -= pad; maxY += pad;
+  const targetRatio = 1100 / 650;
+  const currentRatio = (maxX - minX) / (maxY - minY);
+  if (currentRatio < targetRatio) { const extra = ((maxY - minY) * targetRatio - (maxX - minX)) / 2; minX -= extra; maxX += extra; }
+  else { const extra = ((maxX - minX) / targetRatio - (maxY - minY)) / 2; minY -= extra; maxY += extra; }
+  const project = (coordinate: number[]) => { const [x, y] = toWorld(coordinate); return [((x - minX) / (maxX - minX)) * 1100, ((y - minY) / (maxY - minY)) * 650]; };
+  const activeHelpers = helpers.filter(helper => sections.some(section => section.assigned_helper_id === helper.id)).sort((a, b) => a.name.localeCompare(b.name, 'de'));
+  const helperNumbers = new Map(activeHelpers.map((helper, index) => [helper.id, index + 1]));
+  const numberFor = (section: Section) => section.assigned_helper_id ? helperNumbers.get(section.assigned_helper_id) : undefined;
+  const tiles = Array.from({ length: Math.ceil(maxX / tileSize) - Math.floor(minX / tileSize) + 1 }, (_, xIndex) =>
+    Array.from({ length: Math.ceil(maxY / tileSize) - Math.floor(minY / tileSize) + 1 }, (_, yIndex) => ({ x: Math.floor(minX / tileSize) + xIndex, y: Math.floor(minY / tileSize) + yIndex }))
+  ).flat();
 
   return <>
     <svg viewBox="0 0 1100 650" role="img" aria-label="Gesamtkarte der Helfer-Zuweisungen" style={{ width: '100%', height: 'auto', border: '1px solid #CBD5E1', borderRadius: 10, background: '#F8FAFC' }}>
       <rect width="1100" height="650" fill="#F8FAFC" />
-      {[1, 2, 3, 4].map(index => <path key={`grid-x-${index}`} d={`M ${index * 220} 0 V 650`} stroke="#E2E8F0" strokeWidth="1" />)}
-      {[1, 2, 3].map(index => <path key={`grid-y-${index}`} d={`M 0 ${index * 162} H 1100`} stroke="#E2E8F0" strokeWidth="1" />)}
-      {lines.map(({ section, coordinates: lineCoordinates }, index) => <polyline key={`${section.id}-${index}`} points={lineCoordinates.map(project).map(point => point.join(',')).join(' ')} fill="none" stroke="#FFFFFF" strokeWidth="9" strokeLinecap="round" strokeLinejoin="round" />)}
-      {lines.map(({ section, coordinates: lineCoordinates }, index) => <polyline key={`${section.id}-${index}-color`} points={lineCoordinates.map(project).map(point => point.join(',')).join(' ')} fill="none" stroke={colorFor(section)} strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />)}
-      {points.map(point => { const [x, y] = project(point.geojson.geometry.coordinates as number[]); return <circle key={point.id} cx={x} cy={y} r="7" fill={colorFor(point)} stroke="#FFFFFF" strokeWidth="3" />; })}
-      <text x="30" y="625" fill="#64748B" fontSize="14">Farben zeigen die zugewiesenen Helfer. Grau = noch offen.</text>
+      {tiles.map(tile => <image key={`${tile.x}-${tile.y}`} href={`https://tile.openstreetmap.org/${zoom}/${tile.x}/${tile.y}.png`} x={((tile.x * tileSize - minX) / (maxX - minX)) * 1100} y={((tile.y * tileSize - minY) / (maxY - minY)) * 650} width={(tileSize / (maxX - minX)) * 1100} height={(tileSize / (maxY - minY)) * 650} preserveAspectRatio="none" />)}
+      {lines.map(({ section, coordinates: lineCoordinates }, index) => <polyline key={`${section.id}-${index}`} points={lineCoordinates.map(project).map(point => point.join(',')).join(' ')} fill="none" stroke="#FFFFFF" strokeWidth="10" strokeLinecap="round" strokeLinejoin="round" opacity=".95" />)}
+      {lines.map(({ section, coordinates: lineCoordinates }, index) => <polyline key={`${section.id}-${index}-line`} points={lineCoordinates.map(project).map(point => point.join(',')).join(' ')} fill="none" stroke={numberFor(section) ? '#0F172A' : '#64748B'} strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />)}
+      {lines.map(({ section, coordinates: lineCoordinates }, index) => { const [x, y] = project(lineCoordinates[Math.floor(lineCoordinates.length / 2)]); const number = numberFor(section); return <g key={`${section.id}-${index}-number`}><circle cx={x} cy={y} r="11" fill={number ? '#F59E0B' : '#94A3B8'} stroke="#FFFFFF" strokeWidth="3" /><text x={x} y={y + 4} textAnchor="middle" fill="#0F172A" fontSize="11" fontWeight="800">{number || '–'}</text></g>; })}
+      {points.map(point => { const [x, y] = project(point.geojson.geometry.coordinates as number[]); const number = numberFor(point); return <g key={point.id}><circle cx={x} cy={y} r="11" fill={number ? '#F59E0B' : '#94A3B8'} stroke="#FFFFFF" strokeWidth="3" /><text x={x} y={y + 4} textAnchor="middle" fill="#0F172A" fontSize="11" fontWeight="800">{number || '–'}</text></g>; })}
+      <rect x="12" y="614" width="210" height="24" rx="4" fill="#FFFFFF" opacity=".88" /><text x="22" y="631" fill="#475569" fontSize="12">© OpenStreetMap-Mitwirkende</text>
     </svg>
     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 14px', marginTop: 14 }}>
-      {activeHelpers.map(helper => { const assigned = sections.filter(section => section.assigned_helper_id === helper.id); const meters = assigned.reduce((sum, section) => sum + (section.length_meters ?? section.lengthMeters ?? 0), 0); return <div key={helper.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#334155' }}><span style={{ width: 10, height: 10, borderRadius: 99, background: helper.color || '#3B82F6' }} /> <b>{helper.name}</b> · {Math.round(meters)} m</div>; })}
-      {sections.some(section => !section.assigned_helper_id) && <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#334155' }}><span style={{ width: 10, height: 10, borderRadius: 99, background: '#94A3B8' }} /> <b>Offen</b></div>}
+      {activeHelpers.map(helper => { const assigned = sections.filter(section => section.assigned_helper_id === helper.id); const meters = assigned.reduce((sum, section) => sum + (section.length_meters ?? section.lengthMeters ?? 0), 0); return <div key={helper.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#334155' }}><b style={{ display: 'inline-grid', placeItems: 'center', width: 18, height: 18, borderRadius: 99, background: '#F59E0B', color: '#0F172A' }}>{helperNumbers.get(helper.id)}</b> <b>{helper.name}</b> · {Math.round(meters)} m</div>; })}
+      {sections.some(section => !section.assigned_helper_id) && <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#334155' }}><b style={{ display: 'inline-grid', placeItems: 'center', width: 18, height: 18, borderRadius: 99, background: '#94A3B8', color: '#FFFFFF' }}>–</b> <b>Offen</b></div>}
     </div>
   </>;
 };
