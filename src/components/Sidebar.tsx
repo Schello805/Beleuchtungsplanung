@@ -112,6 +112,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   // Auto assign dialog state
   const [isAutoAssigning, setIsAutoAssigning] = useState<boolean>(false);
+  const [focusedHelperId, setFocusedHelperId] = useState<string | null>(null);
+  const [focusedHelperSectionIndex, setFocusedHelperSectionIndex] = useState(0);
 
   // Calculations
   const totalMeters = sections.reduce((sum, s) => sum + s.lengthMeters, 0);
@@ -1613,15 +1615,25 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   const isHigh = item.meters > avgMetersPerActiveHelper * 1.35;
                   const isLow = item.meters < avgMetersPerActiveHelper * 0.65;
                   const hCandles = Math.max(1, Math.round(item.meters / candleSpacing));
+                  const isFocused = focusedHelperId === item.helper.id;
 
                   return (
                     <div
                       key={item.helper.id}
+                      onClick={() => {
+                        const nextIndex = isFocused ? (focusedHelperSectionIndex + 1) % item.sections.length : 0;
+                        setFocusedHelperId(item.helper.id);
+                        setFocusedHelperSectionIndex(nextIndex);
+                        onSelectSection(item.sections[nextIndex].id);
+                      }}
+                      title="Klicken: Abschnitt auf der Karte anzeigen; bei mehreren Abschnitten erneut klicken"
                       style={{
                         background: 'var(--bg-card)',
                         padding: '8px 10px',
                         borderRadius: 'var(--radius-sm)',
-                        border: '1px solid var(--border-subtle)'
+                        border: isFocused ? '1px solid var(--accent-gold)' : '1px solid var(--border-subtle)',
+                        boxShadow: isFocused ? '0 0 0 1px rgba(245, 158, 11, .25)' : 'none',
+                        cursor: 'pointer'
                       }}
                     >
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
@@ -1661,6 +1673,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       <div style={{ fontSize: 10, color: 'var(--text-light)', marginTop: 4 }}>
                         {item.sectionsCount} {item.sectionsCount === 1 ? 'Abschnitt' : 'Abschnitte'}:{' '}
                         {item.sections.map(s => s.street_name).filter((v, i, a) => a.indexOf(v) === i).join(', ')}
+                        {item.sectionsCount > 1 && <span style={{ color: 'var(--accent-gold)', fontWeight: 700 }}> · {isFocused ? `Abschnitt ${focusedHelperSectionIndex + 1}/${item.sectionsCount}` : 'Klicken zum Anzeigen'}</span>}
                       </div>
                     </div>
                   );

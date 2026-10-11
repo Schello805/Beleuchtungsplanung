@@ -505,9 +505,11 @@ export const MapComponent: React.FC<MapComponentProps> = ({
 
         if (isSelected) {
           L.polyline(coords, {
-            color: '#FFFFFF',
-            weight: 12,
-            opacity: 0.85
+            color: '#FDE047',
+            weight: 15,
+            opacity: 0.95,
+            dashArray: '14 10',
+            className: 'section-highlight-pulse'
           }).addTo(group);
         }
 
