@@ -48,7 +48,7 @@ export const AutoAssignModal: React.FC<AutoAssignModalProps> = ({
     if (targetSections.length === 0 || targetHelpers.length === 0) return [];
 
     if (strategy === 'station_first' || strategy === 'fair') {
-      return calculateStationFirstAssignment(
+      const result = calculateStationFirstAssignment(
         targetSections,
         targetHelpers,
         mode === 'unassigned_only' ? sections : [],
