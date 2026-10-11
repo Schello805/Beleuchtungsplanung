@@ -23,6 +23,12 @@ export interface FairnessRules {
   maxDifferenceMeters?: number;
 }
 
+/** Safe default for quick allocation; detailed values are configurable when re-cutting. */
+export const DEFAULT_FAIRNESS_RULES: Required<FairnessRules> = {
+  maxMeters: 50,
+  maxDifferenceMeters: 15
+};
+
 function lineFeatures(section: Section): GeoJSON.Feature<GeoJSON.LineString>[] {
   const geometry = section.geojson?.geometry;
   if (geometry?.type === 'LineString') return [section.geojson as GeoJSON.Feature<GeoJSON.LineString>];

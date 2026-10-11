@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { X, Zap, Users, Check, ArrowRight, Sparkles, RefreshCw, Layers } from 'lucide-react';
 import type { Section, Helper } from '../utils/api';
-import { calculateStationFirstAssignment } from '../utils/fairness';
+import { calculateStationFirstAssignment, DEFAULT_FAIRNESS_RULES } from '../utils/fairness';
 
 interface AutoAssignModalProps {
   isOpen: boolean;
@@ -51,8 +51,15 @@ export const AutoAssignModal: React.FC<AutoAssignModalProps> = ({
       return calculateStationFirstAssignment(
         targetSections,
         targetHelpers,
-        mode === 'unassigned_only' ? sections : []
-      ).assignments;
+        mode === 'unassigned_only' ? sections : [],
+        DEFAULT_FAIRNESS_RULES
+      );
+      const bySection = new Map(result.assignments.map(item => [item.sectionId, item]));
+      // A full reassignment must actively clear areas that cannot meet the
+      // configured limits. Otherwise an old 80 m assignment would remain.
+      return mode === 'all'
+        ? targetSections.map(section => bySection.get(section.id) || { sectionId: section.id, helperId: '', helperName: 'Offen – Fairnessgrenze' })
+        : result.assignments;
     }
 
     return [];
@@ -63,6 +70,7 @@ export const AutoAssignModal: React.FC<AutoAssignModalProps> = ({
   const avgMetersPerHelper = targetHelpers.length > 0 ? Math.round(totalMeters / Math.min(targetSections.length, targetHelpers.length)) : 0;
   const largestSectionMeters = Math.max(0, ...targetSections.map(s => s.length_meters || s.lengthMeters || 0));
   const needsFairRechunking = targetHelpers.length > 0 && largestSectionMeters > (totalMeters / targetHelpers.length) * 1.6;
+  const allocatedPreviewCount = previewAssignments.filter(assignment => Boolean(assignment.helperId)).length;
 
   const handleExecute = async () => {
     if (previewAssignments.length === 0) return;
@@ -347,7 +355,7 @@ export const AutoAssignModal: React.FC<AutoAssignModalProps> = ({
                 Vorschau der Zuweisung ({previewAssignments.length} Abschnitte):
               </span>
               <span style={{ fontSize: 11, color: '#10B981', fontWeight: 600 }}>
-                ✓ {Math.min(previewAssignments.length, targetHelpers.length)} Helfer werden eingeteilt
+                ✓ {allocatedPreviewCount} Abschnitte fair vergeben{allocatedPreviewCount < targetSections.length ? ` · ${targetSections.length - allocatedPreviewCount} bleiben offen` : ''}
               </span>
             </div>
 
