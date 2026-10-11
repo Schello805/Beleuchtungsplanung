@@ -36,6 +36,12 @@ const AssignmentOverviewMap: React.FC<{ sections: Section[]; helpers: Helper[] }
   const currentRatio = (maxX - minX) / (maxY - minY);
   if (currentRatio < targetRatio) { const extra = ((maxY - minY) * targetRatio - (maxX - minX)) / 2; minX -= extra; maxX += extra; }
   else { const extra = ((maxX - minX) / targetRatio - (maxY - minY)) / 2; minY -= extra; maxY += extra; }
+  // A planning map needs legible section numbers, not maximum geographic reach.
+  // Deliberately zoom closer to the active planning area for the paper format.
+  const printZoom = 1.35;
+  const centerX = (minX + maxX) / 2, centerY = (minY + maxY) / 2;
+  const halfWidth = (maxX - minX) / (2 * printZoom), halfHeight = (maxY - minY) / (2 * printZoom);
+  minX = centerX - halfWidth; maxX = centerX + halfWidth; minY = centerY - halfHeight; maxY = centerY + halfHeight;
   const project = (coordinate: number[]) => { const [x, y] = toWorld(coordinate); return [((x - minX) / (maxX - minX)) * 1100, ((y - minY) / (maxY - minY)) * 650]; };
   const activeHelpers = helpers.filter(helper => sections.some(section => section.assigned_helper_id === helper.id)).sort((a, b) => a.name.localeCompare(b.name, 'de'));
   const helperNumbers = new Map(activeHelpers.map((helper, index) => [helper.id, index + 1]));
