@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { X, Users, Scissors, Sparkles, Check, ArrowRight, ShieldCheck, HelpCircle } from 'lucide-react';
 import { type Section, type Helper } from '../utils/api';
 import { createFairWorkPackages, redistributeSectionsToTargetCount, rechunkSectionsByTargetLength } from '../utils/geo';
-import { calculateNearbyFairAssignment } from '../utils/fairness';
+import { calculateStationFirstAssignment } from '../utils/fairness';
 
 interface RedistributeModalProps {
   isOpen: boolean;
@@ -39,7 +39,7 @@ export const RedistributeModal: React.FC<RedistributeModalProps> = ({
       : rechunkSectionsByTargetLength(sections, targetChunkLength, 40);
     if (!autoAssign) return rechunked;
 
-    const assignments = calculateNearbyFairAssignment(rechunked, helpers).assignments;
+    const assignments = calculateStationFirstAssignment(rechunked, helpers).assignments;
     const assignmentBySection = new Map(assignments.map(item => [item.sectionId, item]));
     return rechunked.map(section => {
       const assignment = assignmentBySection.get(section.id);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { rechunkSectionsByTargetLength } from './geo';
+import { createFairWorkPackages, rechunkSectionsByTargetLength } from './geo';
 
 describe('rechunkSectionsByTargetLength', () => {
   it('rejoins short neighbouring fragments before enforcing the 40–110 m bounds', () => {
@@ -18,5 +18,22 @@ describe('rechunkSectionsByTargetLength', () => {
     const lengths = result.map(section => section.length_meters);
     expect(lengths.every(length => length >= 40)).toBe(true);
     expect(lengths.every(length => length <= 110)).toBe(true);
+  });
+});
+
+describe('createFairWorkPackages', () => {
+  it('never combines separate streets into one MultiLineString work package', () => {
+    const line = (lon: number) => ({
+      type: 'Feature' as const,
+      properties: {},
+      geometry: { type: 'LineString' as const, coordinates: [[lon, 49.15], [lon + 0.001, 49.15]] }
+    });
+    const packages = createFairWorkPackages([
+      { id: 'a', street_name: 'Nordstraße', type: 'line', geojson: line(10.5), length_meters: 80 },
+      { id: 'b', street_name: 'Südstraße', type: 'line', geojson: line(10.53), length_meters: 80 }
+    ], 2);
+
+    expect(packages).toHaveLength(2);
+    expect(packages.every(item => item.geojson.geometry.type === 'LineString')).toBe(true);
   });
 });

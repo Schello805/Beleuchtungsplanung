@@ -16,6 +16,31 @@ export interface AutoAssignmentResult {
   };
 }
 
+function lineFeatures(section: Section): GeoJSON.Feature<GeoJSON.LineString>[] {
+  const geometry = section.geojson?.geometry;
+  if (geometry?.type === 'LineString') return [section.geojson as GeoJSON.Feature<GeoJSON.LineString>];
+  if (geometry?.type === 'MultiLineString') return geometry.coordinates.map(coordinates => turf.lineString(coordinates));
+  return [];
+}
+
+/** True when two section geometries touch at an endpoint or road junction. */
+function sectionsConnect(first: Section, second: Section): boolean {
+  const firstLines = lineFeatures(first);
+  const secondLines = lineFeatures(second);
+  if (!firstLines.length || !secondLines.length) return false;
+  return firstLines.some(firstLine => {
+    const endpoints = [firstLine.geometry.coordinates[0], firstLine.geometry.coordinates.at(-1)!];
+    return secondLines.some(secondLine => endpoints.some(endpoint =>
+      turf.pointToLineDistance(turf.point(endpoint), secondLine, { units: 'meters' }) <= 12
+    ));
+  }) || secondLines.some(secondLine => {
+    const endpoints = [secondLine.geometry.coordinates[0], secondLine.geometry.coordinates.at(-1)!];
+    return firstLines.some(firstLine => endpoints.some(endpoint =>
+      turf.pointToLineDistance(turf.point(endpoint), firstLine, { units: 'meters' }) <= 12
+    ));
+  });
+}
+
 /**
  * Automatically and fairly balances section assignments among active helpers.
  * Prefers keeping sections of the same street together for logistical realism.
@@ -255,6 +280,7 @@ export function calculateStationFirstAssignment(
   const assignments: AutoAssignmentResult['assignments'] = [];
   const assignedSections = new Set<string>();
   const stationAssigned = new Set<string>();
+  const assignedByHelper = new Map(helpers.map(helper => [helper.id, [] as Section[]]));
 
   const distanceToSection = (section: Section, helper: Helper) => {
     const point = turf.point([Number(helper.longitude), Number(helper.latitude)]);
@@ -285,6 +311,7 @@ export function calculateStationFirstAssignment(
     record.count++;
     stationAssigned.add(helper.id);
     assignedSections.add(section.id);
+    assignedByHelper.get(helper.id)!.push(section);
     assignments.push({ sectionId: section.id, helperId: helper.id, helperName: helper.name });
   }
 
@@ -295,7 +322,13 @@ export function calculateStationFirstAssignment(
     .sort((a, b) => lengthOf(b) - lengthOf(a));
 
   for (const section of remainingSections) {
-    const candidates = [...helpers].sort((a, b) => {
+    const connectedHelpers = helpers.filter(helper =>
+      (assignedByHelper.get(helper.id) || []).some(existing => sectionsConnect(existing, section))
+    );
+    const unusedHelpers = helpers.filter(helper => totals.get(helper.id)!.count === 0);
+    // A second, detached area is never assigned to an already active helper.
+    // If a road component cannot be continued, an unused helper starts it.
+    const candidates = (connectedHelpers.length ? connectedHelpers : unusedHelpers).sort((a, b) => {
       const loadDifference = totals.get(a.id)!.meters - totals.get(b.id)!.meters;
       if (loadDifference !== 0) return loadDifference;
       const aLocated = Number.isFinite(Number(a.latitude)) && Number.isFinite(Number(a.longitude));
@@ -303,10 +336,12 @@ export function calculateStationFirstAssignment(
       if (aLocated && bLocated) return distanceToSection(section, a) - distanceToSection(section, b);
       return a.name.localeCompare(b.name, 'de');
     });
+    if (!candidates.length) continue;
     const helper = candidates[0];
     const record = totals.get(helper.id)!;
     record.meters += lengthOf(section);
     record.count++;
+    assignedByHelper.get(helper.id)!.push(section);
     assignments.push({ sectionId: section.id, helperId: helper.id, helperName: helper.name });
   }
 

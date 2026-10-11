@@ -407,11 +407,9 @@ export function rechunkSectionsByTargetLength(
 }
 
 /**
- * Builds one visible work package per helper. A package may contain several
- * disconnected road fragments (MultiLineString), which is important for the
- * short 10–14 m fragments: they remain on the map but are never handed out as
- * a tiny standalone task. With 1,739 m and 42 helpers this produces packages
- * of about 41 m, therefore within the agreed 40–110 m range.
+ * Builds contiguous work packages. A package is always one LineString: it may
+ * be shorter than the target where a road ends, but it is never assembled from
+ * separate streets or distant road fragments.
  */
 export function createFairWorkPackages(sections: any[], helperCount: number): any[] {
   const lines = sections
@@ -432,52 +430,55 @@ export function createFairWorkPackages(sections: any[], helperCount: number): an
   // planning lengths (rounding and OSM geometry). Preserve the latter for
   // exports/material calculations instead of silently changing the total.
   const declaredTotalMeters = sections.reduce((sum, section) => sum + Number(section.length_meters ?? section.lengthMeters ?? 0), 0);
-  const packageCount = Math.min(helperCount, Math.floor(declaredTotalMeters / 40));
-  const targetKm = totalKm / packageCount;
-  const packages: Array<{ parts: GeoJSON.Feature<GeoJSON.LineString>[]; streets: Set<string>; km: number }> = [];
-  let current = { parts: [] as GeoJSON.Feature<GeoJSON.LineString>[], streets: new Set<string>(), km: 0 };
-
-  const finishCurrent = () => {
-    if (current.parts.length) packages.push(current);
-    current = { parts: [], streets: new Set<string>(), km: 0 };
-  };
-
-  for (const { section, feature } of lines) {
-    const lineKm = turf.length(feature, { units: 'kilometers' });
-    let offsetKm = 0;
-    while (offsetKm < lineKm - 0.0000001) {
-      const isLastPackage = packages.length === packageCount - 1;
-      const availableKm = isLastPackage ? lineKm - offsetKm : targetKm - current.km;
-      const takeKm = Math.min(availableKm, lineKm - offsetKm);
-      const part = turf.lineSliceAlong(feature, offsetKm, offsetKm + takeKm, { units: 'kilometers' });
-      current.parts.push(part);
-      current.streets.add(section.street_name || section.streetName || 'Unbenannt');
-      current.km += takeKm;
-      offsetKm += takeKm;
-
-      if (!isLastPackage && targetKm - current.km < 0.0000001) finishCurrent();
-    }
+  const desiredCount = Math.max(1, Math.min(helperCount, Math.floor(declaredTotalMeters / 40)));
+  // Every continuous road component needs a package of its own. Long roads
+  // are split further, first to respect the 110 m ceiling, then towards the
+  // requested helper count while keeping each part at least 40 m long.
+  const pieceCounts = lines.map(({ feature }) => Math.max(1, Math.ceil(turf.length(feature, { units: 'kilometers' }) / 0.11)));
+  while (pieceCounts.reduce((sum, count) => sum + count, 0) < desiredCount) {
+    let bestIndex = -1;
+    let bestNextLength = 0;
+    lines.forEach(({ feature }, index) => {
+      const nextLength = turf.length(feature, { units: 'kilometers' }) / (pieceCounts[index] + 1);
+      if (nextLength >= 0.04 && nextLength > bestNextLength) {
+        bestIndex = index;
+        bestNextLength = nextLength;
+      }
+    });
+    if (bestIndex === -1) break;
+    pieceCounts[bestIndex]++;
   }
-  finishCurrent();
 
+  const packages = lines.flatMap(({ section, feature }, sourceIndex) => {
+    const pieceCount = pieceCounts[sourceIndex];
+    const lineKm = turf.length(feature, { units: 'kilometers' });
+    return Array.from({ length: pieceCount }, (_, pieceIndex) => ({
+      section,
+      feature: turf.lineSliceAlong(feature, (lineKm * pieceIndex) / pieceCount, (lineKm * (pieceIndex + 1)) / pieceCount),
+      km: lineKm / pieceCount
+    }));
+  });
+
+  let remainingDeclaredMeters = declaredTotalMeters;
+  let remainingKm = totalKm;
   return packages.map((work, index) => {
-    const names = [...work.streets];
-    const geometry = work.parts.length === 1
-      ? work.parts[0].geometry
-      : { type: 'MultiLineString' as const, coordinates: work.parts.map(part => part.geometry.coordinates) };
-    const baseMeters = Math.floor(declaredTotalMeters / packageCount);
-    const extraMeters = Math.round(declaredTotalMeters - baseMeters * packageCount);
-    const lengthMeters = baseMeters + (index < extraMeters ? 1 : 0);
+    const isLast = index === packages.length - 1;
+    const lengthMeters = isLast
+      ? Math.round(remainingDeclaredMeters)
+      : Math.round((work.km / remainingKm) * remainingDeclaredMeters);
+    remainingDeclaredMeters -= lengthMeters;
+    remainingKm -= work.km;
+    const streetName = work.section.street_name || work.section.streetName || 'Unbenannt';
     return {
       id: `work-package-${Date.now()}-${index + 1}`,
-      street_name: names.length === 1 ? names[0] : 'Mehrere Straßen',
+      street_name: streetName,
       section_index: index + 1,
-      label: `Arbeits­paket ${index + 1}${names.length === 1 ? ` – ${names[0]}` : ` (${names.slice(0, 2).join(' + ')}${names.length > 2 ? ' …' : ''})`}`,
+      label: `Arbeits­paket ${index + 1} – ${streetName}`,
       length_meters: lengthMeters,
       lengthMeters,
       color: SECTION_COLORS[index % SECTION_COLORS.length],
       type: 'line' as const,
-      geojson: { type: 'Feature' as const, properties: {}, geometry },
+      geojson: { type: 'Feature' as const, properties: {}, geometry: work.feature.geometry },
       assigned_helper_id: null,
       assigned_helper_name: null,
       created_at: new Date().toISOString()

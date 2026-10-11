@@ -32,7 +32,7 @@ import {
 import * as XLSX from 'xlsx';
 import type { Section, Helper, Street } from '../utils/api';
 import { exportSectionsToExcel, exportHelpersToExcel, exportSectionsToCSV, exportSectionsToGeoJSON, exportSectionsToGPX } from '../utils/export';
-import { calculateFairAssignment } from '../utils/fairness';
+import { calculateStationFirstAssignment } from '../utils/fairness';
 
 interface SidebarProps {
   sections: Section[];
@@ -219,7 +219,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
     setIsAutoAssigning(true);
     try {
-      const result = calculateFairAssignment(targetSections, helpers);
+      const result = calculateStationFirstAssignment(targetSections, helpers);
       await onBatchAssign(result.assignments);
       alert(`Fairness-Zuweisung abgeschlossen!\n${result.summary.helpersUsed} Helfer eingeteilt, Durchschnitt: ~${result.summary.avgMeters} m pro Helfer.`);
     } catch (err: any) {
