@@ -243,7 +243,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   return (
     <aside
-      className="no-print"
+      className="no-print planner-sidebar"
       style={{
         width: 440,
         height: '100vh',

@@ -625,8 +625,8 @@ export const App: React.FC = () => {
   }
 
   return (
-    <div style={{ display: 'flex', width: '100vw', height: '100vh', overflow: 'hidden' }}>
-      <div className="no-print" style={{ position: 'fixed', right: 14, top: 10, zIndex: 2000, display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', borderRadius: 7, background: 'var(--bg-glass)', border: '1px solid var(--border-subtle)', fontSize: 11 }}>
+    <div className="planner-shell" style={{ display: 'flex', width: '100vw', height: '100vh', overflow: 'hidden' }}>
+      <div className="no-print app-user-menu">
         <span>{currentUser?.display_name} · {currentUser?.role === 'admin' ? 'Administrator' : currentUser?.role === 'planner' ? 'Planung' : 'Lesen'}</span>
         {currentUser?.role === 'admin' && <button onClick={openUserManagement} style={{ border: 0, borderRadius: 4, padding: '3px 6px', cursor: 'pointer', background: 'rgba(59,130,246,.16)', color: '#60a5fa' }}>Benutzer</button>}
         <button onClick={handleLogout} style={{ border: 0, borderRadius: 4, padding: '3px 6px', cursor: 'pointer', background: 'rgba(248,113,113,.16)', color: '#fb7185' }}>Abmelden</button>
@@ -675,7 +675,7 @@ export const App: React.FC = () => {
           className="no-print"
           style={{
             position: 'absolute',
-            top: 16,
+            top: 76,
             left: 16,
             zIndex: 1000,
             width: 380,
@@ -759,11 +759,11 @@ export const App: React.FC = () => {
                 Auf anderen PCs:
               </span>
               <code style={{ fontSize: 11, background: 'rgba(255,255,255,0.06)', padding: '2px 6px', borderRadius: 4, color: '#38BDF8' }}>
-                http://{dbStatus.networkIps[0]}:5173
+                {window.location.origin}
               </code>
               <button
                 onClick={() => {
-                  navigator.clipboard.writeText(`http://${dbStatus.networkIps[0]}:5173`);
+                  navigator.clipboard.writeText(window.location.origin);
                   setCopiedUrl(true);
                   setTimeout(() => setCopiedUrl(false), 2000);
                 }}
