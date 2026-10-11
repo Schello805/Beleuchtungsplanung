@@ -803,7 +803,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
                                     <span style={{ width: 8, height: 8, borderRadius: '50%', background: sec.color }} />
                                     <span style={{ fontSize: 12, fontWeight: 600 }}>{sec.label}</span>
                                   </div>
-                                  <span style={{ fontSize: 11, fontWeight: 700, color: sec.color }}>{sec.lengthMeters} m</span>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                                    <span style={{ fontSize: 11, fontWeight: 700, color: sec.color }}>{sec.lengthMeters} m</span>
+                                    {!sec.assigned_helper_id && (
+                                      <button
+                                        type="button"
+                                        title="Offenen Restabschnitt löschen"
+                                        onClick={event => {
+                                          event.stopPropagation();
+                                          if (confirm(`Offenen Restabschnitt "${sec.label}" löschen?`)) onDeleteSection(sec.id);
+                                        }}
+                                        style={{ display: 'grid', placeItems: 'center', background: 'rgba(239, 68, 68, .12)', border: '1px solid rgba(239, 68, 68, .42)', color: '#F87171', cursor: 'pointer', padding: 3, borderRadius: 4 }}
+                                      >
+                                        <Trash2 size={12} />
+                                      </button>
+                                    )}
+                                  </div>
                                 </div>
 
                                 <div style={{ display: 'flex', alignItems: 'center', gap: 6 }} onClick={e => e.stopPropagation()}>
@@ -816,6 +831,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                                     }}
                                     style={{
                                       flex: 1,
+                                      minWidth: 0,
                                       padding: '3px 6px',
                                       borderRadius: 4,
                                       border: '1px solid var(--border-subtle)',
