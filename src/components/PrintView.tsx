@@ -78,8 +78,9 @@ const HelperAreaMap: React.FC<{ sections: Section[]; color?: string; height: num
   });
   const allCoordinates = geometries.flatMap(geometry => geometry.coordinates);
   if (!allCoordinates.length) return <div style={{ height, display: 'grid', placeItems: 'center', color: '#64748B', border: '1px solid #CBD5E1', borderRadius: 7 }}>Karte nicht verfügbar</div>;
-  // Compact 2:1 map format: enough surrounding streets without a thin banner.
-  const zoom = 15, tileSize = 256, worldSize = tileSize * (2 ** zoom), width = height * 2;
+  // Compact 2:1 map format, but close enough that the coloured own section
+  // and its immediate neighbouring streets can be recognised at a glance.
+  const zoom = 16, tileSize = 256, worldSize = tileSize * (2 ** zoom), width = height * 2;
   const toWorld = ([lon, lat]: number[]) => [((lon + 180) / 360) * worldSize, ((1 - Math.asinh(Math.tan(lat * Math.PI / 180)) / Math.PI) / 2) * worldSize];
   const worlds = allCoordinates.map(toWorld);
   const centerX = worlds.reduce((sum, point) => sum + point[0], 0) / worlds.length;
