@@ -67,6 +67,34 @@ const AssignmentOverviewMap: React.FC<{ sections: Section[]; helpers: Helper[] }
   </>;
 };
 
+const HelperAreaMap: React.FC<{ sections: Section[]; color?: string; height: number }> = ({ sections, color = '#D97706', height }) => {
+  const geometries = sections.flatMap(section => {
+    const geometry = section.geojson?.geometry;
+    if (!geometry) return [] as Array<{ type: string; coordinates: number[][] }>;
+    if (geometry.type === 'LineString') return [{ type: geometry.type, coordinates: geometry.coordinates as number[][] }];
+    if (geometry.type === 'MultiLineString') return (geometry.coordinates as number[][][]).map(coordinates => ({ type: geometry.type, coordinates }));
+    if (geometry.type === 'Point') return [{ type: geometry.type, coordinates: [geometry.coordinates as number[]] }];
+    return [] as Array<{ type: string; coordinates: number[][] }>;
+  });
+  const allCoordinates = geometries.flatMap(geometry => geometry.coordinates);
+  if (!allCoordinates.length) return <div style={{ height, display: 'grid', placeItems: 'center', color: '#64748B', border: '1px solid #CBD5E1', borderRadius: 7 }}>Karte nicht verfügbar</div>;
+  const zoom = 15, tileSize = 256, worldSize = tileSize * (2 ** zoom), width = 640;
+  const toWorld = ([lon, lat]: number[]) => [((lon + 180) / 360) * worldSize, ((1 - Math.asinh(Math.tan(lat * Math.PI / 180)) / Math.PI) / 2) * worldSize];
+  const worlds = allCoordinates.map(toWorld);
+  const centerX = worlds.reduce((sum, point) => sum + point[0], 0) / worlds.length;
+  const centerY = worlds.reduce((sum, point) => sum + point[1], 0) / worlds.length;
+  const project = (coordinate: number[]) => { const [x, y] = toWorld(coordinate); return [width / 2 + x - centerX, height / 2 + y - centerY]; };
+  const centerTileX = Math.floor(centerX / tileSize), centerTileY = Math.floor(centerY / tileSize);
+  const tiles = [-2, -1, 0, 1, 2].flatMap(dx => [-1, 0, 1].map(dy => ({ x: centerTileX + dx, y: centerTileY + dy })));
+  return <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Kartenausschnitt des zugewiesenen Bereichs" style={{ width: '100%', height, display: 'block', borderRadius: 7, border: '1px solid #CBD5E1', background: '#F8FAFC' }}>
+    {tiles.map(tile => <image key={`${tile.x}-${tile.y}`} href={`https://tile.openstreetmap.org/${zoom}/${tile.x}/${tile.y}.png`} x={width / 2 + tile.x * tileSize - centerX} y={height / 2 + tile.y * tileSize - centerY} width={tileSize} height={tileSize} />)}
+    {geometries.filter(geometry => geometry.type !== 'Point').map((geometry, index) => <polyline key={`outline-${index}`} points={geometry.coordinates.map(project).map(point => point.join(',')).join(' ')} fill="none" stroke="#FFFFFF" strokeWidth="10" strokeLinecap="round" strokeLinejoin="round" opacity=".95" />)}
+    {geometries.filter(geometry => geometry.type !== 'Point').map((geometry, index) => <polyline key={`line-${index}`} points={geometry.coordinates.map(project).map(point => point.join(',')).join(' ')} fill="none" stroke={color} strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" />)}
+    {geometries.filter(geometry => geometry.type === 'Point').map((geometry, index) => { const [x, y] = project(geometry.coordinates[0]); return <circle key={`point-${index}`} cx={x} cy={y} r="8" fill={color} stroke="#FFFFFF" strokeWidth="3" />; })}
+    <rect x="8" y={height - 25} width="185" height="18" rx="3" fill="#FFFFFF" opacity=".9" /><text x="14" y={height - 12} fontSize="10" fill="#475569">Dein Bereich ist farbig markiert</text>
+  </svg>;
+};
+
 export const PrintView: React.FC<PrintViewProps> = ({
   sections,
   helpers,
@@ -568,7 +596,6 @@ export const PrintView: React.FC<PrintViewProps> = ({
               {helperGroups.map(group => {
                 const publicUrl = getPublicHelperUrl(group.helper.public_token);
                 const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=100x100&margin=2&data=${encodeURIComponent(publicUrl)}`;
-                const mapImageUrl = getMapImageUrl(group.sections);
 
                 return (
                   <div
@@ -651,7 +678,7 @@ export const PrintView: React.FC<PrintViewProps> = ({
                       </div>
 
                       {/* Map, section and QR information */}
-                      {mapImageUrl && <img src={mapImageUrl} alt={`Kartenausschnitt ${group.helper.name}`} style={{ width: '100%', height: 112, objectFit: 'cover', borderRadius: 6, border: '1px solid #CBD5E1', marginBottom: 8 }} />}
+                      <div style={{ marginBottom: 8 }}><HelperAreaMap sections={group.sections} color={group.helper.color} height={112} /></div>
                       <div style={{ display: 'flex', gap: 10, marginBottom: 8 }}>
                         {/* Sections List */}
                         <div style={{ flex: 1, fontSize: 11 }}>
@@ -740,7 +767,6 @@ export const PrintView: React.FC<PrintViewProps> = ({
               {helperGroups.map(group => {
                 const publicUrl = getPublicHelperUrl(group.helper.public_token);
                 const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=130x130&margin=2&data=${encodeURIComponent(publicUrl)}`;
-                const mapImageUrl = getMapImageUrl(group.sections);
 
                 return (
                   <div
@@ -796,7 +822,7 @@ export const PrintView: React.FC<PrintViewProps> = ({
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 142px', gap: 14, marginBottom: 14, alignItems: 'start' }}>
                       <div>
                         <div style={{ fontSize: 12, fontWeight: 800, color: '#0F172A', marginBottom: 6 }}>Kartenausschnitt deines Bereichs</div>
-                        {mapImageUrl ? <img src={mapImageUrl} alt={`Kartenausschnitt ${group.helper.name}`} style={{ width: '100%', height: 175, objectFit: 'cover', borderRadius: 7, border: '1px solid #CBD5E1' }} /> : <div style={{ height: 175, border: '1px solid #CBD5E1', borderRadius: 7, display: 'grid', placeItems: 'center', color: '#64748B' }}>Karte nicht verfügbar</div>}
+                        <HelperAreaMap sections={group.sections} color={group.helper.color} height={175} />
                       </div>
                       <div style={{ border: '1px solid #CBD5E1', borderRadius: 7, padding: 8, textAlign: 'center', background: '#F8FAFC' }}>
                         <img src={qrUrl} alt="QR-Code zur Helfer-Information" style={{ width: 124, height: 124 }} />
