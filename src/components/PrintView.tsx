@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Printer, ArrowLeft, FileText, Grid, Phone, Scissors, QrCode, Clock, MapPin, CheckSquare, Sparkles } from 'lucide-react';
+import { Printer, ArrowLeft, FileText, Grid, Phone, Scissors, QrCode, Clock, MapPin, CheckSquare, Sparkles, Map as MapIcon } from 'lucide-react';
 import { api, type Section, type Helper } from '../utils/api';
 
 interface PrintViewProps {
@@ -12,6 +12,42 @@ interface PrintViewProps {
   onClose: () => void;
 }
 
+const AssignmentOverviewMap: React.FC<{ sections: Section[]; helpers: Helper[] }> = ({ sections, helpers }) => {
+  const lines = sections.flatMap(section => {
+    const geometry = section.geojson?.geometry;
+    if (!geometry) return [] as Array<{ section: Section; coordinates: number[][] }>;
+    if (geometry.type === 'LineString') return [{ section, coordinates: geometry.coordinates as number[][] }];
+    if (geometry.type === 'MultiLineString') return (geometry.coordinates as number[][][]).map(coordinates => ({ section, coordinates }));
+    return [] as Array<{ section: Section; coordinates: number[][] }>;
+  });
+  const points = sections.filter(section => section.geojson?.geometry?.type === 'Point');
+  const coordinates = [...lines.flatMap(line => line.coordinates), ...points.map(point => point.geojson.geometry.coordinates as number[])];
+  if (!coordinates.length) return <p style={{ color: '#64748B', padding: 32 }}>Für die Gesamtkarte sind noch keine Abschnitte vorhanden.</p>;
+  const lons = coordinates.map(coordinate => coordinate[0]);
+  const lats = coordinates.map(coordinate => coordinate[1]);
+  const minLon = Math.min(...lons), maxLon = Math.max(...lons), minLat = Math.min(...lats), maxLat = Math.max(...lats);
+  const lonRange = Math.max(maxLon - minLon, 0.001), latRange = Math.max(maxLat - minLat, 0.001);
+  const project = ([lon, lat]: number[]) => [55 + ((lon - minLon) / lonRange) * 990, 590 - ((lat - minLat) / latRange) * 500];
+  const colorFor = (section: Section) => helpers.find(helper => helper.id === section.assigned_helper_id)?.color || '#94A3B8';
+  const activeHelpers = helpers.filter(helper => sections.some(section => section.assigned_helper_id === helper.id));
+
+  return <>
+    <svg viewBox="0 0 1100 650" role="img" aria-label="Gesamtkarte der Helfer-Zuweisungen" style={{ width: '100%', height: 'auto', border: '1px solid #CBD5E1', borderRadius: 10, background: '#F8FAFC' }}>
+      <rect width="1100" height="650" fill="#F8FAFC" />
+      {[1, 2, 3, 4].map(index => <path key={`grid-x-${index}`} d={`M ${index * 220} 0 V 650`} stroke="#E2E8F0" strokeWidth="1" />)}
+      {[1, 2, 3].map(index => <path key={`grid-y-${index}`} d={`M 0 ${index * 162} H 1100`} stroke="#E2E8F0" strokeWidth="1" />)}
+      {lines.map(({ section, coordinates: lineCoordinates }, index) => <polyline key={`${section.id}-${index}`} points={lineCoordinates.map(project).map(point => point.join(',')).join(' ')} fill="none" stroke="#FFFFFF" strokeWidth="9" strokeLinecap="round" strokeLinejoin="round" />)}
+      {lines.map(({ section, coordinates: lineCoordinates }, index) => <polyline key={`${section.id}-${index}-color`} points={lineCoordinates.map(project).map(point => point.join(',')).join(' ')} fill="none" stroke={colorFor(section)} strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />)}
+      {points.map(point => { const [x, y] = project(point.geojson.geometry.coordinates as number[]); return <circle key={point.id} cx={x} cy={y} r="7" fill={colorFor(point)} stroke="#FFFFFF" strokeWidth="3" />; })}
+      <text x="30" y="625" fill="#64748B" fontSize="14">Farben zeigen die zugewiesenen Helfer. Grau = noch offen.</text>
+    </svg>
+    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 14px', marginTop: 14 }}>
+      {activeHelpers.map(helper => { const assigned = sections.filter(section => section.assigned_helper_id === helper.id); const meters = assigned.reduce((sum, section) => sum + (section.length_meters ?? section.lengthMeters ?? 0), 0); return <div key={helper.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#334155' }}><span style={{ width: 10, height: 10, borderRadius: 99, background: helper.color || '#3B82F6' }} /> <b>{helper.name}</b> · {Math.round(meters)} m</div>; })}
+      {sections.some(section => !section.assigned_helper_id) && <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#334155' }}><span style={{ width: 10, height: 10, borderRadius: 99, background: '#94A3B8' }} /> <b>Offen</b></div>}
+    </div>
+  </>;
+};
+
 export const PrintView: React.FC<PrintViewProps> = ({
   sections,
   helpers,
@@ -21,7 +57,7 @@ export const PrintView: React.FC<PrintViewProps> = ({
   onSavePublicBaseUrl,
   onClose
 }) => {
-  const [printLayout, setPrintLayout] = useState<'table' | 'cards' | 'sheets'>('sheets');
+  const [printLayout, setPrintLayout] = useState<'table' | 'overview-map' | 'cards' | 'sheets'>('sheets');
   const [publicUrlInput, setPublicUrlInput] = useState(publicBaseUrl);
   const [showDeliveryAdmin, setShowDeliveryAdmin] = useState(false);
   const [smtp, setSmtp] = useState({ host: '', port: '587', user: '', from: '' });
@@ -242,6 +278,18 @@ export const PrintView: React.FC<PrintViewProps> = ({
             </button>
 
             <button
+              onClick={() => setPrintLayout('overview-map')}
+              style={{
+                padding: '5px 12px', borderRadius: 4, border: 'none',
+                background: printLayout === 'overview-map' ? '#F59E0B' : 'transparent',
+                color: printLayout === 'overview-map' ? '#0F172A' : '#FFFFFF', fontWeight: 700, fontSize: 12,
+                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5
+              }}
+            >
+              <MapIcon size={14} /> Gesamtkarte
+            </button>
+
+            <button
               onClick={() => setPrintLayout('table')}
               style={{
                 padding: '5px 12px',
@@ -352,6 +400,8 @@ export const PrintView: React.FC<PrintViewProps> = ({
               <div style={{ fontSize: 15, fontWeight: 700, color: '#D97706', marginTop: 4 }}>
                 {printLayout === 'table'
                   ? 'Offizieller Strecken- & Helfer-Einsatzplan'
+                  : printLayout === 'overview-map'
+                  ? 'Gesamtkarte der Helfer-Zuweisungen'
                   : printLayout === 'cards'
                   ? 'Kompakte Helfer-Informationen mit Karte & QR-Code'
                   : 'Persönliche Helfer-Informationen (A5)'}
@@ -402,6 +452,17 @@ export const PrintView: React.FC<PrintViewProps> = ({
             </div>
           </div>
         </div>
+
+        {/* LAYOUT: PRINTABLE ASSIGNMENT MAP */}
+        {printLayout === 'overview-map' && (
+          <div className="overview-map-page" style={{ pageBreakAfter: 'always' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 }}>
+              <h2 style={{ fontSize: 16, fontWeight: 800, textTransform: 'uppercase', color: '#0F172A', letterSpacing: '0.04em' }}>Wer übernimmt welchen Abschnitt?</h2>
+              <span style={{ fontSize: 11, color: '#64748B' }}>Für den Ausdruck idealerweise „Querformat“ wählen</span>
+            </div>
+            <AssignmentOverviewMap sections={sections} helpers={helpers} />
+          </div>
+        )}
 
         {/* LAYOUT 1: TABLE OVERVIEW */}
         {printLayout === 'table' && (
