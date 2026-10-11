@@ -78,7 +78,8 @@ const HelperAreaMap: React.FC<{ sections: Section[]; color?: string; height: num
   });
   const allCoordinates = geometries.flatMap(geometry => geometry.coordinates);
   if (!allCoordinates.length) return <div style={{ height, display: 'grid', placeItems: 'center', color: '#64748B', border: '1px solid #CBD5E1', borderRadius: 7 }}>Karte nicht verfügbar</div>;
-  const zoom = 15, tileSize = 256, worldSize = tileSize * (2 ** zoom), width = 640;
+  // Compact 2:1 map format: enough surrounding streets without a thin banner.
+  const zoom = 15, tileSize = 256, worldSize = tileSize * (2 ** zoom), width = height * 2;
   const toWorld = ([lon, lat]: number[]) => [((lon + 180) / 360) * worldSize, ((1 - Math.asinh(Math.tan(lat * Math.PI / 180)) / Math.PI) / 2) * worldSize];
   const worlds = allCoordinates.map(toWorld);
   const centerX = worlds.reduce((sum, point) => sum + point[0], 0) / worlds.length;
@@ -86,7 +87,7 @@ const HelperAreaMap: React.FC<{ sections: Section[]; color?: string; height: num
   const project = (coordinate: number[]) => { const [x, y] = toWorld(coordinate); return [width / 2 + x - centerX, height / 2 + y - centerY]; };
   const centerTileX = Math.floor(centerX / tileSize), centerTileY = Math.floor(centerY / tileSize);
   const tiles = [-2, -1, 0, 1, 2].flatMap(dx => [-1, 0, 1].map(dy => ({ x: centerTileX + dx, y: centerTileY + dy })));
-  return <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Kartenausschnitt des zugewiesenen Bereichs" style={{ width: '100%', height, display: 'block', borderRadius: 7, border: '1px solid #CBD5E1', background: '#F8FAFC' }}>
+  return <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Kartenausschnitt des zugewiesenen Bereichs" style={{ width: '100%', height: 'auto', aspectRatio: '2 / 1', display: 'block', borderRadius: 7, border: '1px solid #CBD5E1', background: '#F8FAFC' }}>
     {tiles.map(tile => <image key={`${tile.x}-${tile.y}`} href={`https://tile.openstreetmap.org/${zoom}/${tile.x}/${tile.y}.png`} x={width / 2 + tile.x * tileSize - centerX} y={height / 2 + tile.y * tileSize - centerY} width={tileSize} height={tileSize} />)}
     {geometries.filter(geometry => geometry.type !== 'Point').map((geometry, index) => <polyline key={`outline-${index}`} points={geometry.coordinates.map(project).map(point => point.join(',')).join(' ')} fill="none" stroke="#FFFFFF" strokeWidth="10" strokeLinecap="round" strokeLinejoin="round" opacity=".95" />)}
     {geometries.filter(geometry => geometry.type !== 'Point').map((geometry, index) => <polyline key={`line-${index}`} points={geometry.coordinates.map(project).map(point => point.join(',')).join(' ')} fill="none" stroke={color} strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" />)}
@@ -678,7 +679,7 @@ export const PrintView: React.FC<PrintViewProps> = ({
                       </div>
 
                       {/* Map, section and QR information */}
-                      <div style={{ marginBottom: 8 }}><HelperAreaMap sections={group.sections} color={group.helper.color} height={112} /></div>
+                      <div style={{ marginBottom: 8 }}><HelperAreaMap sections={group.sections} color={group.helper.color} height={170} /></div>
                       <div style={{ display: 'flex', gap: 10, marginBottom: 8 }}>
                         {/* Sections List */}
                         <div style={{ flex: 1, fontSize: 11 }}>
@@ -822,7 +823,7 @@ export const PrintView: React.FC<PrintViewProps> = ({
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 142px', gap: 14, marginBottom: 14, alignItems: 'start' }}>
                       <div>
                         <div style={{ fontSize: 12, fontWeight: 800, color: '#0F172A', marginBottom: 6 }}>Kartenausschnitt deines Bereichs</div>
-                        <HelperAreaMap sections={group.sections} color={group.helper.color} height={175} />
+                        <HelperAreaMap sections={group.sections} color={group.helper.color} height={320} />
                       </div>
                       <div style={{ border: '1px solid #CBD5E1', borderRadius: 7, padding: 8, textAlign: 'center', background: '#F8FAFC' }}>
                         <img src={qrUrl} alt="QR-Code zur Helfer-Information" style={{ width: 124, height: 124 }} />
