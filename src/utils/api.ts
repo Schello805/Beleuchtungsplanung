@@ -9,6 +9,7 @@ export interface Helper {
   address?: string | null;
   latitude?: number | null;
   longitude?: number | null;
+  public_token?: string | null;
   created_at: string;
 }
 
@@ -45,6 +46,11 @@ export interface AuthUser {
   email: string;
   display_name: string;
   role: UserRole;
+}
+
+export interface PublicHelperInfo {
+  name: string;
+  sections: Array<Pick<Section, 'id' | 'street_name' | 'label' | 'length_meters' | 'type' | 'geojson'>>;
 }
 
 const API_BASE = '/api';
@@ -189,6 +195,13 @@ export const api = {
     const res = await fetch(`${API_BASE}/users`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || 'Benutzer konnte nicht angelegt werden.');
+    return data;
+  },
+
+  async getPublicHelper(token: string): Promise<PublicHelperInfo> {
+    const res = await fetch(`${API_BASE}/public/helpers/${encodeURIComponent(token)}`);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'Helfer-Link konnte nicht geladen werden.');
     return data;
   },
 

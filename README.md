@@ -112,7 +112,9 @@ ADMIN_PASSWORD=ein-langes-einmaliges-passwort-mit-mindestens-12-zeichen
 
 Danach `sudo systemctl restart lichternacht`. Beim ersten Start erzeugt die Anwendung daraus das Admin-Konto und speichert ausschließlich einen sicheren Passwort-Hash. Ohne eingerichtetes Admin-Konto bleibt der Produktionsserver bewusst auf `127.0.0.1` beschränkt.
 
-Rollen: **Administrator** (Einstellungen, Backups und Benutzer), **Planung** (Plan und Helfer ändern) und **Lesen** (nur ansehen). Zusätzliche Benutzer können Administratoren über die geschützte API anlegen; eine Verwaltungsansicht dafür folgt als nächster UI-Schritt.
+Rollen: **Administrator** (Einstellungen, Backups und Benutzer), **Planung** (Plan und Helfer ändern) und **Lesen** (nur ansehen). Administratoren können weitere Zugänge direkt über „Benutzer“ in der Anwendung anlegen.
+
+Die Druckansicht erzeugt pro Helfer einen eigenen öffentlichen Link unter `/helfer/<zufälliger-token>`. Dieser ist nur lesbar und liefert ausschließlich den betreffenden Bereich – nie die Planungsoberfläche oder Stationsliste. Dafür in den globalen Einstellungen die öffentliche HTTPS-Adresse hinterlegen.
 
 Für die echte Internetfreigabe zusätzlich einen Reverse Proxy mit HTTPS (z. B. Caddy oder Nginx) und eine Firewall einsetzen. Port 3000 sollte dabei nicht direkt aus dem Internet erreichbar sein.
 

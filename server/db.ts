@@ -1,6 +1,7 @@
 import { DatabaseSync } from 'node:sqlite';
 import fs from 'node:fs';
 import path from 'node:path';
+import crypto from 'node:crypto';
 
 const DATA_DIR = path.resolve(process.cwd(), 'data');
 if (!fs.existsSync(DATA_DIR)) {
@@ -120,7 +121,12 @@ addHelperColumn('source_station_id', 'TEXT');
 addHelperColumn('address', 'TEXT');
 addHelperColumn('latitude', 'REAL');
 addHelperColumn('longitude', 'REAL');
+addHelperColumn('public_token', 'TEXT');
 db.exec('CREATE UNIQUE INDEX IF NOT EXISTS helpers_source_station_id_unique ON helpers(source_station_id) WHERE source_station_id IS NOT NULL');
+db.exec('CREATE UNIQUE INDEX IF NOT EXISTS helpers_public_token_unique ON helpers(public_token) WHERE public_token IS NOT NULL');
+const missingPublicTokens = db.prepare('SELECT id FROM helpers WHERE public_token IS NULL OR public_token = \'\'').all() as Array<{ id: string }>;
+const setPublicToken = db.prepare('UPDATE helpers SET public_token = ? WHERE id = ?');
+missingPublicTokens.forEach(helper => setPublicToken.run(crypto.randomBytes(24).toString('base64url'), helper.id));
 
 // Pre-seed 30 initial helper slots if empty so the user immediately has the 30 dropdown choices ready
 const countStmt = db.prepare('SELECT COUNT(*) as count FROM helpers');
@@ -151,6 +157,7 @@ export interface HelperRecord {
   address?: string | null;
   latitude?: number | null;
   longitude?: number | null;
+  public_token?: string | null;
   created_at: string;
 }
 
@@ -232,6 +239,14 @@ export const dbService = {
 
   getHelpers(): HelperRecord[] {
     return db.prepare('SELECT * FROM helpers ORDER BY name ASC').all() as unknown as HelperRecord[];
+  },
+
+  getPublicHelper(token: string): { name: string; sections: Array<Pick<SectionRecord, 'id' | 'street_name' | 'label' | 'length_meters' | 'type' | 'geojson'>> } | undefined {
+    const helper = db.prepare('SELECT id, name FROM helpers WHERE public_token = ?').get(token) as { id: string; name: string } | undefined;
+    if (!helper) return undefined;
+    const sections = db.prepare(`SELECT id, street_name, label, length_meters, type, geojson FROM sections
+      WHERE assigned_helper_id = ? ORDER BY street_name ASC, section_index ASC`).all(helper.id) as Array<Pick<SectionRecord, 'id' | 'street_name' | 'label' | 'length_meters' | 'type' | 'geojson'>>;
+    return { name: helper.name, sections };
   },
 
   addHelper(name: string, color?: string, phone?: string): HelperRecord {

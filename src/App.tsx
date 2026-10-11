@@ -3,15 +3,19 @@ import { Sidebar } from './components/Sidebar';
 import { CapturePanel } from './components/CapturePanel';
 import { RedistributeModal } from './components/RedistributeModal';
 import { AutoAssignModal } from './components/AutoAssignModal';
+import { PublicHelperPage } from './components/PublicHelperPage';
 
 const MapComponent = lazy(() => import('./components/MapComponent').then(module => ({ default: module.MapComponent })));
 const PrintView = lazy(() => import('./components/PrintView').then(module => ({ default: module.PrintView })));
 const ExcelImportModal = lazy(() => import('./components/ExcelImportModal').then(module => ({ default: module.ExcelImportModal })));
-import { api, type Section, type Helper, type Street, type AuthUser } from './utils/api';
+import { api, type Section, type Helper, type Street, type AuthUser, type PublicHelperInfo } from './utils/api';
 import { splitSectionInHalf, type GeneratedSection } from './utils/geo';
 import { Database, Wifi, Check, Copy, X, Undo2 } from 'lucide-react';
 
 export const App: React.FC = () => {
+  const publicToken = window.location.pathname.match(/^\/helfer\/([A-Za-z0-9_-]{20,})\/?$/)?.[1] || null;
+  const [publicHelperInfo, setPublicHelperInfo] = useState<PublicHelperInfo | null>(null);
+  const [publicHelperError, setPublicHelperError] = useState<string | null>(null);
   const [authState, setAuthState] = useState<'loading' | 'anonymous' | 'authenticated' | 'setup-required'>('loading');
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
   const [loginEmail, setLoginEmail] = useState('');
@@ -182,6 +186,13 @@ export const App: React.FC = () => {
       })
       .catch(() => setAuthState('anonymous'));
   }, []);
+
+  useEffect(() => {
+    if (!publicToken) return;
+    api.getPublicHelper(publicToken).then(setPublicHelperInfo).catch(error => {
+      setPublicHelperError(error instanceof Error ? error.message : 'Der Helfer-Link ist nicht verfügbar.');
+    });
+  }, [publicToken]);
 
   useEffect(() => {
     if (authState === 'authenticated') loadData();
@@ -587,6 +598,11 @@ export const App: React.FC = () => {
     await handleBatchAssign(lastAutomaticAssignments);
     setLastAutomaticAssignments(null);
   };
+
+  if (publicToken) {
+    if (publicHelperInfo) return <PublicHelperPage info={publicHelperInfo} />;
+    return <main className="auth-screen"><section className="auth-card"><p className="auth-kicker">LICHTERNACHT BECHHOFEN</p><h1>Helfer-Information</h1><p>{publicHelperError || 'Dein persönlicher Bereich wird geladen …'}</p></section></main>;
+  }
 
   if (authState !== 'authenticated') {
     return (

@@ -112,9 +112,9 @@ export const PrintView: React.FC<PrintViewProps> = ({
     return null;
   };
 
-  const getPublicHelperUrl = (helperId: string) => {
+  const getPublicHelperUrl = (token?: string | null) => {
     const base = (publicBaseUrl || window.location.origin).replace(/\/$/, '');
-    return `${base}/?helfer=${encodeURIComponent(helperId)}`;
+    return token ? `${base}/helfer/${encodeURIComponent(token)}` : base;
   };
 
   const getMapImageUrl = (groupSections: Section[]) => {
@@ -486,7 +486,7 @@ export const PrintView: React.FC<PrintViewProps> = ({
               }}
             >
               {helperGroups.map(group => {
-                const publicUrl = getPublicHelperUrl(group.helper.id);
+                const publicUrl = getPublicHelperUrl(group.helper.public_token);
                 const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=100x100&margin=2&data=${encodeURIComponent(publicUrl)}`;
                 const mapImageUrl = getMapImageUrl(group.sections);
 
@@ -658,7 +658,7 @@ export const PrintView: React.FC<PrintViewProps> = ({
           <div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
               {helperGroups.map(group => {
-                const publicUrl = getPublicHelperUrl(group.helper.id);
+                const publicUrl = getPublicHelperUrl(group.helper.public_token);
                 const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=130x130&margin=2&data=${encodeURIComponent(publicUrl)}`;
                 const mapImageUrl = getMapImageUrl(group.sections);
 

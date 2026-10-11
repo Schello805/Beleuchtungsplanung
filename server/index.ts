@@ -96,6 +96,20 @@ app.post('/api/auth/logout', (req, res) => {
   res.json({ success: true });
 });
 
+// Public helper links deliberately expose only the assigned work package. They
+// do not grant access to helpers, stations, planning data, or administration.
+app.get('/api/public/helpers/:token', (req, res) => {
+  const result = dbService.getPublicHelper(req.params.token);
+  if (!result) return res.status(404).json({ error: 'Dieser Helfer-Link ist nicht mehr gültig.' });
+  res.json({
+    name: result.name,
+    sections: result.sections.map(section => ({
+      ...section,
+      geojson: typeof section.geojson === 'string' ? JSON.parse(section.geojson) : section.geojson
+    }))
+  });
+});
+
 app.use('/api', (req, res, next) => {
   if (!AUTH_REQUIRED) {
     (req as AuthenticatedRequest).authUser = { id: 'local', email: 'lokal', display_name: 'Lokaler Zugriff', role: 'admin' };
