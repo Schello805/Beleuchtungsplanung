@@ -16,8 +16,8 @@ import {
   HelpCircle,
   RefreshCw
 } from 'lucide-react';
-import type { Section, Helper } from '../utils/api';
-import { parsePastedHelperText, parseSheetHelpers } from '../utils/helperImportParser';
+import { api, type Section, type Helper } from '../utils/api';
+import { parseLichternachtStations, parsePastedHelperText, parseSheetHelpers, type ParsedStationItem } from '../utils/helperImportParser';
 
 interface ExcelImportModalProps {
   isOpen: boolean;
@@ -28,7 +28,7 @@ interface ExcelImportModalProps {
   sections: Section[];
   helpers: Helper[];
   onApplyAssignments: (assignments: Array<{ sectionId: string; helperId: string; helperName: string }>) => Promise<void>;
-  onImportHelpers: (helpers: Array<{ name: string; phone?: string; color?: string }>, mode: 'replace' | 'append') => Promise<void>;
+  onImportHelpers: (helpers: Array<{ name: string; phone?: string; color?: string }>, mode: 'replace' | 'append' | 'sync') => Promise<void>;
   onRefreshData?: () => Promise<void>;
   onDeleteAllHelpers?: () => Promise<void>;
 }
@@ -71,8 +71,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
   const [availableSheets, setAvailableSheets] = useState<string[]>([]);
   const [workbook, setWorkbook] = useState<XLSX.WorkBook | null>(null);
 
-  // Helper import mode: DEFAULT IS 'replace' so user can overwrite placeholders!
-  const [helperImportMode, setHelperImportMode] = useState<'replace' | 'append'>('replace');
+  const [helperImportMode, setHelperImportMode] = useState<'replace' | 'append' | 'sync'>('sync');
 
   // Schedule import options
   const [sectionMatches, setSectionMatches] = useState<ParsedSectionMatch[]>([]);
@@ -82,6 +81,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
 
   // Pure helpers list from file
   const [fileHelpers, setFileHelpers] = useState<Array<{ name: string; phone: string }>>([]);
+  const [stationRows, setStationRows] = useState<ParsedStationItem[]>([]);
 
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -106,6 +106,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
       setActiveSheetName('');
       setSectionMatches([]);
       setFileHelpers([]);
+      setStationRows([]);
       setErrorMessage(null);
       return;
     }
@@ -164,6 +165,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
       // Always parse pure helpers from sheet
       const parsedH = parseSheetHelpers(rawRows);
       setFileHelpers(parsedH);
+      setStationRows(parseLichternachtStations(rawRows));
 
       // Also parse schedule matches
       let headerRowIdx = -1;
@@ -301,12 +303,30 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
 
       const modeText = helperImportMode === 'replace'
         ? `Die alte Helferliste wurde komplett überschrieben.`
+        : helperImportMode === 'sync'
+        ? `Die Helferliste wurde mit den neuen Namen abgeglichen.`
         : `Die Helfer wurden hinzugefügt.`;
 
       alert(`✅ Erfolgreich ${currentHelpersToImport.length} Helfer importiert!\n\n${modeText}`);
       onClose();
     } catch (err: any) {
       setErrorMessage(`Import fehlgeschlagen: ${err.message}`);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  const handleExecuteStationImport = async () => {
+    if (!stationRows.length) return;
+    setIsProcessing(true);
+    setErrorMessage(null);
+    try {
+      const result = await api.importStations(stationRows);
+      await onRefreshData?.();
+      alert(`✅ ${result.imported} Lichternacht-Stationen übernommen.\n${result.created} neu, ${result.updated} aktualisiert.\n\nBestehende Abschnittszuweisungen bleiben unverändert.`);
+      onClose();
+    } catch (err: any) {
+      setErrorMessage(`Stationsimport fehlgeschlagen: ${err.message}`);
     } finally {
       setIsProcessing(false);
     }
@@ -329,8 +349,14 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
       }
 
       // 3. Refresh helpers
+      let currentHelpers = [...helpers];
       if (onRefreshData) {
         await onRefreshData();
+        try {
+          currentHelpers = await api.getHelpers();
+        } catch (e) {
+          console.warn("Could not fetch updated helpers", e);
+        }
       }
 
       // 4. Apply assignments
@@ -341,7 +367,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
           if (!m.matchedSection) return;
 
           if (m.excelHelperName) {
-            const existing = helpers.find(h => h.name.toLowerCase() === m.excelHelperName.toLowerCase());
+            const existing = currentHelpers.find(h => h.name.toLowerCase() === m.excelHelperName.toLowerCase());
             const helperId = existing ? existing.id : `h-gen-${m.excelHelperName.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
 
             assignments.push({
@@ -727,6 +753,14 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
               )}
 
               {/* RECOGNITION STATUS & IMPORT MODE */}
+              {helperInputMethod === 'file' && stationRows.length > 0 && (
+                <div style={{ background: 'rgba(56, 189, 248, 0.12)', border: '1.5px solid rgba(56, 189, 248, 0.55)', padding: '14px 16px', borderRadius: 'var(--radius-md)', marginBottom: 16 }}>
+                  <div style={{ fontWeight: 800, fontSize: 14, color: '#38BDF8' }}>📍 Lichternacht-Stationen erkannt: {stationRows.length}</div>
+                  <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 5, lineHeight: 1.4 }}>
+                    IDs, Namen, Adressen und Kartenpositionen werden sicher übernommen. Bereits manuell vergebene Straßenabschnitte bleiben dabei unverändert.
+                  </div>
+                </div>
+              )}
               <div
                 style={{
                   background: currentHelpersToImport.length > 0 ? 'rgba(16, 185, 129, 0.12)' : 'var(--bg-card)',
@@ -772,13 +806,30 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                     />
                     <div>
                       <div style={{ fontSize: 13, fontWeight: 800, color: '#10B981' }}>
-                        Bestehende Helferliste komplett überschreiben (Empfohlen)
+                        Bestehende Helferliste komplett überschreiben
                       </div>
                       <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2, lineHeight: 1.3 }}>
                         Löscht alle bisherigen <strong>{helpers.length} Platzhalter ('Helfer 01' bis ...)</strong> und trägt deine <strong>{currentHelpersToImport.length} neuen Helfer</strong> ein. Zuweisungen werden zurückgesetzt.
                       </div>
                     </div>
                   </label>
+                  {helperImportMode === 'replace' && (
+                    <div style={{
+                      marginTop: 4,
+                      padding: '8px 12px',
+                      background: 'rgba(239, 68, 68, 0.15)',
+                      border: '1px solid rgba(239, 68, 68, 0.5)',
+                      borderRadius: 6,
+                      color: '#EF4444',
+                      fontSize: 11,
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8
+                    }}>
+                      <AlertCircle size={16} style={{ flexShrink: 0 }} />
+                      <span><strong>Achtung:</strong> Dieser Vorgang kann nicht rückgängig gemacht werden. Alle bestehenden Zuweisungen von Helfern zu Abschnitten gehen verloren! (Ein automatisches Backup wird erstellt).</span>
+                    </div>
+                  )}
 
                   <label
                     style={{
@@ -805,6 +856,35 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                       </div>
                       <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2, lineHeight: 1.3 }}>
                         Behält die {helpers.length} vorhandenen Helfer bei und fügt die {currentHelpersToImport.length} neuen Personen hinzu.
+                      </div>
+                    </div>
+                  </label>
+
+                  <label
+                    style={{
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: 10,
+                      padding: '10px 12px',
+                      borderRadius: 6,
+                      background: helperImportMode === 'sync' ? 'rgba(139, 92, 246, 0.15)' : 'rgba(0,0,0,0.1)',
+                      border: helperImportMode === 'sync' ? '1.5px solid #8B5CF6' : '1px solid transparent',
+                      cursor: 'pointer'
+                    }}
+                  >
+                    <input
+                      type="radio"
+                      name="helperImportMode"
+                      checked={helperImportMode === 'sync'}
+                      onChange={() => setHelperImportMode('sync')}
+                      style={{ accentColor: '#8B5CF6', marginTop: 2 }}
+                    />
+                    <div>
+                      <div style={{ fontSize: 13, fontWeight: 800, color: '#8B5CF6' }}>
+                        Intelligenter Abgleich (Empfohlen)
+                      </div>
+                      <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2, lineHeight: 1.3 }}>
+                        Behält bestehende Helfer mit gleichem Namen (und ihre Zuweisungen) und fügt neue Personen hinzu. Helfer, die in der neuen Liste fehlen, werden entfernt.
                       </div>
                     </div>
                   </label>
@@ -996,15 +1076,34 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                       </label>
 
                       {onDeleteAllHelpers && (
-                        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#EF4444', cursor: 'pointer' }}>
-                          <input
-                            type="checkbox"
-                            checked={wipeHelpersBeforeSchedule}
-                            onChange={e => setWipeHelpersBeforeSchedule(e.target.checked)}
-                            style={{ accentColor: '#EF4444' }}
-                          />
-                          <span><b>Bestehende {helpers.length} Helfer vorher komplett leeren</b> (überschreibt alte Platzhalter 'Helfer 01' etc.)</span>
-                        </label>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                          <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#EF4444', cursor: 'pointer' }}>
+                            <input
+                              type="checkbox"
+                              checked={wipeHelpersBeforeSchedule}
+                              onChange={e => setWipeHelpersBeforeSchedule(e.target.checked)}
+                              style={{ accentColor: '#EF4444' }}
+                            />
+                            <span><b>Bestehende {helpers.length} Helfer vorher komplett leeren</b> (überschreibt alte Platzhalter 'Helfer 01' etc.)</span>
+                          </label>
+                          {wipeHelpersBeforeSchedule && (
+                            <div style={{
+                              marginLeft: 22,
+                              padding: '8px 10px',
+                              background: 'rgba(239, 68, 68, 0.15)',
+                              border: '1px solid rgba(239, 68, 68, 0.5)',
+                              borderRadius: 6,
+                              color: '#EF4444',
+                              fontSize: 11,
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 8
+                            }}>
+                              <AlertCircle size={14} style={{ flexShrink: 0 }} />
+                              <span><strong>Achtung:</strong> Unwiderruflich! Aktuelle Abschnitts-Zuweisungen im System werden dabei gelöscht (Ein automatisches Backup wird erstellt).</span>
+                            </div>
+                          )}
+                        </div>
                       )}
                     </div>
                   </div>
@@ -1089,31 +1188,35 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
           {activeMainTab === 'helpers' ? (
             <button
               type="button"
-              onClick={handleExecuteHelperImport}
-              disabled={isProcessing || currentHelpersToImport.length === 0}
+              onClick={stationRows.length > 0 && helperInputMethod === 'file' ? handleExecuteStationImport : handleExecuteHelperImport}
+              disabled={isProcessing || (stationRows.length === 0 && currentHelpersToImport.length === 0)}
               style={{
                 padding: '9px 22px',
                 borderRadius: 'var(--radius-sm)',
                 border: 'none',
-                background: currentHelpersToImport.length === 0
+                background: stationRows.length === 0 && currentHelpersToImport.length === 0
                   ? 'var(--bg-secondary)'
                   : 'linear-gradient(135deg, #10B981, #059669)',
                 color: '#FFFFFF',
                 fontSize: 13,
                 fontWeight: 800,
-                cursor: currentHelpersToImport.length === 0 || isProcessing ? 'not-allowed' : 'pointer',
+                cursor: (stationRows.length === 0 && currentHelpersToImport.length === 0) || isProcessing ? 'not-allowed' : 'pointer',
                 display: 'flex',
                 alignItems: 'center',
                 gap: 8,
-                boxShadow: currentHelpersToImport.length > 0 ? '0 0 16px rgba(16, 185, 129, 0.4)' : 'none',
+                boxShadow: (stationRows.length > 0 || currentHelpersToImport.length > 0) ? '0 0 16px rgba(16, 185, 129, 0.4)' : 'none',
                 opacity: isProcessing ? 0.7 : 1
               }}
             >
               <Sparkles size={16} />
               {isProcessing
                 ? 'Wird importiert...'
+                : stationRows.length > 0 && helperInputMethod === 'file'
+                ? `📍 ${stationRows.length} Stationen übernehmen`
                 : helperImportMode === 'replace'
                 ? `⚡ Helferliste jetzt überschreiben (${currentHelpersToImport.length} Personen)`
+                : helperImportMode === 'sync'
+                ? `⚡ Helferliste jetzt abgleichen (${currentHelpersToImport.length} Personen)`
                 : `⚡ ${currentHelpersToImport.length} Helfer jetzt hinzufügen`}
             </button>
           ) : (

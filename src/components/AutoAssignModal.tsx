@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { X, Zap, Users, Check, ArrowRight, Sparkles, RefreshCw, Layers } from 'lucide-react';
 import type { Section, Helper } from '../utils/api';
-import { calculateFairAssignment } from '../utils/fairness';
+import { calculateFairAssignment, calculateNearbyFairAssignment } from '../utils/fairness';
 
 interface AutoAssignModalProps {
   isOpen: boolean;
@@ -21,7 +21,7 @@ export const AutoAssignModal: React.FC<AutoAssignModalProps> = ({
   if (!isOpen) return null;
 
   const [mode, setMode] = useState<'unassigned_only' | 'all'>('unassigned_only');
-  const [strategy, setStrategy] = useState<'zip' | 'fair'>('zip');
+  const [strategy, setStrategy] = useState<'zip' | 'fair' | 'nearby'>('nearby');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
   // Compute unassigned sections and free helpers
@@ -50,6 +50,9 @@ export const AutoAssignModal: React.FC<AutoAssignModalProps> = ({
     if (strategy === 'fair') {
       const res = calculateFairAssignment(targetSections, targetHelpers);
       return res.assignments;
+    }
+    if (strategy === 'nearby') {
+      return calculateNearbyFairAssignment(targetSections, targetHelpers).assignments;
     }
 
     // Zip (Reißverschluss) strategy: sort sections logically along streets, then assign sequentially
@@ -83,6 +86,8 @@ export const AutoAssignModal: React.FC<AutoAssignModalProps> = ({
   // Summary stats
   const totalMeters = targetSections.reduce((sum, s) => sum + (s.length_meters || s.lengthMeters || 0), 0);
   const avgMetersPerHelper = targetHelpers.length > 0 ? Math.round(totalMeters / Math.min(targetSections.length, targetHelpers.length)) : 0;
+  const largestSectionMeters = Math.max(0, ...targetSections.map(s => s.length_meters || s.lengthMeters || 0));
+  const needsFairRechunking = strategy === 'nearby' && targetHelpers.length > 0 && largestSectionMeters > (totalMeters / targetHelpers.length) * 1.6;
 
   const handleExecute = async () => {
     if (previewAssignments.length === 0) return;
@@ -247,6 +252,22 @@ export const AutoAssignModal: React.FC<AutoAssignModalProps> = ({
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
               <button
                 type="button"
+                onClick={() => setStrategy('nearby')}
+                style={{
+                  padding: '10px 12px', borderRadius: 'var(--radius-sm)',
+                  border: strategy === 'nearby' ? '2px solid #10B981' : '1px solid var(--border-subtle)',
+                  background: strategy === 'nearby' ? 'rgba(16, 185, 129, 0.12)' : 'var(--bg-card)',
+                  color: strategy === 'nearby' ? '#10B981' : 'var(--text-main)', fontWeight: 700,
+                  fontSize: 12, textAlign: 'left', cursor: 'pointer'
+                }}
+              >
+                <div>📌 Nähe + faire Meter</div>
+                <div style={{ fontSize: 11, fontWeight: 400, color: 'var(--text-muted)', marginTop: 2 }}>
+                  Bevorzugt Abschnitte nahe der importierten Station
+                </div>
+              </button>
+              <button
+                type="button"
                 onClick={() => setMode('unassigned_only')}
                 style={{
                   padding: '10px 12px',
@@ -310,7 +331,7 @@ export const AutoAssignModal: React.FC<AutoAssignModalProps> = ({
                   cursor: 'pointer'
                 }}
               >
-                <div>📍 Reißverschluss (Empfohlen)</div>
+                <div>📍 Reißverschluss</div>
                 <div style={{ fontSize: 11, fontWeight: 400, color: 'var(--text-muted)', marginTop: 2 }}>
                   Entlang der Straße nacheinander vergeben (Nachbarn stehen nebeneinander)
                 </div>
@@ -340,6 +361,11 @@ export const AutoAssignModal: React.FC<AutoAssignModalProps> = ({
           </div>
 
           {/* LIVE PREVIEW LIST */}
+          {needsFairRechunking && (
+            <div style={{ marginBottom: 14, padding: '10px 12px', borderRadius: 'var(--radius-sm)', background: 'rgba(239, 68, 68, .12)', border: '1px solid rgba(239, 68, 68, .45)', color: 'var(--text-main)', fontSize: 12, lineHeight: 1.4 }}>
+              <b style={{ color: '#EF4444' }}>Noch nicht fair teilbar:</b> Der längste Abschnitt hat {largestSectionMeters} m, der Zielwert liegt bei etwa {Math.round(totalMeters / targetHelpers.length)} m. Teile die Strecken zuerst unter <b>Kontrolle → „Für faire ~40-m-Abschnitte neu zuschneiden“</b> auf.
+            </div>
+          )}
           <div>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
               <span style={{ fontSize: 11, fontWeight: 700, color: 'var(--text-muted)', textTransform: 'uppercase' }}>
@@ -436,7 +462,7 @@ export const AutoAssignModal: React.FC<AutoAssignModalProps> = ({
           <button
             type="button"
             onClick={handleExecute}
-            disabled={isSubmitting || previewAssignments.length === 0}
+            disabled={isSubmitting || previewAssignments.length === 0 || needsFairRechunking}
             style={{
               padding: '9px 20px',
               borderRadius: 'var(--radius-sm)',
@@ -445,7 +471,7 @@ export const AutoAssignModal: React.FC<AutoAssignModalProps> = ({
               color: previewAssignments.length === 0 ? 'var(--text-muted)' : '#0F172A',
               fontSize: 13,
               fontWeight: 800,
-              cursor: previewAssignments.length === 0 || isSubmitting ? 'not-allowed' : 'pointer',
+              cursor: previewAssignments.length === 0 || isSubmitting || needsFairRechunking ? 'not-allowed' : 'pointer',
               display: 'flex',
               alignItems: 'center',
               gap: 8,

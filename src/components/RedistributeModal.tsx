@@ -1,7 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { X, Users, Scissors, Sparkles, Check, ArrowRight, ShieldCheck, HelpCircle } from 'lucide-react';
 import { type Section, type Helper } from '../utils/api';
-import { redistributeSectionsToTargetCount, rechunkSectionsByTargetLength } from '../utils/geo';
+import { createFairWorkPackages, redistributeSectionsToTargetCount, rechunkSectionsByTargetLength } from '../utils/geo';
+import { calculateNearbyFairAssignment } from '../utils/fairness';
 
 interface RedistributeModalProps {
   isOpen: boolean;
@@ -24,7 +25,7 @@ export const RedistributeModal: React.FC<RedistributeModalProps> = ({
     return sections.reduce((sum, s) => sum + (s.length_meters || s.lengthMeters || 0), 0);
   }, [sections]);
 
-  const defaultTarget = Math.max(sections.length, helpers.length > 0 ? helpers.length : 35);
+  const defaultTarget = helpers.length > 0 ? helpers.length : 35;
   const [targetCount, setTargetCount] = useState<number>(defaultTarget);
   const [mode, setMode] = useState<'by_count' | 'by_length'>('by_count');
   const [targetChunkLength, setTargetChunkLength] = useState<number>(40);
@@ -33,17 +34,19 @@ export const RedistributeModal: React.FC<RedistributeModalProps> = ({
 
   // Live calculation preview
   const previewResult = useMemo(() => {
-    if (mode === 'by_count') {
-      return redistributeSectionsToTargetCount(sections, targetCount, {
-        autoAssignHelpers: autoAssign,
-        helpers
-      });
-    } else {
-      return rechunkSectionsByTargetLength(sections, targetChunkLength, Math.max(15, Math.round(targetChunkLength / 2)), {
-        autoAssignHelpers: autoAssign,
-        helpers
-      });
-    }
+    const rechunked = mode === 'by_count'
+      ? createFairWorkPackages(sections, targetCount)
+      : rechunkSectionsByTargetLength(sections, targetChunkLength, 40);
+    if (!autoAssign) return rechunked;
+
+    const assignments = calculateNearbyFairAssignment(rechunked, helpers).assignments;
+    const assignmentBySection = new Map(assignments.map(item => [item.sectionId, item]));
+    return rechunked.map(section => {
+      const assignment = assignmentBySection.get(section.id);
+      return assignment
+        ? { ...section, assigned_helper_id: assignment.helperId, assigned_helper_name: assignment.helperName }
+        : { ...section, assigned_helper_id: null, assigned_helper_name: null };
+    });
   }, [sections, mode, targetCount, targetChunkLength, autoAssign, helpers]);
 
   const previewCount = previewResult.length;
@@ -228,7 +231,7 @@ export const RedistributeModal: React.FC<RedistributeModalProps> = ({
               </div>
               <input
                 type="range"
-                min={sections.length}
+                min={Math.min(sections.length, helpers.length || sections.length)}
                 max={Math.max(60, helpers.length + 15)}
                 value={targetCount}
                 onChange={e => setTargetCount(parseInt(e.target.value, 10))}
@@ -256,7 +259,7 @@ export const RedistributeModal: React.FC<RedistributeModalProps> = ({
                 ))}
               </div>
               <div style={{ fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.4 }}>
-                💡 <b>Fairness-Methode:</b> Teilt schrittweise immer die längsten Strecken in 2 Hälften. Kurze Gassen von z. B. 30 m bleiben intakt, während lange 80–120 m Stücke auf handliche ~40 m verkleinert werden.
+                💡 <b>Fairness-Methode:</b> Erstellt pro Helfer ein Arbeits­paket. Kurze Teilstücke werden kombiniert und lange Wege geteilt; jedes Paket bleibt zwischen 40 und 110 m.
               </div>
             </div>
           ) : (
@@ -279,15 +282,15 @@ export const RedistributeModal: React.FC<RedistributeModalProps> = ({
               </div>
               <input
                 type="range"
-                min={25}
-                max={80}
+                min={40}
+                max={70}
                 step={5}
                 value={targetChunkLength}
                 onChange={e => setTargetChunkLength(parseInt(e.target.value, 10))}
                 style={{ width: '100%', accentColor: '#F59E0B', cursor: 'pointer' }}
               />
               <div style={{ display: 'flex', gap: 6 }}>
-                {[30, 40, 50, 60].map(m => (
+                {[40, 50, 60, 70].map(m => (
                   <button
                     key={m}
                     type="button"
@@ -308,7 +311,7 @@ export const RedistributeModal: React.FC<RedistributeModalProps> = ({
                 ))}
               </div>
               <div style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-                Zerschneidet alle existierenden Strecken mit einer Maximallänge von {targetChunkLength} m.
+                Jeder Linienabschnitt wird mindestens 40 m und höchstens 110 m lang. Ein kleiner Rest wird an das vorherige Stück angehängt.
               </div>
             </div>
           )}
@@ -366,7 +369,7 @@ export const RedistributeModal: React.FC<RedistributeModalProps> = ({
               style={{ width: 16, height: 16, accentColor: '#10B981', cursor: 'pointer' }}
             />
             <span style={{ fontSize: 12, color: 'var(--text-main)', fontWeight: 500 }}>
-              <b>Helfer direkt 1:1 automatisch zuweisen</b> (verteilt Helfer 01 bis {helpers.length} direkt auf die neuen Stücke)
+              <b>Direkt nahe & fair zuweisen</b> (berücksichtigt Stationsposition und eine möglichst gleiche Meterlast)
             </span>
           </label>
 

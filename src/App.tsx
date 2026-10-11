@@ -1,14 +1,15 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, Suspense, lazy } from 'react';
 import { Sidebar } from './components/Sidebar';
-import { MapComponent } from './components/MapComponent';
 import { CapturePanel } from './components/CapturePanel';
-import { PrintView } from './components/PrintView';
 import { RedistributeModal } from './components/RedistributeModal';
 import { AutoAssignModal } from './components/AutoAssignModal';
-import { ExcelImportModal } from './components/ExcelImportModal';
+
+const MapComponent = lazy(() => import('./components/MapComponent').then(module => ({ default: module.MapComponent })));
+const PrintView = lazy(() => import('./components/PrintView').then(module => ({ default: module.PrintView })));
+const ExcelImportModal = lazy(() => import('./components/ExcelImportModal').then(module => ({ default: module.ExcelImportModal })));
 import { api, type Section, type Helper, type Street } from './utils/api';
 import { splitSectionInHalf, type GeneratedSection } from './utils/geo';
-import { Database, Wifi, Check, Copy, AlertCircle, X } from 'lucide-react';
+import { Database, Wifi, Check, Copy, AlertCircle, X, Undo2 } from 'lucide-react';
 
 export const App: React.FC = () => {
   const [sections, setSections] = useState<Section[]>([]);
@@ -35,6 +36,7 @@ export const App: React.FC = () => {
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
   const [mapTileTheme, setMapTileTheme] = useState<string>('dark');
   const [mapboxToken, setMapboxToken] = useState<string>('');
+  const [publicBaseUrl, setPublicBaseUrl] = useState<string>('');
   const [isPrintOpen, setIsPrintOpen] = useState<boolean>(false);
   const [isRedistributeOpen, setIsRedistributeOpen] = useState<boolean>(false);
   const [isAutoAssignOpen, setIsAutoAssignOpen] = useState<boolean>(false);
@@ -62,6 +64,11 @@ export const App: React.FC = () => {
     await api.setSetting('mapbox_token', token);
   };
 
+  const handleSavePublicBaseUrl = async (value: string) => {
+    setPublicBaseUrl(value);
+    await api.setSetting('public_base_url', value);
+  };
+
   const handleMapTileThemeChange = async (newTileTheme: string) => {
     setMapTileTheme(newTileTheme);
     await api.setSetting('map_tile_theme', newTileTheme);
@@ -83,6 +90,7 @@ export const App: React.FC = () => {
   } | null>(null);
   const [migrationNotice, setMigrationNotice] = useState<string | null>(null);
   const [copiedUrl, setCopiedUrl] = useState<boolean>(false);
+  const [lastAutomaticAssignments, setLastAutomaticAssignments] = useState<Array<{ sectionId: string; helperId: string; helperName: string }> | null>(null);
 
   // Apply theme to document
   useEffect(() => {
@@ -132,6 +140,9 @@ export const App: React.FC = () => {
       if (settings.mapbox_token !== undefined) {
         setMapboxToken(settings.mapbox_token);
       }
+      if (settings.public_base_url !== undefined) {
+        setPublicBaseUrl(settings.public_base_url);
+      }
       if (settings.map_tile_theme) {
         setMapTileTheme(settings.map_tile_theme);
       }
@@ -153,25 +164,18 @@ export const App: React.FC = () => {
     loadData();
   }, [loadData]);
 
-  // Automatic multi-PC synchronization: Poll every 4 seconds and refresh on window focus
+  // Refresh after returning to the planner. A short polling loop used to replace
+  // all map layers every few seconds, even when no planning data had changed.
   useEffect(() => {
     const handleFocus = () => {
       loadData();
     };
     window.addEventListener('focus', handleFocus);
 
-    const interval = setInterval(() => {
-      // Only sync in background when user is not currently clicking/capturing a segment
-      if (captureMode === 'none' && previewSections.length === 0) {
-        loadData();
-      }
-    }, 4000);
-
     return () => {
       window.removeEventListener('focus', handleFocus);
-      clearInterval(interval);
     };
-  }, [loadData, captureMode, previewSections.length]);
+  }, [loadData]);
 
   // Map Click Handler for interactive capture
   const handleMapClick = (lat: number, lon: number) => {
@@ -317,6 +321,8 @@ export const App: React.FC = () => {
     helperId: string | null,
     helperName: string | null
   ) => {
+    // A later manual change must never be overwritten by an old auto-plan undo.
+    setLastAutomaticAssignments(null);
     // Optimistic UI update
     setSections(prev =>
       prev.map(s =>
@@ -404,7 +410,7 @@ export const App: React.FC = () => {
     }
   };
 
-  const handleImportHelpers = async (helperList: Array<{ name: string; phone?: string; color?: string }>, mode: 'replace' | 'append') => {
+  const handleImportHelpers = async (helperList: Array<{ name: string; phone?: string; color?: string }>, mode: 'replace' | 'append' | 'sync') => {
     try {
       const count = await api.importHelpers(helperList, mode);
       await loadData();
@@ -493,6 +499,25 @@ export const App: React.FC = () => {
       console.error('Batch assign error:', err);
       loadData();
     }
+  };
+
+  const handleAutomaticAssign = async (assignments: Array<{ sectionId: string; helperId: string; helperName: string }>) => {
+    const previous = assignments.map(assignment => {
+      const section = sections.find(item => item.id === assignment.sectionId);
+      return {
+        sectionId: assignment.sectionId,
+        helperId: section?.assigned_helper_id || '',
+        helperName: section?.assigned_helper_name || ''
+      };
+    });
+    await handleBatchAssign(assignments);
+    setLastAutomaticAssignments(previous);
+  };
+
+  const handleUndoAutomaticAssign = async () => {
+    if (!lastAutomaticAssignments) return;
+    await handleBatchAssign(lastAutomaticAssignments);
+    setLastAutomaticAssignments(null);
   };
 
   return (
@@ -607,6 +632,16 @@ export const App: React.FC = () => {
 
           <div style={{ width: 1, height: 16, background: 'var(--border-subtle)', margin: '0 4px' }} />
 
+          {lastAutomaticAssignments && (
+            <button
+              onClick={handleUndoAutomaticAssign}
+              title="Letzte automatische Zuweisung zurücksetzen"
+              style={{ border: '1px solid #F59E0B', background: 'rgba(245, 158, 11, 0.12)', color: 'var(--accent-gold)', borderRadius: 5, padding: '3px 7px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 700 }}
+            >
+              <Undo2 size={13} /> Auto-Zuweisung rückgängig
+            </button>
+          )}
+
           {/* Network URL for multi-PC access */}
           {dbStatus?.networkIps && dbStatus.networkIps.length > 0 && (
             <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -676,41 +711,47 @@ export const App: React.FC = () => {
         )}
 
         {/* Interactive Map */}
-        <MapComponent
-          sections={sections}
-          previewSections={previewSections}
-          helpers={helpers}
-          selectedSectionId={selectedSectionId}
-          onSelectSection={setSelectedSectionId}
-          onUpdateSectionHelper={handleUpdateSectionHelper}
-          onDeleteSection={handleDeleteSection}
-          activeStampHelperId={activeStampHelperId}
-          onSelectStampHelper={setActiveStampHelperId}
-          autoAdvanceStamp={autoAdvanceStamp}
-          onToggleAutoAdvanceStamp={setAutoAdvanceStamp}
-          onOpenAutoAssign={() => setIsAutoAssignOpen(true)}
-          onRemovePreviewSection={handleRemovePreviewSection}
-          focusedPreviewId={focusedPreviewId}
-          onFocusPreviewSection={setFocusedPreviewId}
-          captureMode={captureMode}
-          segmentPoints={segmentPoints}
-          onMapClick={handleMapClick}
-          mapTileTheme={mapTileTheme}
-          onMapTileThemeChange={handleMapTileThemeChange}
-          mapboxToken={mapboxToken}
-          onSaveMapboxToken={handleSaveMapboxToken}
-        />
+        <Suspense fallback={<div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: 'var(--text-muted)' }}>Karte wird geladen...</div>}>
+          <MapComponent
+            sections={sections}
+            previewSections={previewSections}
+            helpers={helpers}
+            selectedSectionId={selectedSectionId}
+            onSelectSection={setSelectedSectionId}
+            onUpdateSectionHelper={handleUpdateSectionHelper}
+            onDeleteSection={handleDeleteSection}
+            activeStampHelperId={activeStampHelperId}
+            onSelectStampHelper={setActiveStampHelperId}
+            autoAdvanceStamp={autoAdvanceStamp}
+            onToggleAutoAdvanceStamp={setAutoAdvanceStamp}
+            onOpenAutoAssign={() => setIsAutoAssignOpen(true)}
+            onRemovePreviewSection={handleRemovePreviewSection}
+            focusedPreviewId={focusedPreviewId}
+            onFocusPreviewSection={setFocusedPreviewId}
+            captureMode={captureMode}
+            segmentPoints={segmentPoints}
+            onMapClick={handleMapClick}
+            mapTileTheme={mapTileTheme}
+            onMapTileThemeChange={handleMapTileThemeChange}
+            mapboxToken={mapboxToken}
+            onSaveMapboxToken={handleSaveMapboxToken}
+          />
+        </Suspense>
       </main>
 
       {/* PRINT VIEW MODAL OVERLAY */}
       {isPrintOpen && (
-        <PrintView
-          sections={sections}
-          helpers={helpers}
-          candleSpacing={candleSpacing}
-          candleBuffer={candleBuffer}
-          onClose={() => setIsPrintOpen(false)}
-        />
+        <Suspense fallback={null}>
+          <PrintView
+            sections={sections}
+            helpers={helpers}
+            candleSpacing={candleSpacing}
+            candleBuffer={candleBuffer}
+            publicBaseUrl={publicBaseUrl}
+            onSavePublicBaseUrl={handleSavePublicBaseUrl}
+            onClose={() => setIsPrintOpen(false)}
+          />
+        </Suspense>
       )}
 
       {/* FAIR REDISTRIBUTION MODAL */}
@@ -728,22 +769,24 @@ export const App: React.FC = () => {
         onClose={() => setIsAutoAssignOpen(false)}
         sections={sections}
         helpers={helpers}
-        onApply={handleBatchAssign}
+        onApply={handleAutomaticAssign}
       />
 
       {/* UNIVERSAL EXCEL IMPORT MODAL */}
-      <ExcelImportModal
-        isOpen={isExcelImportOpen}
-        onClose={() => setIsExcelImportOpen(false)}
-        initialTab={excelImportInitialTab}
-        initialInputMethod={excelImportInputMethod}
-        sections={sections}
-        helpers={helpers}
-        onApplyAssignments={handleBatchAssign}
-        onImportHelpers={handleImportHelpers}
-        onRefreshData={loadData}
-        onDeleteAllHelpers={handleDeleteAllHelpers}
-      />
+      <Suspense fallback={null}>
+        <ExcelImportModal
+          isOpen={isExcelImportOpen}
+          onClose={() => setIsExcelImportOpen(false)}
+          initialTab={excelImportInitialTab}
+          initialInputMethod={excelImportInputMethod}
+          sections={sections}
+          helpers={helpers}
+          onApplyAssignments={handleBatchAssign}
+          onImportHelpers={handleImportHelpers}
+          onRefreshData={loadData}
+          onDeleteAllHelpers={handleDeleteAllHelpers}
+        />
+      </Suspense>
     </div>
   );
 };

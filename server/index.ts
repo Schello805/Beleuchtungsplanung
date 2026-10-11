@@ -92,6 +92,17 @@ app.post('/api/helpers/import', (req, res) => {
   }
 });
 
+app.post('/api/helpers/import-stations', (req, res) => {
+  try {
+    const { stations } = req.body;
+    if (!Array.isArray(stations)) return res.status(400).json({ error: 'Ungültige Stationsliste' });
+    const result = dbService.importStations(stations);
+    res.json({ success: true, ...result });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 import os from 'node:os';
 
 function getNetworkAddresses(): string[] {
@@ -377,6 +388,6 @@ if (fs.existsSync(distPath)) {
   });
 }
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Lichternacht Backend Server läuft auf http://0.0.0.0:${PORT} (auf allen PCs im Netzwerk erreichbar)`);
+app.listen(PORT, '127.0.0.1', () => {
+  console.log(`Lichternacht Backend Server läuft lokal auf http://127.0.0.1:${PORT}`);
 });

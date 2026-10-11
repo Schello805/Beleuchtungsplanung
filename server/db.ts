@@ -10,6 +10,36 @@ if (!fs.existsSync(DATA_DIR)) {
 const DB_PATH = path.join(DATA_DIR, 'streckenplaner.sqlite');
 export const db = new DatabaseSync(DB_PATH);
 
+export function createBackup(reason: string) {
+  try {
+    const BACKUP_DIR = path.join(DATA_DIR, 'backups');
+    if (!fs.existsSync(BACKUP_DIR)) {
+      fs.mkdirSync(BACKUP_DIR, { recursive: true });
+    }
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const backupFilename = `streckenplaner_${timestamp}_${reason}.sqlite`;
+    const backupPath = path.join(BACKUP_DIR, backupFilename);
+    
+    if (fs.existsSync(DB_PATH)) {
+      // Create backup
+      fs.copyFileSync(DB_PATH, backupPath);
+      console.log(`[Backup] Automatic backup created: ${backupFilename}`);
+      
+      // Keep only last 20 backups
+      const files = fs.readdirSync(BACKUP_DIR).filter(f => f.endsWith('.sqlite')).sort();
+      if (files.length > 20) {
+        const toDelete = files.slice(0, files.length - 20);
+        for (const f of toDelete) {
+          fs.unlinkSync(path.join(BACKUP_DIR, f));
+        }
+      }
+    }
+  } catch (err) {
+    console.error('[Backup] Failed to create backup:', err);
+  }
+}
+
+
 // Initialize Tables
 db.exec(`
   PRAGMA foreign_keys = ON;
@@ -61,6 +91,19 @@ db.exec(`
   );
 `);
 
+// Kept separate from CREATE TABLE so existing event databases are upgraded in place.
+const helperColumns = db.prepare('PRAGMA table_info(helpers)').all() as Array<{ name: string }>;
+const addHelperColumn = (name: string, definition: string) => {
+  if (!helperColumns.some(column => column.name === name)) {
+    db.exec(`ALTER TABLE helpers ADD COLUMN ${name} ${definition}`);
+  }
+};
+addHelperColumn('source_station_id', 'TEXT');
+addHelperColumn('address', 'TEXT');
+addHelperColumn('latitude', 'REAL');
+addHelperColumn('longitude', 'REAL');
+db.exec('CREATE UNIQUE INDEX IF NOT EXISTS helpers_source_station_id_unique ON helpers(source_station_id) WHERE source_station_id IS NOT NULL');
+
 // Pre-seed 30 initial helper slots if empty so the user immediately has the 30 dropdown choices ready
 const countStmt = db.prepare('SELECT COUNT(*) as count FROM helpers');
 const result = countStmt.get() as { count: number };
@@ -86,6 +129,10 @@ export interface HelperRecord {
   name: string;
   color?: string;
   phone?: string;
+  source_station_id?: string | null;
+  address?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
   created_at: string;
 }
 
@@ -143,6 +190,7 @@ export const dbService = {
   },
 
   deleteAllHelpers(): void {
+    createBackup('before_delete_all_helpers');
     db.exec('BEGIN TRANSACTION');
     try {
       db.prepare('UPDATE sections SET assigned_helper_id = NULL, assigned_helper_name = NULL').run();
@@ -154,7 +202,7 @@ export const dbService = {
     }
   },
 
-  importHelpers(helpersList: Array<{ name: string; phone?: string; color?: string }>, mode: 'replace' | 'append' = 'replace'): number {
+  importHelpers(helpersList: Array<{ name: string; phone?: string; color?: string }>, mode: 'replace' | 'append' | 'sync' = 'replace'): number {
     const colors = [
       '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6',
       '#EC4899', '#14B8A6', '#F97316', '#6366F1', '#84CC16',
@@ -167,8 +215,23 @@ export const dbService = {
     db.exec('BEGIN TRANSACTION');
     try {
       if (mode === 'replace') {
+        createBackup('before_import_helpers_replace');
         db.prepare('UPDATE sections SET assigned_helper_id = NULL, assigned_helper_name = NULL').run();
         db.prepare('DELETE FROM helpers').run();
+      } else if (mode === 'sync') {
+        createBackup('before_import_helpers_sync');
+        const validNames = helpersList.map(h => (h.name || '').trim()).filter(Boolean);
+        if (validNames.length > 0) {
+          const placeholders = validNames.map(() => '?').join(',');
+          const toDelete = db.prepare(`SELECT id FROM helpers WHERE name NOT IN (${placeholders})`).all(...validNames) as {id: string}[];
+          
+          if (toDelete.length > 0) {
+             const delIds = toDelete.map(r => r.id);
+             const idPlaceholders = delIds.map(() => '?').join(',');
+             db.prepare(`UPDATE sections SET assigned_helper_id = NULL, assigned_helper_name = NULL WHERE assigned_helper_id IN (${idPlaceholders})`).run(...delIds);
+             db.prepare(`DELETE FROM helpers WHERE id IN (${idPlaceholders})`).run(...delIds);
+          }
+        }
       }
 
       const insertStmt = db.prepare(`
@@ -191,6 +254,55 @@ export const dbService = {
 
       db.exec('COMMIT');
       return count;
+    } catch (err) {
+      db.exec('ROLLBACK');
+      throw err;
+    }
+  },
+
+  importStations(stations: Array<{ stationId: string; name: string; address?: string; latitude: number; longitude: number }>) {
+    createBackup('before_import_stations');
+    const valid = stations.filter(station =>
+      station.stationId && station.name?.trim() && Number.isFinite(station.latitude) && Number.isFinite(station.longitude) &&
+      station.latitude >= -90 && station.latitude <= 90 && station.longitude >= -180 && station.longitude <= 180 &&
+      !(station.latitude === 0 && station.longitude === 0)
+    );
+    const colors = ['#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899', '#14B8A6', '#F97316'];
+    let created = 0;
+    let updated = 0;
+    db.exec('BEGIN TRANSACTION');
+    try {
+      // The initial empty installation creates numbered placeholders. They are
+      // not real people and would otherwise be counted in addition to every
+      // imported Lichternacht station. Assigned placeholders stay untouched.
+      db.prepare(`DELETE FROM helpers
+        WHERE source_station_id IS NULL
+          AND name GLOB 'Helfer [0-9][0-9]'
+          AND NOT EXISTS (SELECT 1 FROM sections WHERE assigned_helper_id = helpers.id)`).run();
+
+      const byStationId = db.prepare('SELECT id FROM helpers WHERE source_station_id = ?');
+      const byNameWithoutStation = db.prepare('SELECT id FROM helpers WHERE name = ? AND source_station_id IS NULL');
+      const update = db.prepare(`UPDATE helpers
+        SET name = ?, source_station_id = ?, address = ?, latitude = ?, longitude = ? WHERE id = ?`);
+      const insert = db.prepare(`INSERT INTO helpers
+        (id, name, color, phone, source_station_id, address, latitude, longitude, created_at)
+        VALUES (?, ?, ?, '', ?, ?, ?, ?, ?)`);
+
+      valid.forEach((station, index) => {
+        const stationId = String(station.stationId);
+        const existing = (byStationId.get(stationId) || byNameWithoutStation.get(station.name.trim())) as { id: string } | undefined;
+        if (existing) {
+          update.run(station.name.trim(), stationId, station.address?.trim() || '', station.latitude, station.longitude, existing.id);
+          db.prepare('UPDATE sections SET assigned_helper_name = ? WHERE assigned_helper_id = ?').run(station.name.trim(), existing.id);
+          updated++;
+        } else {
+          const id = `station-${stationId}`;
+          insert.run(id, station.name.trim(), colors[index % colors.length], stationId, station.address?.trim() || '', station.latitude, station.longitude, new Date().toISOString());
+          created++;
+        }
+      });
+      db.exec('COMMIT');
+      return { imported: valid.length, created, updated };
     } catch (err) {
       db.exec('ROLLBACK');
       throw err;
@@ -294,6 +406,7 @@ export const dbService = {
   },
 
   replaceAllSections(sections: Omit<SectionRecord, 'created_at'>[]) {
+    createBackup('before_replace_all_sections');
     const createdAt = new Date().toISOString();
     db.exec('BEGIN TRANSACTION');
     try {
@@ -392,6 +505,7 @@ export const dbService = {
   },
 
   importDatabase(data: { helpers?: HelperRecord[]; streets?: StreetRecord[]; sections?: SectionRecord[]; settings?: Record<string, string> }) {
+    createBackup('before_import_database');
     if (data.settings && typeof data.settings === 'object') {
       for (const [k, v] of Object.entries(data.settings)) {
         this.setSetting(k, v);
@@ -482,6 +596,7 @@ export const dbService = {
   },
 
   resetDatabase() {
+    createBackup('before_reset_database');
     db.prepare('DELETE FROM sections').run();
     db.prepare('DELETE FROM streets').run();
     db.prepare('DELETE FROM helpers').run();

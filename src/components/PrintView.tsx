@@ -1,12 +1,14 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Printer, ArrowLeft, FileText, Grid, Phone, Scissors, QrCode, Clock, MapPin, CheckSquare, Sparkles } from 'lucide-react';
-import type { Section, Helper } from '../utils/api';
+import { api, type Section, type Helper } from '../utils/api';
 
 interface PrintViewProps {
   sections: Section[];
   helpers: Helper[];
   candleSpacing?: number;
   candleBuffer?: number;
+  publicBaseUrl?: string;
+  onSavePublicBaseUrl?: (value: string) => Promise<void>;
   onClose: () => void;
 }
 
@@ -15,9 +17,33 @@ export const PrintView: React.FC<PrintViewProps> = ({
   helpers,
   candleSpacing = 2.0,
   candleBuffer = 10,
+  publicBaseUrl = '',
+  onSavePublicBaseUrl,
   onClose
 }) => {
-  const [printLayout, setPrintLayout] = useState<'table' | 'cards' | 'sheets'>('cards');
+  const [printLayout, setPrintLayout] = useState<'table' | 'cards' | 'sheets'>('sheets');
+  const [publicUrlInput, setPublicUrlInput] = useState(publicBaseUrl);
+  const [showDeliveryAdmin, setShowDeliveryAdmin] = useState(false);
+  const [smtp, setSmtp] = useState({ host: '', port: '587', user: '', from: '' });
+  const [smtpSaved, setSmtpSaved] = useState(false);
+
+  useEffect(() => {
+    if (!showDeliveryAdmin) return;
+    api.getSettings().then(settings => setSmtp({
+      host: settings.smtp_host || '', port: settings.smtp_port || '587',
+      user: settings.smtp_user || '', from: settings.smtp_from || ''
+    }));
+  }, [showDeliveryAdmin]);
+
+  const saveDeliverySettings = async () => {
+    await Promise.all([
+      api.setSetting('smtp_host', smtp.host.trim()), api.setSetting('smtp_port', smtp.port.trim()),
+      api.setSetting('smtp_user', smtp.user.trim()), api.setSetting('smtp_from', smtp.from.trim()),
+      onSavePublicBaseUrl?.(publicUrlInput.trim())
+    ]);
+    setSmtpSaved(true);
+    window.setTimeout(() => setSmtpSaved(false), 2200);
+  };
   const [orgaPhone, setOrgaPhone] = useState<string>('09855 / 12345 (Einsatzleitung)');
   const [meetingTime, setMeetingTime] = useState<string>('17:30 Uhr Materialausgabe • 18:15 Uhr Entzünden');
 
@@ -75,6 +101,30 @@ export const PrintView: React.FC<PrintViewProps> = ({
     }
 
     return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent('Bechhofen ' + (firstSec.street_name || 'Marktplatz'))}`;
+  };
+
+  const getFirstCoordinate = (groupSections: Section[]): [number, number] | null => {
+    const geometry = groupSections[0]?.geojson?.geometry;
+    if (!geometry) return null;
+    if (geometry.type === 'LineString') return geometry.coordinates[0] as [number, number];
+    if (geometry.type === 'MultiLineString') return geometry.coordinates[0]?.[0] as [number, number] || null;
+    if (geometry.type === 'Point') return geometry.coordinates as [number, number];
+    return null;
+  };
+
+  const getPublicHelperUrl = (helperId: string) => {
+    const base = (publicBaseUrl || window.location.origin).replace(/\/$/, '');
+    return `${base}/?helfer=${encodeURIComponent(helperId)}`;
+  };
+
+  const getMapImageUrl = (groupSections: Section[]) => {
+    const coordinate = getFirstCoordinate(groupSections);
+    if (!coordinate) return '';
+    const [lon, lat] = coordinate;
+    const zoom = 16;
+    const tileX = Math.floor(((lon + 180) / 360) * (2 ** zoom));
+    const tileY = Math.floor(((1 - Math.asinh(Math.tan(lat * Math.PI / 180)) / Math.PI) / 2) * (2 ** zoom));
+    return `https://tile.openstreetmap.org/${zoom}/${tileX}/${tileY}.png`;
   };
 
   return (
@@ -188,7 +238,7 @@ export const PrintView: React.FC<PrintViewProps> = ({
               }}
             >
               <Grid size={14} />
-              Laufzettel groß (A5)
+              Helfer-Info (A5)
             </button>
 
             <button
@@ -233,7 +283,25 @@ export const PrintView: React.FC<PrintViewProps> = ({
               }}
             />
           </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,0.08)', padding: '4px 8px', borderRadius: 6 }}>
+            <MapPin size={13} color="#38BDF8" />
+            <input
+              type="url"
+              value={publicUrlInput}
+              onChange={e => setPublicUrlInput(e.target.value)}
+              onBlur={() => onSavePublicBaseUrl?.(publicUrlInput.trim())}
+              placeholder="https://plan.lichternacht.de"
+              title="Öffentliche Basis-URL für QR-Codes und spätere E-Mails"
+              style={{ background: 'transparent', border: 'none', color: '#FFFFFF', fontSize: 11, outline: 'none', width: 210 }}
+            />
+          </div>
 
+          <button
+            onClick={() => setShowDeliveryAdmin(value => !value)}
+            style={{ background: 'rgba(56,189,248,.16)', color: '#E0F2FE', border: '1px solid rgba(56,189,248,.45)', padding: '8px 12px', borderRadius: 6, fontWeight: 700, fontSize: 12, cursor: 'pointer' }}
+          >
+            Versand & SMTP
+          </button>
           <button
             onClick={() => window.print()}
             style={{
@@ -257,6 +325,21 @@ export const PrintView: React.FC<PrintViewProps> = ({
         </div>
       </div>
 
+      {showDeliveryAdmin && (
+        <div className="no-print" style={{ maxWidth: 960, margin: '14px auto 0', padding: 16, border: '1px solid #38BDF8', borderRadius: 8, background: '#EFF6FF', color: '#0F172A' }}>
+          <div style={{ fontWeight: 900, fontSize: 14, marginBottom: 8 }}>Versand & öffentliche Links</div>
+          <div style={{ fontSize: 12, color: '#475569', marginBottom: 12 }}>Die Basis-URL landet als lesbare Adresse und QR-Code auf jedem Helferblatt. SMTP wird für den späteren Mailversand vorbereitet.</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 8 }}>
+            {([
+              ['SMTP-Host', 'host', 'mail.example.de'], ['Port', 'port', '587'],
+              ['SMTP-Benutzer', 'user', 'benutzer'], ['Absender', 'from', 'lichternacht@example.de']
+            ] as const).map(([label, key, placeholder]) => <label key={key} style={{ fontSize: 11, fontWeight: 700 }}>{label}<input value={smtp[key]} onChange={e => setSmtp({ ...smtp, [key]: e.target.value })} placeholder={placeholder} style={{ display: 'block', boxSizing: 'border-box', width: '100%', marginTop: 4, padding: '7px 8px', border: '1px solid #93C5FD', borderRadius: 5 }} /></label>)}
+          </div>
+          <div style={{ fontSize: 11, color: '#475569', marginTop: 10 }}>Das SMTP-Passwort wird absichtlich nicht im Frontend gespeichert. Beim Serverbetrieb wird es als Umgebungsvariable <code>SMTP_PASSWORD</code> gesetzt. Der Versand wird verfügbar, sobald E-Mail-Adressen in der Helferliste vorliegen.</div>
+          <button onClick={saveDeliverySettings} style={{ marginTop: 12, background: '#0284C7', color: '#fff', border: 'none', borderRadius: 5, padding: '8px 12px', fontWeight: 800, cursor: 'pointer' }}>{smtpSaved ? 'Gespeichert ✓' : 'Einstellungen speichern'}</button>
+        </div>
+      )}
+
       {/* PRINT CONTENT CONTAINER */}
       <div style={{ maxWidth: 960, margin: '0 auto', padding: '24px 20px' }}>
         {/* DOCUMENT HEADER */}
@@ -270,8 +353,8 @@ export const PrintView: React.FC<PrintViewProps> = ({
                 {printLayout === 'table'
                   ? 'Offizieller Strecken- & Helfer-Einsatzplan'
                   : printLayout === 'cards'
-                  ? 'Helfer-Abreißkarten mit QR-Code & Schnittmarken'
-                  : 'Ausführliche Helfer-Laufzettel zur Materialausgabe'}
+                  ? 'Kompakte Helfer-Informationen mit Karte & QR-Code'
+                  : 'Persönliche Helfer-Informationen (A5)'}
               </div>
             </div>
             <div style={{ textAlign: 'right', fontSize: 12, color: '#64748B' }}>
@@ -392,7 +475,7 @@ export const PrintView: React.FC<PrintViewProps> = ({
         {printLayout === 'cards' && (
           <div>
             <div style={{ fontSize: 12, color: '#64748B', marginBottom: 14 }} className="no-print">
-              💡 <b>Tipp:</b> Diese Kärtchen können ausgedruckt und entlang der gestrichelten Linien ✂️ ausgeschnitten werden. Jeder Helfer erhält seinen persönlichen Zettel mit Handy-QR-Code!
+              💡 <b>Tipp:</b> Kompakte A6-Informationen zum Ausschneiden – mit Karten-Ausschnitt und persönlichem QR-Code.
             </div>
 
             <div
@@ -403,8 +486,9 @@ export const PrintView: React.FC<PrintViewProps> = ({
               }}
             >
               {helperGroups.map(group => {
-                const mapsUrl = getMapsUrlForGroup(group.sections);
-                const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=100x100&margin=2&data=${encodeURIComponent(mapsUrl)}`;
+                const publicUrl = getPublicHelperUrl(group.helper.id);
+                const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=100x100&margin=2&data=${encodeURIComponent(publicUrl)}`;
+                const mapImageUrl = getMapImageUrl(group.sections);
 
                 return (
                   <div
@@ -481,12 +565,13 @@ export const PrintView: React.FC<PrintViewProps> = ({
                               marginTop: 2
                             }}
                           >
-                            🕯️ ~{group.candles} Lichter
+                            Dein Bereich
                           </div>
                         </div>
                       </div>
 
-                      {/* Middle: Sections list + QR Code */}
+                      {/* Map, section and QR information */}
+                      {mapImageUrl && <img src={mapImageUrl} alt={`Kartenausschnitt ${group.helper.name}`} style={{ width: '100%', height: 112, objectFit: 'cover', borderRadius: 6, border: '1px solid #CBD5E1', marginBottom: 8 }} />}
                       <div style={{ display: 'flex', gap: 10, marginBottom: 8 }}>
                         {/* Sections List */}
                         <div style={{ flex: 1, fontSize: 11 }}>
@@ -496,7 +581,6 @@ export const PrintView: React.FC<PrintViewProps> = ({
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                             {group.sections.map(sec => {
                               const sLen = Math.round(sec.length_meters ?? (sec as any).lengthMeters ?? 0);
-                              const sCandles = sec.type === 'point' ? 20 : (sLen > 0 ? Math.max(1, Math.round(sLen / candleSpacing)) : 0);
                               return (
                                 <div
                                   key={sec.id}
@@ -515,7 +599,6 @@ export const PrintView: React.FC<PrintViewProps> = ({
                                   </div>
                                   <div style={{ textAlign: 'right', fontWeight: 700, color: '#475569' }}>
                                     {sLen} m
-                                    <div style={{ color: '#059669', fontSize: 9 }}>~{sCandles} L.</div>
                                   </div>
                                 </div>
                               );
@@ -539,7 +622,7 @@ export const PrintView: React.FC<PrintViewProps> = ({
                         >
                           <img
                             src={qrUrl}
-                            alt="Maps QR-Code"
+                            alt="QR-Code zur Helfer-Information"
                             style={{ width: 72, height: 72, borderRadius: 4 }}
                             onError={(e) => {
                               // If offline, hide broken image
@@ -547,20 +630,16 @@ export const PrintView: React.FC<PrintViewProps> = ({
                             }}
                           />
                           <span style={{ fontSize: 8, fontWeight: 700, color: '#64748B', textAlign: 'center', marginTop: 2 }}>
-                            📱 Handy-Scan für Maps
+                            QR-Code zur Info-Seite
                           </span>
+                          <span style={{ fontSize: 7, color: '#475569', textAlign: 'center', overflowWrap: 'anywhere', lineHeight: 1.1 }}>{publicUrl}</span>
                         </div>
                       </div>
                     </div>
 
-                    {/* Card Footer: Checklist & Contact */}
+                    {/* Card footer: pure information, no confirmation fields */}
                     <div style={{ borderTop: '1px solid #E2E8F0', paddingTop: 6, marginTop: 4, fontSize: 10, color: '#475569' }}>
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 4, marginBottom: 4 }}>
-                        <div><b>[ ] Lichter erhalten:</b> ____ Stk.</div>
-                        <div><b>[ ] Aufgestellt</b></div>
-                        <div><b>[ ] Pünktlich entzündet</b></div>
-                        <div><b>[ ] Reste / Gläser retour</b></div>
-                      </div>
+                      <div style={{ marginBottom: 5 }}><b>Bitte selbst mitbringen:</b> Lichter und benötigtes Material für deinen Bereich.</div>
 
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 9, color: '#64748B', borderTop: '1px dotted #CBD5E1', paddingTop: 4, marginTop: 4 }}>
                         <span>📞 Orga: <b>{orgaPhone || '09855 / 12345'}</b></span>
@@ -579,8 +658,9 @@ export const PrintView: React.FC<PrintViewProps> = ({
           <div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
               {helperGroups.map(group => {
-                const mapsUrl = getMapsUrlForGroup(group.sections);
-                const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=110x110&margin=2&data=${encodeURIComponent(mapsUrl)}`;
+                const publicUrl = getPublicHelperUrl(group.helper.id);
+                const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=130x130&margin=2&data=${encodeURIComponent(publicUrl)}`;
+                const mapImageUrl = getMapImageUrl(group.sections);
 
                 return (
                   <div
@@ -592,13 +672,15 @@ export const PrintView: React.FC<PrintViewProps> = ({
                       padding: 20,
                       background: '#FFFFFF',
                       pageBreakInside: 'avoid',
-                      breakInside: 'avoid'
+                      breakInside: 'avoid',
+                      minHeight: '185mm',
+                      pageBreakAfter: 'always'
                     }}
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '3px solid #0F172A', paddingBottom: 10, marginBottom: 12 }}>
                       <div>
                         <div style={{ fontSize: 12, fontWeight: 800, color: '#D97706', textTransform: 'uppercase' }}>
-                          Lichternacht Bechhofen • Offizieller Einsatzauftrag
+                          Lichternacht Bechhofen • Dein Bereich
                         </div>
                         <div style={{ fontSize: 22, fontWeight: 900, color: '#0F172A' }}>
                           {group.helper.name}
@@ -611,24 +693,35 @@ export const PrintView: React.FC<PrintViewProps> = ({
                           {group.meters} Meter
                         </div>
                         <div style={{ fontSize: 13, fontWeight: 800, color: '#059669', background: '#ECFDF5', padding: '2px 8px', borderRadius: 4, marginTop: 2 }}>
-                          Bedarf: ca. {group.candles} Lichter
+                          Persönliche Helfer-Information
                         </div>
                       </div>
                     </div>
 
-                    {/* Schedule and Instructions */}
+                    {/* Information only – no material issue or confirmation */}
                     <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', padding: 10, borderRadius: 6, marginBottom: 14, fontSize: 11, display: 'flex', justifyContent: 'space-between' }}>
                       <div>
-                        <div style={{ fontWeight: 800, color: '#0F172A', marginBottom: 2 }}>🕒 Zeitplan:</div>
-                        <div>• 17:30 Uhr: Materialausgabe (Kerzen, Becher, Streichhölzer)</div>
-                        <div>• 18:00 Uhr: Lichter entlang des Bordsteins aufstellen (Abstand ~{candleSpacing}m)</div>
-                        <div>• 18:15 Uhr: Pünktliches Entzünden aller Lichter</div>
-                        <div>• 20:30 Uhr: Abbau & Rückgabe der Gläser</div>
+                        <div style={{ fontWeight: 800, color: '#0F172A', marginBottom: 2 }}>🕒 Für die Lichternacht:</div>
+                        <div>• Bitte deinen Bereich rechtzeitig vorbereiten.</div>
+                        <div>• Lichter und benötigtes Material bitte selbst besorgen.</div>
+                        <div>• Den genauen Ablauf stimmt die Orga separat mit dir ab.</div>
                       </div>
                       <div style={{ textAlign: 'right' }}>
                         <div style={{ fontWeight: 800, color: '#0F172A' }}>📞 Einsatzleitung:</div>
                         <div style={{ color: '#D97706', fontWeight: 700 }}>{orgaPhone || '09855 / 12345'}</div>
-                        <div style={{ marginTop: 6, fontSize: 10, color: '#64748B' }}>Bei Regen oder Wind bitte windgeschützt aufstellen!</div>
+                        <div style={{ marginTop: 6, fontSize: 10, color: '#64748B' }}>Bei Fragen bitte bei der Orga melden.</div>
+                      </div>
+                    </div>
+
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 142px', gap: 14, marginBottom: 14, alignItems: 'start' }}>
+                      <div>
+                        <div style={{ fontSize: 12, fontWeight: 800, color: '#0F172A', marginBottom: 6 }}>Kartenausschnitt deines Bereichs</div>
+                        {mapImageUrl ? <img src={mapImageUrl} alt={`Kartenausschnitt ${group.helper.name}`} style={{ width: '100%', height: 175, objectFit: 'cover', borderRadius: 7, border: '1px solid #CBD5E1' }} /> : <div style={{ height: 175, border: '1px solid #CBD5E1', borderRadius: 7, display: 'grid', placeItems: 'center', color: '#64748B' }}>Karte nicht verfügbar</div>}
+                      </div>
+                      <div style={{ border: '1px solid #CBD5E1', borderRadius: 7, padding: 8, textAlign: 'center', background: '#F8FAFC' }}>
+                        <img src={qrUrl} alt="QR-Code zur Helfer-Information" style={{ width: 124, height: 124 }} />
+                        <div style={{ fontSize: 9, fontWeight: 800, marginTop: 4 }}>QR-Code zur Info-Seite</div>
+                        <div style={{ fontSize: 8, color: '#475569', overflowWrap: 'anywhere', marginTop: 4 }}>{publicUrl}</div>
                       </div>
                     </div>
 
@@ -640,7 +733,6 @@ export const PrintView: React.FC<PrintViewProps> = ({
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                         {group.sections.map((sec, sIdx) => {
                           const sLen = Math.round(sec.length_meters ?? (sec as any).lengthMeters ?? 0);
-                          const sCandles = sec.type === 'point' ? 20 : (sLen > 0 ? Math.max(1, Math.round(sLen / candleSpacing)) : 0);
                           return (
                             <div
                               key={sec.id}
@@ -661,7 +753,6 @@ export const PrintView: React.FC<PrintViewProps> = ({
                               </div>
                               <div style={{ textAlign: 'right' }}>
                                 <span style={{ fontWeight: 800, fontSize: 13, color: '#0F172A' }}>{sLen} m</span>
-                                <span style={{ color: '#059669', fontWeight: 700, fontSize: 12, marginLeft: 8 }}>(~{sCandles} Lichter)</span>
                               </div>
                             </div>
                           );
@@ -669,17 +760,8 @@ export const PrintView: React.FC<PrintViewProps> = ({
                       </div>
                     </div>
 
-                    {/* Bottom Check-in & Signature */}
-                    <div style={{ borderTop: '1px solid #CBD5E1', paddingTop: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 11 }}>
-                      <div style={{ display: 'flex', gap: 14 }}>
-                        <span>[ ] Material empfangen</span>
-                        <span>[ ] Vollständig aufgestellt</span>
-                        <span>[ ] Entzündet</span>
-                        <span>[ ] Reste zurückgebracht</span>
-                      </div>
-                      <div style={{ borderBottom: '1px solid #64748B', width: 140, textAlign: 'center', fontSize: 9, color: '#64748B' }}>
-                        Unterschrift Helfer / Ausgabe
-                      </div>
+                    <div style={{ borderTop: '1px solid #CBD5E1', paddingTop: 10, fontSize: 11, color: '#475569' }}>
+                      Diese Information dient nur zur Orientierung. Eine Rückmeldung oder Unterschrift ist nicht erforderlich.
                     </div>
                   </div>
                 );

@@ -326,31 +326,33 @@ export function rechunkSectionsByTargetLength(
   let globalColorIdx = 0;
 
   for (const [stName, secs] of streetGroups.entries()) {
-    // For each section of this street, chunk it if longer than chunkMeters
+    // A street may already have been split into tiny preview fragments. Stitch
+    // connected fragments back together first; otherwise 10 m pieces can never
+    // become a valid 40–110 m work assignment.
     const streetChunks: any[] = [];
 
-    for (const sec of secs) {
-      if (sec.type !== 'line') {
-        streetChunks.push(sec);
-        continue;
-      }
+    const lineSections = secs.filter(sec => sec.type === 'line');
+    const otherSections = secs.filter(sec => sec.type !== 'line');
+    const mergedLines = stitchConnectedLineSections(lineSections);
 
-      const rawGeo = typeof sec.geojson === 'string' ? JSON.parse(sec.geojson) : sec.geojson;
-      const totalKm = turf.length(rawGeo, { units: 'kilometers' });
-      const totalLen = Math.round(totalKm * 1000);
-
+    for (const sec of mergedLines) {
+      const source = sec.source;
+      const rawGeo = sec.geojson;
+      const totalLen = Math.round(turf.length(rawGeo, { units: 'kilometers' }) * 1000);
       if (totalLen <= chunkMeters) {
         streetChunks.push({
-          ...sec,
+          ...source,
           geojson: rawGeo,
           length_meters: totalLen,
-          lengthMeters: totalLen
+          lengthMeters: totalLen,
+          assigned_helper_id: null,
+          assigned_helper_name: null
         });
       } else {
         const subChunks = chunkLineWithFairness(rawGeo, stName, chunkMeters, minMeters, globalColorIdx);
         for (const sub of subChunks) {
           streetChunks.push({
-            ...sec,
+            ...source,
             id: sub.id,
             street_name: stName,
             label: sub.label,
@@ -363,6 +365,12 @@ export function rechunkSectionsByTargetLength(
             assigned_helper_name: null
           });
         }
+      }
+    }
+
+    for (const sec of otherSections) {
+      if (sec.type !== 'line') {
+        streetChunks.push(sec);
       }
     }
 
@@ -396,4 +404,127 @@ export function rechunkSectionsByTargetLength(
   }
 
   return finalSections;
+}
+
+/**
+ * Builds one visible work package per helper. A package may contain several
+ * disconnected road fragments (MultiLineString), which is important for the
+ * short 10–14 m fragments: they remain on the map but are never handed out as
+ * a tiny standalone task. With 1,739 m and 42 helpers this produces packages
+ * of about 41 m, therefore within the agreed 40–110 m range.
+ */
+export function createFairWorkPackages(sections: any[], helperCount: number): any[] {
+  const lines = sections
+    .filter(section => section.type === 'line')
+    .flatMap(section => {
+      const feature = typeof section.geojson === 'string' ? JSON.parse(section.geojson) : section.geojson;
+      if (feature?.geometry?.type === 'LineString') return [{ section, feature }];
+      if (feature?.geometry?.type === 'MultiLineString') {
+        return feature.geometry.coordinates.map((coordinates: number[][]) => ({ section, feature: turf.lineString(coordinates) }));
+      }
+      return [];
+    }) as Array<{ section: any; feature: GeoJSON.Feature<GeoJSON.LineString> }>;
+
+  const totalKm = lines.reduce((sum, item) => sum + turf.length(item.feature, { units: 'kilometers' }), 0);
+  if (!lines.length || helperCount < 1 || totalKm <= 0) return [];
+
+  // The captured geometry can differ by a few metres from the confirmed
+  // planning lengths (rounding and OSM geometry). Preserve the latter for
+  // exports/material calculations instead of silently changing the total.
+  const declaredTotalMeters = sections.reduce((sum, section) => sum + Number(section.length_meters ?? section.lengthMeters ?? 0), 0);
+  const packageCount = Math.min(helperCount, Math.floor(declaredTotalMeters / 40));
+  const targetKm = totalKm / packageCount;
+  const packages: Array<{ parts: GeoJSON.Feature<GeoJSON.LineString>[]; streets: Set<string>; km: number }> = [];
+  let current = { parts: [] as GeoJSON.Feature<GeoJSON.LineString>[], streets: new Set<string>(), km: 0 };
+
+  const finishCurrent = () => {
+    if (current.parts.length) packages.push(current);
+    current = { parts: [], streets: new Set<string>(), km: 0 };
+  };
+
+  for (const { section, feature } of lines) {
+    const lineKm = turf.length(feature, { units: 'kilometers' });
+    let offsetKm = 0;
+    while (offsetKm < lineKm - 0.0000001) {
+      const isLastPackage = packages.length === packageCount - 1;
+      const availableKm = isLastPackage ? lineKm - offsetKm : targetKm - current.km;
+      const takeKm = Math.min(availableKm, lineKm - offsetKm);
+      const part = turf.lineSliceAlong(feature, offsetKm, offsetKm + takeKm, { units: 'kilometers' });
+      current.parts.push(part);
+      current.streets.add(section.street_name || section.streetName || 'Unbenannt');
+      current.km += takeKm;
+      offsetKm += takeKm;
+
+      if (!isLastPackage && targetKm - current.km < 0.0000001) finishCurrent();
+    }
+  }
+  finishCurrent();
+
+  return packages.map((work, index) => {
+    const names = [...work.streets];
+    const geometry = work.parts.length === 1
+      ? work.parts[0].geometry
+      : { type: 'MultiLineString' as const, coordinates: work.parts.map(part => part.geometry.coordinates) };
+    const baseMeters = Math.floor(declaredTotalMeters / packageCount);
+    const extraMeters = Math.round(declaredTotalMeters - baseMeters * packageCount);
+    const lengthMeters = baseMeters + (index < extraMeters ? 1 : 0);
+    return {
+      id: `work-package-${Date.now()}-${index + 1}`,
+      street_name: names.length === 1 ? names[0] : 'Mehrere Straßen',
+      section_index: index + 1,
+      label: `Arbeits­paket ${index + 1}${names.length === 1 ? ` – ${names[0]}` : ` (${names.slice(0, 2).join(' + ')}${names.length > 2 ? ' …' : ''})`}`,
+      length_meters: lengthMeters,
+      lengthMeters,
+      color: SECTION_COLORS[index % SECTION_COLORS.length],
+      type: 'line' as const,
+      geojson: { type: 'Feature' as const, properties: {}, geometry },
+      assigned_helper_id: null,
+      assigned_helper_name: null,
+      created_at: new Date().toISOString()
+    };
+  });
+}
+
+/** Joins ordered or reversed line fragments when they share an endpoint. */
+function stitchConnectedLineSections(sections: any[]): Array<{ source: any; geojson: GeoJSON.Feature<GeoJSON.LineString> }> {
+  const remaining = sections
+    .slice()
+    .sort((a, b) => (a.section_index || 0) - (b.section_index || 0))
+    .map(section => ({
+      source: section,
+      coords: (typeof section.geojson === 'string' ? JSON.parse(section.geojson) : section.geojson).geometry.coordinates as number[][]
+    }))
+    .filter(item => item.coords.length >= 2);
+  const result: Array<{ source: any; geojson: GeoJSON.Feature<GeoJSON.LineString> }> = [];
+  const closeEnough = (a: number[], b: number[]) => Math.abs(a[0] - b[0]) < 1e-7 && Math.abs(a[1] - b[1]) < 1e-7;
+
+  while (remaining.length) {
+    const first = remaining.shift()!;
+    const coords = [...first.coords];
+    let joined = true;
+    while (joined) {
+      joined = false;
+      for (let index = 0; index < remaining.length; index++) {
+        const candidate = remaining[index].coords;
+        const start = coords[0];
+        const end = coords[coords.length - 1];
+        if (closeEnough(end, candidate[0])) {
+          coords.push(...candidate.slice(1));
+        } else if (closeEnough(end, candidate[candidate.length - 1])) {
+          coords.push(...candidate.slice(0, -1).reverse());
+        } else if (closeEnough(start, candidate[candidate.length - 1])) {
+          coords.unshift(...candidate.slice(0, -1));
+        } else if (closeEnough(start, candidate[0])) {
+          coords.unshift(...candidate.slice(1).reverse());
+        } else {
+          continue;
+        }
+        remaining.splice(index, 1);
+        joined = true;
+        break;
+      }
+    }
+    result.push({ source: first.source, geojson: turf.lineString(coords) });
+  }
+  return result;
 }

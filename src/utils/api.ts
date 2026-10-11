@@ -5,6 +5,10 @@ export interface Helper {
   name: string;
   color?: string;
   phone?: string;
+  source_station_id?: string | null;
+  address?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
   created_at: string;
 }
 
@@ -28,7 +32,7 @@ export interface Section {
   lengthMeters?: number;
   color: string;
   type: 'line' | 'point';
-  geojson: GeoJSON.Feature<GeoJSON.LineString | GeoJSON.Point>;
+  geojson: GeoJSON.Feature<GeoJSON.LineString | GeoJSON.MultiLineString | GeoJSON.Point>;
   assigned_helper_id?: string | null;
   assigned_helper_name?: string | null;
   notes?: string | null;
@@ -218,7 +222,7 @@ export const api = {
     if (!res.ok) throw new Error('Fehler beim Löschen aller Helfer in SQLite');
   },
 
-  async importHelpers(helpers: Array<{ name: string; phone?: string; color?: string }>, mode: 'replace' | 'append' = 'replace'): Promise<number> {
+  async importHelpers(helpers: Array<{ name: string; phone?: string; color?: string }>, mode: 'replace' | 'append' | 'sync' = 'replace'): Promise<number> {
     const res = await fetch(`${API_BASE}/helpers/import`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -230,6 +234,19 @@ export const api = {
     }
     const data = await res.json();
     return data.count;
+  },
+
+  async importStations(stations: Array<{ stationId: string; name: string; address?: string; latitude: number; longitude: number }>): Promise<{ imported: number; created: number; updated: number }> {
+    const res = await fetch(`${API_BASE}/helpers/import-stations`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ stations })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'Fehler beim Importieren der Stationen');
+    }
+    return await res.json();
   },
 
   // STREETS (Zentral in SQLite)

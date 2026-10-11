@@ -1,4 +1,5 @@
 import type { Section, Helper } from './api';
+import * as turf from '@turf/turf';
 
 export interface AutoAssignmentResult {
   assignments: Array<{
@@ -121,4 +122,166 @@ export function calculateFairAssignment(
       maxMeters
     }
   };
+}
+
+/**
+ * Assigns each section to a nearby Lichternacht station while preventing one
+ * station from receiving a disproportionate number of metres.  Helpers
+ * without imported station coordinates are deliberately excluded here.
+ */
+export function calculateNearbyFairAssignment(
+  sectionsToAssign: Section[],
+  helpers: Helper[]
+): AutoAssignmentResult {
+  const locatedHelpers = helpers.filter(helper =>
+    Number.isFinite(Number(helper.latitude)) && Number.isFinite(Number(helper.longitude))
+  );
+  if (!locatedHelpers.length) return calculateFairAssignment(sectionsToAssign, helpers);
+
+  const totals = new Map(locatedHelpers.map(helper => [helper.id, { helper, meters: 0, count: 0 }]));
+  const totalMeters = sectionsToAssign.reduce((sum, section) => sum + (section.lengthMeters || section.length_meters || 0), 0);
+  const targetMeters = totalMeters / locatedHelpers.length;
+  const assignments: AutoAssignmentResult['assignments'] = [];
+
+  const getDistance = (section: Section, helper: Helper) => {
+    const point = turf.point([Number(helper.longitude), Number(helper.latitude)]);
+    if (section.type === 'line' && section.geojson.geometry.type === 'LineString') {
+      return turf.pointToLineDistance(point, section.geojson, { units: 'meters' });
+    }
+    if (section.type === 'line' && section.geojson.geometry.type === 'MultiLineString') {
+      return Math.min(...section.geojson.geometry.coordinates.map(coords =>
+        turf.pointToLineDistance(point, turf.lineString(coords), { units: 'meters' })
+      ));
+    }
+    if (section.geojson.geometry.type === 'Point') {
+      return turf.distance(point, section.geojson, { units: 'kilometers' }) * 1000;
+    }
+    return Number.MAX_SAFE_INTEGER;
+  };
+
+  // When there is one fair package per station, make the *whole* matching
+  // globally optimal. The earlier greedy pass could reserve a nearby station
+  // too early and leave a later package hundreds of metres away.
+  if (sectionsToAssign.length <= locatedHelpers.length) {
+    const matchedHelperIndexes = minimumCostMatching(
+      sectionsToAssign.map(section => locatedHelpers.map(helper => getDistance(section, helper)))
+    );
+    matchedHelperIndexes.forEach((helperIndex, sectionIndex) => {
+      const helper = locatedHelpers[helperIndex];
+      const length = sectionsToAssign[sectionIndex].lengthMeters || sectionsToAssign[sectionIndex].length_meters || 0;
+      const record = totals.get(helper.id)!;
+      record.meters += length;
+      record.count++;
+      assignments.push({ sectionId: sectionsToAssign[sectionIndex].id, helperId: helper.id, helperName: helper.name });
+    });
+    const used = [...totals.values()].filter(record => record.count > 0);
+    return {
+      assignments,
+      summary: {
+        totalMeters,
+        helpersUsed: used.length,
+        avgMeters: used.length ? Math.round(totalMeters / used.length) : 0,
+        minMeters: used.length ? Math.round(Math.min(...used.map(record => record.meters))) : 0,
+        maxMeters: used.length ? Math.round(Math.max(...used.map(record => record.meters))) : 0
+      }
+    };
+  }
+
+  // Longer sections are allocated first, so balancing remains useful even
+  // when a street is cut into differently sized pieces.
+  const sorted = [...sectionsToAssign].sort((a, b) =>
+    (b.lengthMeters || b.length_meters || 0) - (a.lengthMeters || a.length_meters || 0)
+  );
+
+  for (const section of sorted) {
+    const length = section.lengthMeters || section.length_meters || 0;
+    let winner = locatedHelpers[0];
+    let bestScore = Number.MAX_SAFE_INTEGER;
+    for (const helper of locatedHelpers) {
+      const current = totals.get(helper.id)!;
+      const distance = getDistance(section, helper);
+      // Fairness is a hard constraint, locality breaks ties. With a 40 m
+      // target, assigning a second 40 m piece to one station must never win
+      // merely because it happens to be a few metres closer.
+      const overload = Math.max(0, current.meters + length - targetMeters) * 100;
+      const score = distance + overload;
+      if (score < bestScore) {
+        bestScore = score;
+        winner = helper;
+      }
+    }
+    const record = totals.get(winner.id)!;
+    record.meters += length;
+    record.count++;
+    assignments.push({ sectionId: section.id, helperId: winner.id, helperName: winner.name });
+  }
+
+  const used = [...totals.values()].filter(record => record.count > 0);
+  return {
+    assignments,
+    summary: {
+      totalMeters,
+      helpersUsed: used.length,
+      avgMeters: used.length ? Math.round(totalMeters / used.length) : 0,
+      minMeters: used.length ? Math.round(Math.min(...used.map(record => record.meters))) : 0,
+      maxMeters: used.length ? Math.round(Math.max(...used.map(record => record.meters))) : 0
+    }
+  };
+}
+
+/** Hungarian algorithm: for each row returns the distinct column with the
+ * minimum total cost. Here, rows are work packages and columns are stations. */
+function minimumCostMatching(costs: number[][]): number[] {
+  const rows = costs.length;
+  const cols = costs[0]?.length || 0;
+  if (!rows || rows > cols) return [];
+  const u = Array(rows + 1).fill(0);
+  const v = Array(cols + 1).fill(0);
+  const p = Array(cols + 1).fill(0);
+  const way = Array(cols + 1).fill(0);
+
+  for (let row = 1; row <= rows; row++) {
+    p[0] = row;
+    let col0 = 0;
+    const minv = Array(cols + 1).fill(Infinity);
+    const used = Array(cols + 1).fill(false);
+    do {
+      used[col0] = true;
+      const row0 = p[col0];
+      let delta = Infinity;
+      let col1 = 0;
+      for (let col = 1; col <= cols; col++) {
+        if (used[col]) continue;
+        const current = costs[row0 - 1][col - 1] - u[row0] - v[col];
+        if (current < minv[col]) {
+          minv[col] = current;
+          way[col] = col0;
+        }
+        if (minv[col] < delta) {
+          delta = minv[col];
+          col1 = col;
+        }
+      }
+      for (let col = 0; col <= cols; col++) {
+        if (used[col]) {
+          u[p[col]] += delta;
+          v[col] -= delta;
+        } else {
+          minv[col] -= delta;
+        }
+      }
+      col0 = col1;
+    } while (p[col0] !== 0);
+    do {
+      const col1 = way[col0];
+      p[col0] = p[col1];
+      col0 = col1;
+    } while (col0 !== 0);
+  }
+
+  const result = Array(rows).fill(-1);
+  for (let col = 1; col <= cols; col++) {
+    if (p[col] > 0) result[p[col] - 1] = col - 1;
+  }
+  return result;
 }

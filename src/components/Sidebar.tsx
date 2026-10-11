@@ -21,6 +21,7 @@ import {
   Compass,
   FileUp,
   FileDown,
+  ClipboardList,
   Check,
   X,
   Flame,
@@ -96,7 +97,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   candleBuffer = 10,
   onUpdateCandleConfig
 }) => {
-  const [activeTab, setActiveTab] = useState<'sections' | 'helpers' | 'stats'>('sections');
+  const [activeTab, setActiveTab] = useState<'workflow' | 'sections' | 'helpers' | 'stats'>('workflow');
 
   // Filter & Search
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -111,129 +112,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   // Auto assign dialog state
   const [isAutoAssigning, setIsAutoAssigning] = useState<boolean>(false);
-
-  // Helper import from Excel / CSV (.xlsx / .csv)
-  const [showHelperImportModal, setShowHelperImportModal] = useState<boolean>(false);
-  const [importedHelperPreview, setImportedHelperPreview] = useState<Array<{ name: string; phone: string }>>([]);
-  const [importFileName, setImportFileName] = useState<string>('');
-  const [importHelperMode, setImportHelperMode] = useState<'replace' | 'append'>('replace');
-  const [isImportingHelpers, setIsImportingHelpers] = useState<boolean>(false);
-  const helperFileInputRef = React.useRef<HTMLInputElement>(null);
-
-  const handleDownloadHelperTemplate = () => {
-    const wb = XLSX.utils.book_new();
-    const wsData = [
-      ['Name', 'Telefon'],
-      ['Anna Schmidt', '0171 1234567'],
-      ['Michael Weber', '0160 9876543'],
-      ['Thomas Müller', '09822 1234'],
-      ['Helfer 04', ''],
-      ['Helfer 05', '']
-    ];
-    const ws = XLSX.utils.aoa_to_sheet(wsData);
-    ws['!cols'] = [{ wch: 25 }, { wch: 20 }];
-    XLSX.utils.book_append_sheet(wb, ws, 'Helfer');
-    XLSX.writeFile(wb, 'lichternacht_helfer_vorlage.xlsx');
-  };
-
-  const handleHelperFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    try {
-      const buffer = await file.arrayBuffer();
-      const workbook = XLSX.read(buffer, { type: 'array' });
-      const firstSheetName = workbook.SheetNames[0];
-      const worksheet = workbook.Sheets[firstSheetName];
-      const rawRows = XLSX.utils.sheet_to_json<any[]>(worksheet, { header: 1, defval: '' });
-
-      if (rawRows.length === 0) {
-        alert('Die ausgewählte Datei enthält keine Daten.');
-        return;
-      }
-
-      // Detect header row
-      let headerRowIdx = -1;
-      let nameColIdx = 0;
-      let phoneColIdx = -1;
-      let vornameColIdx = -1;
-      let nachnameColIdx = -1;
-
-      for (let r = 0; r < Math.min(5, rawRows.length); r++) {
-        const row = (rawRows[r] || []).map(c => String(c).trim().toLowerCase());
-        const hasHeader = row.some(cell =>
-          cell.includes('name') || cell.includes('helfer') || cell.includes('telefon') || cell.includes('phone') || cell.includes('mobil')
-        );
-        if (hasHeader) {
-          headerRowIdx = r;
-          row.forEach((cell, idx) => {
-            if (cell === 'vorname') vornameColIdx = idx;
-            else if (cell === 'nachname') nachnameColIdx = idx;
-            else if (cell.includes('name') || cell.includes('helfer')) nameColIdx = idx;
-            else if (cell.includes('telefon') || cell.includes('phone') || cell.includes('mobil') || cell.includes('handy') || cell.includes('tel')) phoneColIdx = idx;
-          });
-          break;
-        }
-      }
-
-      const startRow = headerRowIdx !== -1 ? headerRowIdx + 1 : 0;
-      const parsed: Array<{ name: string; phone: string }> = [];
-
-      for (let r = startRow; r < rawRows.length; r++) {
-        const row = rawRows[r];
-        if (!row || row.length === 0) continue;
-
-        let name = '';
-        if (vornameColIdx !== -1 && nachnameColIdx !== -1) {
-          const v = String(row[vornameColIdx] || '').trim();
-          const n = String(row[nachnameColIdx] || '').trim();
-          name = `${v} ${n}`.trim();
-        } else {
-          name = String(row[nameColIdx] || '').trim();
-        }
-
-        if (!name || name.toLowerCase() === 'name' || name.toLowerCase() === 'vorname') continue;
-
-        let phone = '';
-        if (phoneColIdx !== -1) {
-          phone = String(row[phoneColIdx] || '').trim();
-        } else if (row.length > 1 && nameColIdx === 0) {
-          phone = String(row[1] || '').trim();
-        }
-
-        parsed.push({ name, phone });
-      }
-
-      if (parsed.length === 0) {
-        alert('Keine gültigen Helfernamen in der Datei gefunden. Bitte prüfe das Format (z.B. Spalte "Name").');
-        return;
-      }
-
-      setImportFileName(file.name);
-      setImportedHelperPreview(parsed);
-      setShowHelperImportModal(true);
-    } catch (err: any) {
-      alert(`Fehler beim Lesen der Datei: ${err.message}`);
-    } finally {
-      if (e.target) e.target.value = '';
-    }
-  };
-
-  const handleConfirmHelperImport = async () => {
-    if (importedHelperPreview.length === 0) return;
-    setIsImportingHelpers(true);
-    try {
-      if (onImportHelpers) {
-        await onImportHelpers(importedHelperPreview, importHelperMode);
-      }
-      setShowHelperImportModal(false);
-      setImportedHelperPreview([]);
-    } catch (err: any) {
-      alert(`Import fehlgeschlagen: ${err.message}`);
-    } finally {
-      setIsImportingHelpers(false);
-    }
-  };
 
   // Calculations
   const totalMeters = sections.reduce((sum, s) => sum + s.lengthMeters, 0);
@@ -253,6 +131,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   }).sort((a, b) => b.meters - a.meters);
 
   const activeHelperCount = helperStats.filter(h => h.sectionsCount > 0).length;
+  const importedStationCount = helpers.filter(h => h.source_station_id && Number.isFinite(Number(h.latitude)) && Number.isFinite(Number(h.longitude))).length;
   const avgMetersPerActiveHelper = activeHelperCount > 0
     ? Math.round(totalMeters / activeHelperCount)
     : 0;
@@ -302,6 +181,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
     if (!newHelperName.trim()) return;
     await onAddHelper(newHelperName.trim());
     setNewHelperName('');
+  };
+
+  const handleDownloadHelperTemplate = () => {
+    const worksheet = XLSX.utils.json_to_sheet([
+      { Name: 'Beispiel Helfer', Telefon: '0171 1234567' }
+    ]);
+    worksheet['!cols'] = [{ wch: 28 }, { wch: 20 }];
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Helfer');
+    XLSX.writeFile(workbook, 'lichternacht-helfer-vorlage.xlsx');
   };
 
   const handleSaveEditHelper = async (id: string) => {
@@ -453,11 +342,22 @@ export const Sidebar: React.FC<SidebarProps> = ({
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(3, 1fr)',
+          gridTemplateColumns: 'repeat(4, 1fr)',
           borderBottom: '1px solid var(--border-subtle)',
           background: 'var(--bg-secondary)'
         }}
       >
+        <button
+          onClick={() => setActiveTab('workflow')}
+          style={{
+            padding: '10px 4px', fontSize: 12, fontWeight: 700, border: 'none',
+            borderBottom: activeTab === 'workflow' ? '2px solid var(--accent-gold)' : '2px solid transparent',
+            background: 'transparent', color: activeTab === 'workflow' ? 'var(--accent-gold)' : 'var(--text-muted)',
+            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5
+          }}
+        >
+          <ClipboardList size={15} /> Ablauf
+        </button>
         <button
           onClick={() => setActiveTab('sections')}
           style={{
@@ -476,7 +376,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           }}
         >
           <MapPin size={15} />
-          Abschnitte ({sections.length})
+          Straßen
         </button>
 
         <button
@@ -497,7 +397,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           }}
         >
           <Users size={15} />
-          Helfer ({helpers.length})
+          Stationen
         </button>
 
         <button
@@ -518,12 +418,77 @@ export const Sidebar: React.FC<SidebarProps> = ({
           }}
         >
           <BarChart3 size={15} />
-          Fairness
+          Kontrolle
         </button>
       </div>
 
       {/* TAB CONTENT CONTAINER */}
       <div style={{ flex: 1, overflowY: 'auto', padding: 16 }}>
+        {activeTab === 'workflow' && (() => {
+          const nextStep = importedStationCount === 0 ? 1 : sections.length === 0 ? 2 : unassignedSections.length > 0 ? 3 : 4;
+          const steps = [
+            {
+              number: 1, title: 'Stationen übernehmen',
+              detail: importedStationCount ? `${importedStationCount} Stationen mit Kartenposition übernommen` : 'Die stationen.xlsx aus der Lichternacht-App importieren',
+              action: 'Stationsliste importieren', complete: importedStationCount > 0,
+              onClick: () => { setActiveTab('helpers'); onOpenHelperImport ? onOpenHelperImport('file') : onOpenExcelImport?.(); }
+            },
+            {
+              number: 2, title: 'Straßen erfassen',
+              detail: sections.length ? `${streets.length} Straßen · ${sections.length} Abschnitte gespeichert` : 'Straßen auf der Karte wählen, zerschneiden und speichern',
+              action: 'Abschnitte ansehen', complete: sections.length > 0,
+              onClick: () => setActiveTab('sections')
+            },
+            {
+              number: 3, title: 'Nähegerecht verteilen',
+              detail: sections.length === 0 ? 'Wird verfügbar, sobald Abschnitte angelegt sind' : unassignedSections.length ? `${unassignedSections.length} Abschnitte sind noch offen` : 'Alle Abschnitte sind zugewiesen',
+              action: 'Auto-Zuweisung öffnen', complete: sections.length > 0 && unassignedSections.length === 0,
+              disabled: sections.length === 0,
+              onClick: () => onOpenAutoAssign?.()
+            },
+            {
+              number: 4, title: 'Prüfen & nachbessern',
+              detail: sections.length === 0 ? 'Nach der Verteilung erscheinen hier die Kontrollwerkzeuge' : unassignedSections.length ? 'Offene Abschnitte gezielt auf der Karte bearbeiten' : 'Zuweisungen auf Karte und Meterlast kontrollieren',
+              action: unassignedSections.length ? 'Offene Abschnitte prüfen' : 'Kontrolle öffnen',
+              complete: sections.length > 0 && unassignedSections.length === 0,
+              disabled: sections.length === 0,
+              onClick: () => { setActiveTab(unassignedSections.length ? 'sections' : 'stats'); if (unassignedSections.length) setFilterStatus('unassigned'); }
+            },
+            {
+              number: 5, title: 'Abschließen & ausgeben',
+              detail: sections.length === 0 ? 'Druckansicht wird nach der Planung relevant' : unassignedSections.length ? 'Noch offene Abschnitte vor dem Ausdruck prüfen' : 'Laufzettel, Materialbedarf und Excel/PDF erzeugen',
+              action: 'Druckansicht öffnen', complete: false,
+              disabled: sections.length === 0,
+              onClick: onOpenPrintView
+            }
+          ];
+          return (
+            <div>
+              <div style={{ padding: '12px 14px', borderRadius: 'var(--radius-md)', background: 'linear-gradient(135deg, rgba(245,158,11,.18), rgba(56,189,248,.1))', border: '1px solid rgba(245,158,11,.35)', marginBottom: 14 }}>
+                <div style={{ fontWeight: 800, color: 'var(--text-main)', fontSize: 15 }}>Dein Planungsablauf</div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>Starte mit Schritt {nextStep}; die Spezialwerkzeuge bleiben in den anderen Bereichen verfügbar.</div>
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
+                {steps.map(step => {
+                  const current = step.number === nextStep;
+                  return <div key={step.number} style={{ display: 'flex', gap: 11, padding: 12, borderRadius: 'var(--radius-md)', background: current ? 'var(--bg-card-hover)' : 'var(--bg-card)', border: current ? '1.5px solid var(--accent-gold)' : '1px solid var(--border-subtle)', opacity: step.disabled ? .55 : 1 }}>
+                    <div style={{ width: 27, height: 27, flexShrink: 0, borderRadius: '50%', background: step.complete ? '#10B981' : current ? 'var(--accent-gold)' : 'var(--bg-input)', color: step.complete || current ? '#0F172A' : 'var(--text-muted)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: 800, fontSize: 12 }}>
+                      {step.complete ? <Check size={15} /> : step.number}
+                    </div>
+                    <div style={{ minWidth: 0, flex: 1 }}>
+                      <div style={{ fontWeight: 800, color: 'var(--text-main)', fontSize: 13 }}>{step.title}</div>
+                      <div style={{ color: 'var(--text-muted)', fontSize: 11, lineHeight: 1.35, marginTop: 2 }}>{step.detail}</div>
+                      <button type="button" disabled={step.disabled} onClick={step.onClick} style={{ marginTop: 8, border: 'none', borderRadius: 5, background: current ? 'var(--accent-gold)' : 'var(--bg-input)', color: current ? '#0F172A' : 'var(--text-main)', padding: '5px 8px', fontSize: 11, fontWeight: 700, cursor: step.disabled ? 'not-allowed' : 'pointer' }}>{step.action}</button>
+                    </div>
+                  </div>;
+                })}
+              </div>
+              <div style={{ marginTop: 14, padding: '10px 12px', borderRadius: 'var(--radius-sm)', background: 'var(--bg-input)', color: 'var(--text-muted)', fontSize: 11, lineHeight: 1.4 }}>
+                <b style={{ color: 'var(--text-main)' }}>Manuell bleibt alles steuerbar:</b> Unter Straßen kannst du jeden Abschnitt einzeln ändern; unter Stationen Namen pflegen und unter Kontrolle Fairness, Aufteilung und Export nutzen.
+              </div>
+            </div>
+          );
+        })()}
         {/* TAB 1: ABSCHNITTE */}
         {activeTab === 'sections' && (
           <div>
@@ -1414,12 +1379,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   </h4>
                 </div>
                 <p style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 12, lineHeight: 1.4 }}>
-                  Aktuell: <b>{sections.length} Abschnitte</b> für <b>{helpers.length} Helfer</b>. 
-                  {helpers.length > sections.length 
-                    ? ` (${helpers.length - sections.length} Helfer gehen aktuell leer aus!)`
-                    : ''}
+                  Aktuell: <b>{sections.length} Abschnitte</b> für <b>{helpers.length} Helfer</b>.
                   <br />
-                  Verkleinert längere Strecken intelligent (z. B. auf ~40 m), damit jeder Helfer ein Teilstück bekommt.
+                  Teilt die langen 85–100-m-Stücke auf etwa 40 m und ordnet anschließend nach Stationsnähe <b>und</b> Meterlast zu.
                 </p>
                 <button
                   type="button"
@@ -1441,7 +1403,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   }}
                 >
                   <Scissors size={14} />
-                  Jetzt auf {Math.max(sections.length, helpers.length)} Abschnitte zuschneiden
+                  Für faire ~40-m-Abschnitte neu zuschneiden
                 </button>
               </div>
             )}
@@ -1892,257 +1854,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>
       </div>
 
-      {/* Excel / CSV Helper Import Modal */}
-      {showHelperImportModal && (
-        <div
-          style={{
-            position: 'fixed',
-            inset: 0,
-            background: 'rgba(0, 0, 0, 0.7)',
-            backdropFilter: 'blur(5px)',
-            zIndex: 99999,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 16
-          }}
-          onClick={() => !isImportingHelpers && setShowHelperImportModal(false)}
-        >
-          <div
-            style={{
-              background: 'var(--bg-card, #1A1F2C)',
-              border: '1px solid var(--border-subtle, rgba(255,255,255,0.1))',
-              borderRadius: 16,
-              maxWidth: 540,
-              width: '100%',
-              maxHeight: '85vh',
-              display: 'flex',
-              flexDirection: 'column',
-              boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.6)',
-              overflow: 'hidden',
-              color: 'var(--text-main, #FFFFFF)'
-            }}
-            onClick={e => e.stopPropagation()}
-          >
-            {/* Modal Header */}
-            <div
-              style={{
-                padding: '16px 20px',
-                borderBottom: '1px solid var(--border-subtle, rgba(255,255,255,0.1))',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                background: 'rgba(255, 255, 255, 0.02)'
-              }}
-            >
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <div
-                  style={{
-                    width: 36,
-                    height: 36,
-                    borderRadius: 10,
-                    background: 'rgba(16, 185, 129, 0.15)',
-                    color: '#10B981',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center'
-                  }}
-                >
-                  <FileSpreadsheet size={20} />
-                </div>
-                <div>
-                  <h3 style={{ margin: 0, fontSize: 16, fontWeight: 700 }}>Helfer importieren</h3>
-                  <div style={{ fontSize: 12, color: 'var(--text-muted, #94A3B8)' }}>
-                    Datei: <strong style={{ color: 'var(--accent-gold, #F59E0B)' }}>{importFileName}</strong> ({importedHelperPreview.length} Einträge erkannt)
-                  </div>
-                </div>
-              </div>
-              <button
-                onClick={() => !isImportingHelpers && setShowHelperImportModal(false)}
-                disabled={isImportingHelpers}
-                style={{
-                  background: 'transparent',
-                  border: 'none',
-                  color: 'var(--text-muted, #94A3B8)',
-                  cursor: 'pointer',
-                  padding: 4,
-                  borderRadius: 6,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}
-              >
-                <X size={18} />
-              </button>
-            </div>
-
-            {/* Modal Body */}
-            <div style={{ padding: '16px 20px', overflowY: 'auto', flex: 1, display: 'flex', flexDirection: 'column', gap: 16 }}>
-              {/* Import Mode Selection */}
-              <div>
-                <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted, #94A3B8)', display: 'block', marginBottom: 8 }}>
-                  Import-Modus:
-                </label>
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-                  <div
-                    onClick={() => setImportHelperMode('replace')}
-                    style={{
-                      padding: 12,
-                      borderRadius: 10,
-                      border: `1.5px solid ${importHelperMode === 'replace' ? '#10B981' : 'var(--border-subtle, rgba(255,255,255,0.1))'}`,
-                      background: importHelperMode === 'replace' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(255,255,255,0.02)',
-                      cursor: 'pointer',
-                      transition: 'all 0.15s ease'
-                    }}
-                  >
-                    <div style={{ fontWeight: 600, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                      <input
-                        type="radio"
-                        checked={importHelperMode === 'replace'}
-                        onChange={() => setImportHelperMode('replace')}
-                        style={{ accentColor: '#10B981', cursor: 'pointer' }}
-                      />
-                      Ersetzen (Empfohlen)
-                    </div>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted, #94A3B8)', lineHeight: 1.3 }}>
-                      Bestehende {helpers.length} Helfer komplett durch die {importedHelperPreview.length} neuen ersetzen.
-                    </div>
-                  </div>
-
-                  <div
-                    onClick={() => setImportHelperMode('append')}
-                    style={{
-                      padding: 12,
-                      borderRadius: 10,
-                      border: `1.5px solid ${importHelperMode === 'append' ? '#10B981' : 'var(--border-subtle, rgba(255,255,255,0.1))'}`,
-                      background: importHelperMode === 'append' ? 'rgba(16, 185, 129, 0.1)' : 'rgba(255,255,255,0.02)',
-                      cursor: 'pointer',
-                      transition: 'all 0.15s ease'
-                    }}
-                  >
-                    <div style={{ fontWeight: 600, fontSize: 13, display: 'flex', alignItems: 'center', gap: 6, marginBottom: 4 }}>
-                      <input
-                        type="radio"
-                        checked={importHelperMode === 'append'}
-                        onChange={() => setImportHelperMode('append')}
-                        style={{ accentColor: '#10B981', cursor: 'pointer' }}
-                      />
-                      Anhängen
-                    </div>
-                    <div style={{ fontSize: 11, color: 'var(--text-muted, #94A3B8)', lineHeight: 1.3 }}>
-                      {importedHelperPreview.length} neue Helfer an die vorhandenen {helpers.length} anhängen.
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Data Preview Table */}
-              <div>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-                  <label style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted, #94A3B8)' }}>
-                    Vorschau der erkannten Daten ({importedHelperPreview.length}):
-                  </label>
-                  <span style={{ fontSize: 11, color: 'var(--accent-gold, #F59E0B)' }}>
-                    Automatisch formatiert
-                  </span>
-                </div>
-                <div
-                  style={{
-                    maxHeight: 240,
-                    overflowY: 'auto',
-                    border: '1px solid var(--border-subtle, rgba(255,255,255,0.1))',
-                    borderRadius: 8,
-                    background: 'rgba(0, 0, 0, 0.2)'
-                  }}
-                >
-                  <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-                    <thead>
-                      <tr style={{ background: 'rgba(255, 255, 255, 0.05)', textAlign: 'left', borderBottom: '1px solid var(--border-subtle, rgba(255,255,255,0.1))' }}>
-                        <th style={{ padding: '8px 12px', width: 40, color: 'var(--text-muted, #94A3B8)' }}>#</th>
-                        <th style={{ padding: '8px 12px', color: 'var(--text-main, #FFFFFF)' }}>Name</th>
-                        <th style={{ padding: '8px 12px', color: 'var(--text-muted, #94A3B8)' }}>Telefon</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {importedHelperPreview.map((h, idx) => (
-                        <tr
-                          key={idx}
-                          style={{
-                            borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
-                            background: idx % 2 === 0 ? 'transparent' : 'rgba(255, 255, 255, 0.015)'
-                          }}
-                        >
-                          <td style={{ padding: '6px 12px', color: 'var(--text-muted, #94A3B8)', fontSize: 11 }}>
-                            {idx + 1}
-                          </td>
-                          <td style={{ padding: '6px 12px', fontWeight: 600 }}>
-                            {h.name}
-                          </td>
-                          <td style={{ padding: '6px 12px', color: h.phone ? 'var(--text-main, #FFFFFF)' : 'var(--text-light, #64748B)', fontFamily: 'monospace', fontSize: 11 }}>
-                            {h.phone || '–'}
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              </div>
-            </div>
-
-            {/* Modal Footer */}
-            <div
-              style={{
-                padding: '14px 20px',
-                borderTop: '1px solid var(--border-subtle, rgba(255,255,255,0.1))',
-                background: 'rgba(255, 255, 255, 0.02)',
-                display: 'flex',
-                justifyContent: 'flex-end',
-                gap: 10
-              }}
-            >
-              <button
-                onClick={() => setShowHelperImportModal(false)}
-                disabled={isImportingHelpers}
-                style={{
-                  padding: '8px 14px',
-                  borderRadius: 8,
-                  border: '1px solid var(--border-subtle, rgba(255,255,255,0.15))',
-                  background: 'transparent',
-                  color: 'var(--text-main, #FFFFFF)',
-                  fontSize: 13,
-                  fontWeight: 600,
-                  cursor: isImportingHelpers ? 'not-allowed' : 'pointer'
-                }}
-              >
-                Abbrechen
-              </button>
-              <button
-                onClick={handleConfirmHelperImport}
-                disabled={isImportingHelpers}
-                style={{
-                  padding: '8px 18px',
-                  borderRadius: 8,
-                  border: 'none',
-                  background: '#10B981',
-                  color: '#FFFFFF',
-                  fontSize: 13,
-                  fontWeight: 700,
-                  cursor: isImportingHelpers ? 'not-allowed' : 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6,
-                  boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)'
-                }}
-              >
-                <Check size={16} />
-                {isImportingHelpers
-                  ? 'Wird importiert...'
-                  : `${importedHelperPreview.length} Helfer jetzt importieren`}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </aside>
   );
 };

@@ -32,6 +32,18 @@ interface MapComponentProps {
   onSaveMapboxToken: (token: string) => void;
 }
 
+function toLeafletLineCoordinates(feature: any): L.LatLngExpression[] | L.LatLngExpression[][] {
+  const lines = feature.geometry.type === 'MultiLineString'
+    ? feature.geometry.coordinates
+    : [feature.geometry.coordinates];
+  const converted = lines.map((line: number[][]) => line.map(([lon, lat]) => [lat, lon] as [number, number]));
+  return feature.geometry.type === 'MultiLineString' ? converted : converted[0];
+}
+
+function flattenLeafletLineCoordinates(coords: L.LatLngExpression[] | L.LatLngExpression[][]): L.LatLngExpression[] {
+  return Array.isArray(coords[0]) && Array.isArray((coords[0] as any)[0]) ? (coords as L.LatLngExpression[][]).flat() : coords as L.LatLngExpression[];
+}
+
 export const MapComponent: React.FC<MapComponentProps> = ({
   sections,
   previewSections,
@@ -63,6 +75,7 @@ export const MapComponent: React.FC<MapComponentProps> = ({
   const sectionsLayerGroupRef = useRef<L.LayerGroup | null>(null);
   const previewLayerGroupRef = useRef<L.LayerGroup | null>(null);
   const captureLayerGroupRef = useRef<L.LayerGroup | null>(null);
+  const helperLayerGroupRef = useRef<L.LayerGroup | null>(null);
 
   // Stamp state (Direktes Zuweisen per Klick)
   const [internalStampHelperId, setInternalStampHelperId] = useState<string | null>(null);
@@ -190,6 +203,7 @@ export const MapComponent: React.FC<MapComponentProps> = ({
     sectionsLayerGroupRef.current = L.layerGroup().addTo(map);
     previewLayerGroupRef.current = L.layerGroup().addTo(map);
     captureLayerGroupRef.current = L.layerGroup().addTo(map);
+    helperLayerGroupRef.current = L.layerGroup().addTo(map);
 
     mapRef.current = map;
 
@@ -285,6 +299,26 @@ export const MapComponent: React.FC<MapComponentProps> = ({
         .addTo(group);
     }
   }, [segmentPoints]);
+
+  // Imported Lichternacht stations stay visible as small blue markers. They
+  // make proximity-based proposals understandable without replacing manual work.
+  useEffect(() => {
+    const group = helperLayerGroupRef.current;
+    if (!group) return;
+    group.clearLayers();
+    helpers
+      .filter(helper => Number.isFinite(Number(helper.latitude)) && Number.isFinite(Number(helper.longitude)))
+      .forEach(helper => {
+        const icon = L.divIcon({
+          className: 'lichternacht-station-marker',
+          html: `<div style="width:22px;height:22px;border-radius:50% 50% 50% 0;transform:rotate(-45deg);background:#38BDF8;border:2px solid white;box-shadow:0 1px 5px rgba(15,23,42,.55);"><span style="display:block;transform:rotate(45deg);text-align:center;line-height:18px;font-size:11px;">★</span></div>`,
+          iconSize: [22, 22], iconAnchor: [11, 22]
+        });
+        L.marker([Number(helper.latitude), Number(helper.longitude)], { icon })
+          .bindTooltip(`<strong>${helper.name}</strong>${helper.address ? `<br/>${helper.address}` : ''}<br/><span style="color:#0284C7">Lichternacht-Station</span>`, { direction: 'top' })
+          .addTo(group);
+      });
+  }, [helpers]);
 
   // Render Preview Sections
   useEffect(() => {
@@ -465,8 +499,8 @@ export const MapComponent: React.FC<MapComponentProps> = ({
         return false;
       };
 
-      if (sec.type === 'line' && sec.geojson?.geometry?.type === 'LineString') {
-        const coords = sec.geojson.geometry.coordinates.map(c => [c[1], c[0]] as [number, number]);
+      if (sec.type === 'line' && ['LineString', 'MultiLineString'].includes(sec.geojson?.geometry?.type)) {
+        const coords = toLeafletLineCoordinates(sec.geojson);
 
         if (isSelected) {
           L.polyline(coords, {
@@ -691,9 +725,8 @@ export const MapComponent: React.FC<MapComponentProps> = ({
     const sec = sections.find(s => s.id === selectedSectionId);
     if (!sec) return;
 
-    if (sec.type === 'line' && sec.geojson.geometry.type === 'LineString') {
-      const coords = sec.geojson.geometry.coordinates.map(c => [c[1], c[0]] as [number, number]);
-      const bounds = L.latLngBounds(coords);
+    if (sec.type === 'line' && ['LineString', 'MultiLineString'].includes(sec.geojson.geometry.type)) {
+      const bounds = L.latLngBounds(flattenLeafletLineCoordinates(toLeafletLineCoordinates(sec.geojson)));
       mapRef.current.fitBounds(bounds, { padding: [80, 80], maxZoom: 18 });
     } else if (sec.type === 'point' && sec.geojson.geometry.type === 'Point') {
       const [lon, lat] = sec.geojson.geometry.coordinates;

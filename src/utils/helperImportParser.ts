@@ -7,6 +7,39 @@ export interface ParsedHelperItem {
   phone: string;
 }
 
+export interface ParsedStationItem {
+  stationId: string;
+  name: string;
+  address: string;
+  latitude: number;
+  longitude: number;
+}
+
+/** Parses the official `stationen.xlsx` export of the Lichternacht admin. */
+export function parseLichternachtStations(rawRows: any[][]): ParsedStationItem[] {
+  if (!rawRows.length) return [];
+  const header = rawRows[0].map(cell => String(cell || '').trim().toLowerCase());
+  const id = header.indexOf('id');
+  const name = header.indexOf('name');
+  const address = header.indexOf('address');
+  const lat = header.indexOf('lat');
+  const lng = header.indexOf('lng');
+  if ([id, name, lat, lng].some(index => index < 0)) return [];
+
+  const seen = new Set<string>();
+  return rawRows.slice(1).flatMap(row => {
+    const stationId = String(row[id] ?? '').trim();
+    const stationName = String(row[name] ?? '').trim();
+    const rawLatitude = row[lat];
+    const rawLongitude = row[lng];
+    const latitude = Number(rawLatitude);
+    const longitude = Number(rawLongitude);
+    if (!stationId || !stationName || seen.has(stationId) || String(rawLatitude ?? '').trim() === '' || String(rawLongitude ?? '').trim() === '' || !Number.isFinite(latitude) || !Number.isFinite(longitude) || latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180 || (latitude === 0 && longitude === 0)) return [];
+    seen.add(stationId);
+    return [{ stationId, name: stationName, address: address >= 0 ? String(row[address] ?? '').trim() : '', latitude, longitude }];
+  });
+}
+
 /**
  * Parses freeform pasted text (e.g. from WhatsApp, emails, Word or spreadsheets).
  * Handles lines like:
@@ -27,7 +60,7 @@ export function parsePastedHelperText(text: string): ParsedHelperItem[] {
 
   for (const rawLine of lines) {
     // Remove list numbering like "1.", "1)", "-", "•", "*", etc.
-    let line = rawLine.replace(/^[-*•\d+.)]\s*/, '').trim();
+    let line = rawLine.replace(/^([*\-•]|\d+[.)])\s*/, '').trim();
     if (!line) continue;
 
     // Skip pure header words
@@ -129,7 +162,7 @@ export function parseSheetHelpers(rawRows: any[][]): ParsedHelperItem[] {
       else if (cell === 'name' || cell === 'helfer-name' || cell === 'helfername' || cell.includes('vollständiger name')) nameCol = idx;
       else if (cell.includes('helfer') || cell.includes('teilnehmer') || cell.includes('mitarbeiter') || cell.includes('person')) helperCol = idx;
       
-      if (cell.includes('telefon') || cell.includes('phone') || cell.includes('mobil') || cell.includes('handy') || cell.includes('tel')) {
+      if (/\b(telefon|phone|mobil|handy|tel)\b/i.test(cell)) {
         phoneCol = idx;
       }
     });
