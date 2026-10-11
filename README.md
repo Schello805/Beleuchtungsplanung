@@ -93,3 +93,26 @@ curl -fsSL https://raw.githubusercontent.com/Schello805/Beleuchtungsplanung/main
 - Automatische Berechnung der Gesamtanzahl an Windlichtern/Kerzen sowie Kartonrechner (Packungen à 50 und 100 Stück).
 - Anzeige des individuellen Materialbedarfs pro Helfer in der Helferliste, auf den ausgedruckten Laufzetteln und im CSV-Export.
 
+---
+
+## 🔐 Öffentlicher Betrieb: Anmeldung und Rechte
+
+Vor einer Freigabe ins Internet muss ein Admin-Konto direkt auf dem Server eingerichtet werden. Das Passwort gehört **nie** nach GitHub und nicht in die SQLite-Datenbank als Klartext.
+
+```bash
+sudo nano /etc/lichternacht/lichternacht.env
+```
+
+```ini
+AUTH_REQUIRED=true
+ADMIN_EMAIL=deine-adresse@example.org
+ADMIN_NAME=Michael
+ADMIN_PASSWORD=ein-langes-einmaliges-passwort-mit-mindestens-12-zeichen
+```
+
+Danach `sudo systemctl restart lichternacht`. Beim ersten Start erzeugt die Anwendung daraus das Admin-Konto und speichert ausschließlich einen sicheren Passwort-Hash. Ohne eingerichtetes Admin-Konto bleibt der Produktionsserver bewusst auf `127.0.0.1` beschränkt.
+
+Rollen: **Administrator** (Einstellungen, Backups und Benutzer), **Planung** (Plan und Helfer ändern) und **Lesen** (nur ansehen). Zusätzliche Benutzer können Administratoren über die geschützte API anlegen; eine Verwaltungsansicht dafür folgt als nächster UI-Schritt.
+
+Für die echte Internetfreigabe zusätzlich einen Reverse Proxy mit HTTPS (z. B. Caddy oder Nginx) und eine Firewall einsetzen. Port 3000 sollte dabei nicht direkt aus dem Internet erreichbar sein.
+

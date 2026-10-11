@@ -2,14 +2,59 @@ import express from 'express';
 import cors from 'cors';
 import path from 'node:path';
 import fs from 'node:fs';
-import { dbService } from './db.ts';
+import crypto from 'node:crypto';
+import { dbService, type UserRecord, type UserRole } from './db.ts';
 import { getBechhofenStreets, getStreetGeometry } from './overpass.ts';
 import { getFootRoute } from './routing.ts';
 
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3001;
+const authRequired = process.env.AUTH_REQUIRED ?? (process.env.NODE_ENV === 'production' ? 'true' : 'false');
+const AUTH_REQUIRED = authRequired.toLowerCase() !== 'false';
+const SESSION_COOKIE = 'lichternacht_session';
+const SESSION_DAYS = 14;
 
-app.use(cors());
+type SafeUser = Pick<UserRecord, 'id' | 'email' | 'display_name' | 'role'>;
+type AuthenticatedRequest = express.Request & { authUser?: SafeUser };
+
+const toSafeUser = (user: UserRecord): SafeUser => ({
+  id: user.id, email: user.email, display_name: user.display_name, role: user.role
+});
+
+const parseCookies = (header?: string) => Object.fromEntries((header || '').split(';').map(value => {
+  const index = value.indexOf('=');
+  return index < 0 ? [] : [value.slice(0, index).trim(), decodeURIComponent(value.slice(index + 1))];
+}).filter((entry): entry is [string, string] => entry.length === 2));
+
+const passwordHash = (password: string, salt = crypto.randomBytes(16).toString('hex')) => {
+  const hash = crypto.scryptSync(password, salt, 64).toString('hex');
+  return `${salt}:${hash}`;
+};
+const passwordMatches = (password: string, stored: string) => {
+  const [salt, expected] = stored.split(':');
+  if (!salt || !expected) return false;
+  const actual = crypto.scryptSync(password, salt, 64).toString('hex');
+  return actual.length === expected.length && crypto.timingSafeEqual(Buffer.from(actual), Buffer.from(expected));
+};
+
+function bootstrapAdmin() {
+  const email = process.env.ADMIN_EMAIL?.trim();
+  const password = process.env.ADMIN_PASSWORD;
+  const configured = email && password && password.length >= 12
+    && email.toLowerCase() !== 'admin@example.org' && !password.startsWith('BITTE_HIER_');
+  if (dbService.getUserCount() === 0 && configured) {
+    dbService.createUser({
+      id: crypto.randomUUID(), email, display_name: process.env.ADMIN_NAME?.trim() || 'Administrator',
+      role: 'admin', password_hash: passwordHash(password)
+    });
+    console.log(`[Sicherheit] Erstes Admin-Konto für ${email} angelegt.`);
+  }
+}
+bootstrapAdmin();
+const authReady = !AUTH_REQUIRED || dbService.getUserCount() > 0;
+
+app.set('trust proxy', 1);
+app.use(cors({ origin: false }));
 app.use(express.json({ limit: '50mb' }));
 
 // Logging middleware
@@ -20,7 +65,77 @@ app.use((req, res, next) => {
 
 // Health Check
 app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', time: new Date().toISOString() });
+  res.json({ status: 'ok', authRequired: AUTH_REQUIRED, authReady, time: new Date().toISOString() });
+});
+
+app.get('/api/auth/session', (req, res) => {
+  if (!AUTH_REQUIRED) return res.json({ authenticated: true, user: { id: 'local', email: 'lokal', display_name: 'Lokaler Zugriff', role: 'admin' } });
+  const session = parseCookies(req.headers.cookie)[SESSION_COOKIE];
+  const user = session ? dbService.getUserBySession(session) : undefined;
+  res.json({ authenticated: Boolean(user), setupRequired: !authReady, user: user ? toSafeUser(user) : null });
+});
+
+app.post('/api/auth/login', (req, res) => {
+  if (!authReady) return res.status(503).json({ error: 'Kein Admin-Konto eingerichtet. ADMIN_EMAIL und ADMIN_PASSWORD im Server-Environment setzen.' });
+  const { email, password } = req.body || {};
+  if (typeof email !== 'string' || typeof password !== 'string') return res.status(400).json({ error: 'E-Mail und Passwort sind erforderlich.' });
+  const user = dbService.getUserByEmail(email);
+  if (!user || !passwordMatches(password, user.password_hash)) return res.status(401).json({ error: 'E-Mail oder Passwort ist nicht korrekt.' });
+  const sessionId = crypto.randomBytes(32).toString('base64url');
+  const expires = new Date(Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000);
+  dbService.createSession(sessionId, user.id, expires.toISOString());
+  dbService.touchUserLogin(user.id);
+  res.cookie(SESSION_COOKIE, sessionId, { httpOnly: true, sameSite: 'strict', secure: req.secure, expires, path: '/' });
+  res.json({ user: toSafeUser(user) });
+});
+
+app.post('/api/auth/logout', (req, res) => {
+  const session = parseCookies(req.headers.cookie)[SESSION_COOKIE];
+  if (session) dbService.deleteSession(session);
+  res.clearCookie(SESSION_COOKIE, { httpOnly: true, sameSite: 'strict', secure: req.secure, path: '/' });
+  res.json({ success: true });
+});
+
+app.use('/api', (req, res, next) => {
+  if (!AUTH_REQUIRED) {
+    (req as AuthenticatedRequest).authUser = { id: 'local', email: 'lokal', display_name: 'Lokaler Zugriff', role: 'admin' };
+    return next();
+  }
+  if (!authReady) return res.status(503).json({ error: 'Die Anmeldung wurde auf dem Server noch nicht eingerichtet.' });
+  const session = parseCookies(req.headers.cookie)[SESSION_COOKIE];
+  const user = session ? dbService.getUserBySession(session) : undefined;
+  if (!user) return res.status(401).json({ error: 'Anmeldung erforderlich.' });
+  (req as AuthenticatedRequest).authUser = toSafeUser(user);
+  next();
+});
+
+app.get('/api/users', (req, res) => {
+  const user = (req as AuthenticatedRequest).authUser!;
+  if (user.role !== 'admin') return res.status(403).json({ error: 'Nur Administratoren dürfen Benutzer verwalten.' });
+  res.json(dbService.getUsers());
+});
+
+app.post('/api/users', (req, res) => {
+  const user = (req as AuthenticatedRequest).authUser!;
+  if (user.role !== 'admin') return res.status(403).json({ error: 'Nur Administratoren dürfen Benutzer verwalten.' });
+  const { email, displayName, password, role } = req.body || {};
+  if (typeof email !== 'string' || typeof displayName !== 'string' || typeof password !== 'string' || !['admin', 'planner', 'viewer'].includes(role)) {
+    return res.status(400).json({ error: 'Bitte E-Mail, Namen, Rolle und ein Passwort mit mindestens 12 Zeichen angeben.' });
+  }
+  if (password.length < 12) return res.status(400).json({ error: 'Das Passwort muss mindestens 12 Zeichen lang sein.' });
+  if (dbService.getUserByEmail(email)) return res.status(409).json({ error: 'Diese E-Mail-Adresse ist bereits angelegt.' });
+  const created = dbService.createUser({ id: crypto.randomUUID(), email, display_name: displayName, role: role as UserRole, password_hash: passwordHash(password) });
+  res.status(201).json(toSafeUser(created));
+});
+
+app.use('/api', (req, res, next) => {
+  const user = (req as AuthenticatedRequest).authUser!;
+  const adminOnly = req.path.startsWith('/settings') || req.path.startsWith('/database');
+  const writeRequest = !['GET', 'HEAD', 'OPTIONS'].includes(req.method);
+  if ((adminOnly && user.role !== 'admin') || (writeRequest && !['admin', 'planner'].includes(user.role))) {
+    return res.status(403).json({ error: 'Für diese Aktion fehlen die erforderlichen Rechte.' });
+  }
+  next();
 });
 
 // Helpers API
@@ -388,6 +503,10 @@ if (fs.existsSync(distPath)) {
   });
 }
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Lichternacht Backend Server läuft im Netzwerk auf Port ${PORT}`);
+const HOST = AUTH_REQUIRED && !authReady ? '127.0.0.1' : '0.0.0.0';
+if (AUTH_REQUIRED && !authReady) {
+  console.error('[Sicherheit] Kein Admin-Konto gefunden. Der Server bleibt bis zur Einrichtung auf 127.0.0.1 gebunden.');
+}
+app.listen(PORT, HOST, () => {
+  console.log(`Lichternacht Backend Server läuft auf ${HOST}:${PORT}`);
 });

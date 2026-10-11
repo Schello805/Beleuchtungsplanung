@@ -138,10 +138,24 @@ Restart=always
 RestartSec=5
 Environment=NODE_ENV=production
 Environment=PORT=${PORT}
+EnvironmentFile=-/etc/lichternacht/lichternacht.env
 
 [Install]
 WantedBy=multi-user.target
 EOF
+
+mkdir -p /etc/lichternacht
+if [ ! -f /etc/lichternacht/lichternacht.env ]; then
+    cat > /etc/lichternacht/lichternacht.env << 'EOF'
+# Vor einem öffentlichen Zugriff ausfüllen. Diese Datei bleibt ausschließlich auf dem Server.
+AUTH_REQUIRED=true
+ADMIN_EMAIL=admin@example.org
+ADMIN_NAME=Administrator
+ADMIN_PASSWORD=BITTE_HIER_EIN_LANGES_EINMALIGES_PASSWORT_SETZEN
+EOF
+    chmod 600 /etc/lichternacht/lichternacht.env
+    echo -e "${YELLOW}!${NC} Administrator noch einrichten: /etc/lichternacht/lichternacht.env bearbeiten und Dienst neu starten."
+fi
 
 chmod 755 "$INSTALL_DIR/update.sh" 2>/dev/null || true
 

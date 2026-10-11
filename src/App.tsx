@@ -7,11 +7,21 @@ import { AutoAssignModal } from './components/AutoAssignModal';
 const MapComponent = lazy(() => import('./components/MapComponent').then(module => ({ default: module.MapComponent })));
 const PrintView = lazy(() => import('./components/PrintView').then(module => ({ default: module.PrintView })));
 const ExcelImportModal = lazy(() => import('./components/ExcelImportModal').then(module => ({ default: module.ExcelImportModal })));
-import { api, type Section, type Helper, type Street } from './utils/api';
+import { api, type Section, type Helper, type Street, type AuthUser } from './utils/api';
 import { splitSectionInHalf, type GeneratedSection } from './utils/geo';
-import { Database, Wifi, Check, Copy, AlertCircle, X, Undo2 } from 'lucide-react';
+import { Database, Wifi, Check, Copy, X, Undo2 } from 'lucide-react';
 
 export const App: React.FC = () => {
+  const [authState, setAuthState] = useState<'loading' | 'anonymous' | 'authenticated' | 'setup-required'>('loading');
+  const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
+  const [loginEmail, setLoginEmail] = useState('');
+  const [loginPassword, setLoginPassword] = useState('');
+  const [loginError, setLoginError] = useState<string | null>(null);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [isUserManagementOpen, setIsUserManagementOpen] = useState(false);
+  const [managedUsers, setManagedUsers] = useState<AuthUser[]>([]);
+  const [newUser, setNewUser] = useState({ email: '', displayName: '', password: '', role: 'planner' as AuthUser['role'] });
+  const [userManagementError, setUserManagementError] = useState<string | null>(null);
   const [sections, setSections] = useState<Section[]>([]);
   const [helpers, setHelpers] = useState<Helper[]>([]);
   const [streets, setStreets] = useState<Street[]>([]);
@@ -161,12 +171,26 @@ export const App: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    api.getSession()
+      .then(session => {
+        if (session.authenticated && session.user) {
+          setCurrentUser(session.user);
+          setAuthState('authenticated');
+        } else {
+          setAuthState(session.setupRequired ? 'setup-required' : 'anonymous');
+        }
+      })
+      .catch(() => setAuthState('anonymous'));
+  }, []);
+
+  useEffect(() => {
+    if (authState === 'authenticated') loadData();
+  }, [authState, loadData]);
 
   // Refresh after returning to the planner. A short polling loop used to replace
   // all map layers every few seconds, even when no planning data had changed.
   useEffect(() => {
+    if (authState !== 'authenticated') return;
     const handleFocus = () => {
       loadData();
     };
@@ -175,7 +199,51 @@ export const App: React.FC = () => {
     return () => {
       window.removeEventListener('focus', handleFocus);
     };
-  }, [loadData]);
+  }, [authState, loadData]);
+
+  const handleLogin = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setLoginError(null);
+    setIsLoggingIn(true);
+    try {
+      const user = await api.login(loginEmail, loginPassword);
+      setLoginPassword('');
+      setCurrentUser(user);
+      setAuthState('authenticated');
+    } catch (error) {
+      setLoginError(error instanceof Error ? error.message : 'Anmeldung fehlgeschlagen.');
+    } finally {
+      setIsLoggingIn(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    await api.logout();
+    setCurrentUser(null);
+    setAuthState('anonymous');
+  };
+
+  const openUserManagement = async () => {
+    setUserManagementError(null);
+    try {
+      setManagedUsers(await api.getUsers());
+      setIsUserManagementOpen(true);
+    } catch (error) {
+      setUserManagementError(error instanceof Error ? error.message : 'Benutzerverwaltung konnte nicht geöffnet werden.');
+    }
+  };
+
+  const handleCreateUser = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setUserManagementError(null);
+    try {
+      const created = await api.createUser(newUser);
+      setManagedUsers(users => [...users, created].sort((a, b) => a.email.localeCompare(b.email)));
+      setNewUser({ email: '', displayName: '', password: '', role: 'planner' });
+    } catch (error) {
+      setUserManagementError(error instanceof Error ? error.message : 'Benutzer konnte nicht angelegt werden.');
+    }
+  };
 
   // Map Click Handler for interactive capture
   const handleMapClick = (lat: number, lon: number) => {
@@ -520,8 +588,33 @@ export const App: React.FC = () => {
     setLastAutomaticAssignments(null);
   };
 
+  if (authState !== 'authenticated') {
+    return (
+      <main className="auth-screen">
+        <section className="auth-card">
+          <div className="auth-mark">✦</div>
+          <p className="auth-kicker">LICHTERNACHT BECHHOFEN</p>
+          <h1>Streckenplanung</h1>
+          {authState === 'loading' ? <p>Prüfe Anmeldung …</p> : authState === 'setup-required' ? <p>Der Zugang ist auf diesem Server noch nicht eingerichtet. Bitte die Administrator-Zugangsdaten in der Server-Konfiguration setzen.</p> : (
+            <form onSubmit={handleLogin} className="auth-form">
+              <label>E-Mail-Adresse<input type="email" value={loginEmail} onChange={event => setLoginEmail(event.target.value)} autoComplete="username" required /></label>
+              <label>Passwort<input type="password" value={loginPassword} onChange={event => setLoginPassword(event.target.value)} autoComplete="current-password" required /></label>
+              {loginError && <p className="auth-error">{loginError}</p>}
+              <button type="submit" disabled={isLoggingIn}>{isLoggingIn ? 'Anmeldung läuft …' : 'Anmelden'}</button>
+            </form>
+          )}
+        </section>
+      </main>
+    );
+  }
+
   return (
     <div style={{ display: 'flex', width: '100vw', height: '100vh', overflow: 'hidden' }}>
+      <div className="no-print" style={{ position: 'fixed', right: 14, top: 10, zIndex: 2000, display: 'flex', alignItems: 'center', gap: 8, padding: '6px 8px', borderRadius: 7, background: 'var(--bg-glass)', border: '1px solid var(--border-subtle)', fontSize: 11 }}>
+        <span>{currentUser?.display_name} · {currentUser?.role === 'admin' ? 'Administrator' : currentUser?.role === 'planner' ? 'Planung' : 'Lesen'}</span>
+        {currentUser?.role === 'admin' && <button onClick={openUserManagement} style={{ border: 0, borderRadius: 4, padding: '3px 6px', cursor: 'pointer', background: 'rgba(59,130,246,.16)', color: '#60a5fa' }}>Benutzer</button>}
+        <button onClick={handleLogout} style={{ border: 0, borderRadius: 4, padding: '3px 6px', cursor: 'pointer', background: 'rgba(248,113,113,.16)', color: '#fb7185' }}>Abmelden</button>
+      </div>
       {/* SIDEBAR */}
       <Sidebar
         sections={sections}
@@ -787,6 +880,24 @@ export const App: React.FC = () => {
           onDeleteAllHelpers={handleDeleteAllHelpers}
         />
       </Suspense>
+      {isUserManagementOpen && (
+        <div className="user-modal-backdrop">
+          <section className="user-modal">
+            <button className="user-modal-close" onClick={() => setIsUserManagementOpen(false)}>×</button>
+            <p className="auth-kicker">ADMINISTRATION</p><h2>Benutzer & Rechte</h2>
+            <div className="user-list">{managedUsers.map(user => <div key={user.id}><strong>{user.display_name}</strong><span>{user.email} · {user.role === 'admin' ? 'Administrator' : user.role === 'planner' ? 'Planung' : 'Lesen'}</span></div>)}</div>
+            <form onSubmit={handleCreateUser} className="auth-form">
+              <h3>Neuen Zugang anlegen</h3>
+              <label>Name<input value={newUser.displayName} onChange={event => setNewUser(value => ({ ...value, displayName: event.target.value }))} required /></label>
+              <label>E-Mail-Adresse<input type="email" value={newUser.email} onChange={event => setNewUser(value => ({ ...value, email: event.target.value }))} required /></label>
+              <label>Einmaliges Passwort<input type="password" minLength={12} value={newUser.password} onChange={event => setNewUser(value => ({ ...value, password: event.target.value }))} required /></label>
+              <label>Rolle<select value={newUser.role} onChange={event => setNewUser(value => ({ ...value, role: event.target.value as AuthUser['role'] }))}><option value="planner">Planung – darf bearbeiten</option><option value="viewer">Lesen – nur ansehen</option><option value="admin">Administrator – volle Verwaltung</option></select></label>
+              {userManagementError && <p className="auth-error">{userManagementError}</p>}
+              <button type="submit">Zugang anlegen</button>
+            </form>
+          </section>
+        </div>
+      )}
     </div>
   );
 };

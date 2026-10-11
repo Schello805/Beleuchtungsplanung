@@ -89,6 +89,24 @@ db.exec(`
     value TEXT NOT NULL,
     updated_at TEXT NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    email TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    display_name TEXT NOT NULL,
+    role TEXT NOT NULL CHECK(role IN ('admin', 'planner', 'viewer')),
+    password_hash TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    last_login_at TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS sessions (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    expires_at TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS sessions_expires_at_idx ON sessions(expires_at);
 `);
 
 // Kept separate from CREATE TABLE so existing event databases are upgraded in place.
@@ -162,7 +180,56 @@ export interface SectionRecord {
   created_at: string;
 }
 
+export type UserRole = 'admin' | 'planner' | 'viewer';
+export interface UserRecord {
+  id: string;
+  email: string;
+  display_name: string;
+  role: UserRole;
+  password_hash: string;
+  created_at: string;
+  last_login_at?: string | null;
+}
+
 export const dbService = {
+  getUserCount(): number {
+    return (db.prepare('SELECT COUNT(*) AS count FROM users').get() as { count: number }).count;
+  },
+
+  getUserByEmail(email: string): UserRecord | undefined {
+    return db.prepare('SELECT * FROM users WHERE email = ? COLLATE NOCASE').get(email.trim()) as UserRecord | undefined;
+  },
+
+  getUsers(): Array<Omit<UserRecord, 'password_hash'>> {
+    return db.prepare('SELECT id, email, display_name, role, created_at, last_login_at FROM users ORDER BY email ASC').all() as Array<Omit<UserRecord, 'password_hash'>>;
+  },
+
+  getUserBySession(sessionId: string): UserRecord | undefined {
+    db.prepare('DELETE FROM sessions WHERE expires_at <= ?').run(new Date().toISOString());
+    return db.prepare(`SELECT users.* FROM sessions JOIN users ON users.id = sessions.user_id
+      WHERE sessions.id = ? AND sessions.expires_at > ?`).get(sessionId, new Date().toISOString()) as UserRecord | undefined;
+  },
+
+  createUser(user: Omit<UserRecord, 'created_at' | 'last_login_at'>): UserRecord {
+    const created_at = new Date().toISOString();
+    db.prepare('INSERT INTO users (id, email, display_name, role, password_hash, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(user.id, user.email.trim().toLowerCase(), user.display_name.trim(), user.role, user.password_hash, created_at);
+    return { ...user, email: user.email.trim().toLowerCase(), created_at };
+  },
+
+  createSession(id: string, userId: string, expiresAt: string): void {
+    db.prepare('INSERT INTO sessions (id, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)')
+      .run(id, userId, expiresAt, new Date().toISOString());
+  },
+
+  deleteSession(id: string): void {
+    db.prepare('DELETE FROM sessions WHERE id = ?').run(id);
+  },
+
+  touchUserLogin(id: string): void {
+    db.prepare('UPDATE users SET last_login_at = ? WHERE id = ?').run(new Date().toISOString(), id);
+  },
+
   getHelpers(): HelperRecord[] {
     return db.prepare('SELECT * FROM helpers ORDER BY name ASC').all() as unknown as HelperRecord[];
   },

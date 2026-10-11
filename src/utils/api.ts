@@ -39,6 +39,14 @@ export interface Section {
   created_at: string;
 }
 
+export type UserRole = 'admin' | 'planner' | 'viewer';
+export interface AuthUser {
+  id: string;
+  email: string;
+  display_name: string;
+  role: UserRole;
+}
+
 const API_BASE = '/api';
 const BECHHOFEN_BBOX = '49.1241,10.4857,49.2170,10.6304';
 
@@ -151,6 +159,39 @@ function clientStitchWays(ways: Array<{ geometry: Array<{ lat: number; lon: numb
 }
 
 export const api = {
+  async getSession(): Promise<{ authenticated: boolean; setupRequired?: boolean; user: AuthUser | null }> {
+    const res = await fetch(`${API_BASE}/auth/session`);
+    if (!res.ok) throw new Error('Anmeldestatus konnte nicht geprüft werden.');
+    return await res.json();
+  },
+
+  async login(email: string, password: string): Promise<AuthUser> {
+    const res = await fetch(`${API_BASE}/auth/login`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'Anmeldung fehlgeschlagen.');
+    return data.user;
+  },
+
+  async logout(): Promise<void> {
+    await fetch(`${API_BASE}/auth/logout`, { method: 'POST' });
+  },
+
+  async getUsers(): Promise<AuthUser[]> {
+    const res = await fetch(`${API_BASE}/users`);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'Benutzer konnten nicht geladen werden.');
+    return data;
+  },
+
+  async createUser(input: { email: string; displayName: string; password: string; role: UserRole }): Promise<AuthUser> {
+    const res = await fetch(`${API_BASE}/users`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'Benutzer konnte nicht angelegt werden.');
+    return data;
+  },
+
   // Auto-migration: Check if current browser has legacy data stored in localStorage and push to SQLite
   async checkAndMigrateLocalStorage(): Promise<{ migrated: boolean; importedStreets: number; importedSections: number }> {
     try {

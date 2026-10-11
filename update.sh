@@ -56,6 +56,25 @@ npm run build
 # 5. Dienst neustarten
 echo -e "\n${BLUE}==> [4/4]${NC} Starte Systemd-Dienst neu..."
 if systemctl list-unit-files | grep -q lichternacht.service; then
+    # Die Version im Repository enthält sicherheitsrelevante Dienstoptionen
+    # (z. B. die geschützte Environment-Datei). Lokale Zugangsdaten liegen
+    # ausschließlich unter /etc/lichternacht und werden dabei nicht berührt.
+    if [ -f "$INSTALL_DIR/lichternacht.service" ]; then
+        cp "$INSTALL_DIR/lichternacht.service" /etc/systemd/system/lichternacht.service
+        mkdir -p /etc/lichternacht
+        if [ ! -f /etc/lichternacht/lichternacht.env ]; then
+            cat > /etc/lichternacht/lichternacht.env << 'EOF'
+# Vor einem öffentlichen Zugriff ausfüllen. Diese Datei bleibt ausschließlich auf dem Server.
+AUTH_REQUIRED=true
+ADMIN_EMAIL=admin@example.org
+ADMIN_NAME=Administrator
+ADMIN_PASSWORD=BITTE_HIER_EIN_LANGES_EINMALIGES_PASSWORT_SETZEN
+EOF
+            chmod 600 /etc/lichternacht/lichternacht.env
+            echo -e "${YELLOW}!${NC} Administrator noch einrichten: /etc/lichternacht/lichternacht.env bearbeiten und Dienst neu starten."
+        fi
+        systemctl daemon-reload
+    fi
     systemctl restart lichternacht
     sleep 2
     if systemctl is-active --quiet lichternacht; then
