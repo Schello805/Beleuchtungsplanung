@@ -91,11 +91,22 @@ echo -e "\n${BLUE}==> [3/6]${NC} Lade Projektdateien herunter..."
 if [ -d "$INSTALL_DIR/.git" ]; then
     echo -e "Verzeichnis existiert bereits, aktualisiere..."
     cd "$INSTALL_DIR"
+    DB_BACKUP=""
+    if [ -f "$INSTALL_DIR/data/streckenplaner.sqlite" ]; then
+        DB_BACKUP=$(mktemp)
+        cp "$INSTALL_DIR/data/streckenplaner.sqlite" "$DB_BACKUP"
+    fi
     git fetch origin
-    git reset --hard origin/HEAD 2>/dev/null || git reset --hard origin/main 2>/dev/null || git reset --hard origin/master 2>/dev/null || git pull
+    git checkout -B main origin/main
+    git reset --hard origin/main
+    if [ -n "$DB_BACKUP" ]; then
+        mkdir -p "$INSTALL_DIR/data"
+        cp "$DB_BACKUP" "$INSTALL_DIR/data/streckenplaner.sqlite"
+        rm -f "$DB_BACKUP"
+    fi
 else
     mkdir -p "$INSTALL_DIR"
-    git clone "$REPO_URL" "$INSTALL_DIR"
+    git clone --branch main --single-branch "$REPO_URL" "$INSTALL_DIR"
     cd "$INSTALL_DIR"
 fi
 

@@ -65,7 +65,7 @@ Die Anwendung ist für den autonomen Betrieb in einem Proxmox/Debian 13 Containe
 ### One-Liner Installation:
 In der Konsole des Debian 13 LXC-Containers einfach folgenden Befehl ausführen:
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Schello805/Beleuchtungsplanung/master/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Schello805/Beleuchtungsplanung/main/install.sh | bash
 ```
 
 **Was das Skript automatisch erledigt:**
@@ -82,7 +82,7 @@ Wann immer du Änderungen auf GitHub pushst, kannst du den Container mit einem e
 ```
 oder per Remote-Befehl:
 ```bash
-curl -fsSL https://raw.githubusercontent.com/Schello805/Beleuchtungsplanung/master/update.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Schello805/Beleuchtungsplanung/main/update.sh | bash
 ```
 
 ---

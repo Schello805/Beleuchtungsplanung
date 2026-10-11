@@ -32,12 +32,21 @@ cd "$INSTALL_DIR"
 if [ -f "$INSTALL_DIR/data/streckenplaner.sqlite" ]; then
     echo -e "${BLUE}==> [1/4]${NC} Sichere bestehende SQLite-Datenbank..."
     cp "$INSTALL_DIR/data/streckenplaner.sqlite" "$INSTALL_DIR/data/streckenplaner.backup-$(date +%Y%m%d_%H%M%S).sqlite"
+    DB_BACKUP=$(mktemp)
+    cp "$INSTALL_DIR/data/streckenplaner.sqlite" "$DB_BACKUP"
     echo -e "${GREEN}✓${NC} Backup erstellt."
 fi
 
 # 3. Neuesten Code von Git laden
 echo -e "\n${BLUE}==> [2/4]${NC} Lade neueste Änderungen von GitHub..."
-git pull origin main 2>/dev/null || git pull origin master 2>/dev/null || git pull
+git fetch origin main
+git checkout -B main origin/main
+git reset --hard origin/main
+if [ -n "${DB_BACKUP:-}" ]; then
+    mkdir -p "$INSTALL_DIR/data"
+    cp "$DB_BACKUP" "$INSTALL_DIR/data/streckenplaner.sqlite"
+    rm -f "$DB_BACKUP"
+fi
 
 # 4. Abhängigkeiten aktualisieren & Frontend bauen
 echo -e "\n${BLUE}==> [3/4]${NC} Installiere Abhängigkeiten und baue Frontend..."
