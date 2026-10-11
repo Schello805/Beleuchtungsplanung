@@ -986,7 +986,8 @@ export const MapComponent: React.FC<MapComponentProps> = ({
             top: 16,
             left: 382,
             transform: 'none',
-            maxWidth: 'calc(100% - 400px)',
+            // Keep a permanent clear zone on the right for account and map controls.
+            maxWidth: 'calc(100% - 590px)',
             flexWrap: 'wrap',
             zIndex: 1000,
             display: 'flex',
