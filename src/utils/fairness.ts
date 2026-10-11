@@ -229,6 +229,101 @@ export function calculateNearbyFairAssignment(
   };
 }
 
+/**
+ * Assigns the section directly at a station first.  Only after every possible
+ * station has received one unique nearby section are the remaining sections
+ * balanced across all helpers.  This mirrors the real-world workflow: each
+ * participant decorates in front of their own stand before taking on a
+ * further section elsewhere.
+ */
+export function calculateStationFirstAssignment(
+  sectionsToAssign: Section[],
+  helpers: Helper[]
+): AutoAssignmentResult {
+  if (sectionsToAssign.length === 0 || helpers.length === 0) {
+    return {
+      assignments: [],
+      summary: { totalMeters: 0, helpersUsed: 0, avgMeters: 0, minMeters: 0, maxMeters: 0 }
+    };
+  }
+
+  const lengthOf = (section: Section) => section.lengthMeters || section.length_meters || 0;
+  const locatedHelpers = helpers.filter(helper =>
+    Number.isFinite(Number(helper.latitude)) && Number.isFinite(Number(helper.longitude))
+  );
+  const totals = new Map(helpers.map(helper => [helper.id, { helper, meters: 0, count: 0 }]));
+  const assignments: AutoAssignmentResult['assignments'] = [];
+  const assignedSections = new Set<string>();
+  const stationAssigned = new Set<string>();
+
+  const distanceToSection = (section: Section, helper: Helper) => {
+    const point = turf.point([Number(helper.longitude), Number(helper.latitude)]);
+    if (section.type === 'line' && section.geojson.geometry.type === 'LineString') {
+      return turf.pointToLineDistance(point, section.geojson, { units: 'meters' });
+    }
+    if (section.type === 'line' && section.geojson.geometry.type === 'MultiLineString') {
+      return Math.min(...section.geojson.geometry.coordinates.map(coords =>
+        turf.pointToLineDistance(point, turf.lineString(coords), { units: 'meters' })
+      ));
+    }
+    if (section.geojson.geometry.type === 'Point') {
+      return turf.distance(point, section.geojson, { units: 'kilometers' }) * 1000;
+    }
+    return Number.MAX_SAFE_INTEGER;
+  };
+
+  // Pair the closest station/section combinations first. A section can only
+  // be reserved once, so two neighbouring stands never receive the same road.
+  const nearbyPairs = locatedHelpers.flatMap(helper =>
+    sectionsToAssign.map(section => ({ helper, section, distance: distanceToSection(section, helper) }))
+  ).sort((a, b) => a.distance - b.distance);
+
+  for (const { helper, section } of nearbyPairs) {
+    if (stationAssigned.has(helper.id) || assignedSections.has(section.id)) continue;
+    const record = totals.get(helper.id)!;
+    record.meters += lengthOf(section);
+    record.count++;
+    stationAssigned.add(helper.id);
+    assignedSections.add(section.id);
+    assignments.push({ sectionId: section.id, helperId: helper.id, helperName: helper.name });
+  }
+
+  // The remaining work is deliberately balanced by metres. Distance is only a
+  // tie-breaker, because every station already has its own local section.
+  const remainingSections = sectionsToAssign
+    .filter(section => !assignedSections.has(section.id))
+    .sort((a, b) => lengthOf(b) - lengthOf(a));
+
+  for (const section of remainingSections) {
+    const candidates = [...helpers].sort((a, b) => {
+      const loadDifference = totals.get(a.id)!.meters - totals.get(b.id)!.meters;
+      if (loadDifference !== 0) return loadDifference;
+      const aLocated = Number.isFinite(Number(a.latitude)) && Number.isFinite(Number(a.longitude));
+      const bLocated = Number.isFinite(Number(b.latitude)) && Number.isFinite(Number(b.longitude));
+      if (aLocated && bLocated) return distanceToSection(section, a) - distanceToSection(section, b);
+      return a.name.localeCompare(b.name, 'de');
+    });
+    const helper = candidates[0];
+    const record = totals.get(helper.id)!;
+    record.meters += lengthOf(section);
+    record.count++;
+    assignments.push({ sectionId: section.id, helperId: helper.id, helperName: helper.name });
+  }
+
+  const used = [...totals.values()].filter(record => record.count > 0);
+  const totalMeters = sectionsToAssign.reduce((sum, section) => sum + lengthOf(section), 0);
+  return {
+    assignments,
+    summary: {
+      totalMeters,
+      helpersUsed: used.length,
+      avgMeters: used.length ? Math.round(totalMeters / used.length) : 0,
+      minMeters: used.length ? Math.round(Math.min(...used.map(record => record.meters))) : 0,
+      maxMeters: used.length ? Math.round(Math.max(...used.map(record => record.meters))) : 0
+    }
+  };
+}
+
 /** Hungarian algorithm: for each row returns the distinct column with the
  * minimum total cost. Here, rows are work packages and columns are stations. */
 function minimumCostMatching(costs: number[][]): number[] {

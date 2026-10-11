@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { X, Zap, Users, Check, ArrowRight, Sparkles, RefreshCw, Layers } from 'lucide-react';
 import type { Section, Helper } from '../utils/api';
-import { calculateFairAssignment, calculateNearbyFairAssignment } from '../utils/fairness';
+import { calculateFairAssignment, calculateStationFirstAssignment } from '../utils/fairness';
 
 interface AutoAssignModalProps {
   isOpen: boolean;
@@ -21,7 +21,7 @@ export const AutoAssignModal: React.FC<AutoAssignModalProps> = ({
   if (!isOpen) return null;
 
   const [mode, setMode] = useState<'unassigned_only' | 'all'>('unassigned_only');
-  const [strategy, setStrategy] = useState<'zip' | 'fair' | 'nearby'>('nearby');
+  const [strategy, setStrategy] = useState<'zip' | 'fair' | 'station_first'>('station_first');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
   // Compute unassigned sections and free helpers
@@ -51,8 +51,8 @@ export const AutoAssignModal: React.FC<AutoAssignModalProps> = ({
       const res = calculateFairAssignment(targetSections, targetHelpers);
       return res.assignments;
     }
-    if (strategy === 'nearby') {
-      return calculateNearbyFairAssignment(targetSections, targetHelpers).assignments;
+    if (strategy === 'station_first') {
+      return calculateStationFirstAssignment(targetSections, targetHelpers).assignments;
     }
 
     // Zip (Reißverschluss) strategy: sort sections logically along streets, then assign sequentially
@@ -87,7 +87,7 @@ export const AutoAssignModal: React.FC<AutoAssignModalProps> = ({
   const totalMeters = targetSections.reduce((sum, s) => sum + (s.length_meters || s.lengthMeters || 0), 0);
   const avgMetersPerHelper = targetHelpers.length > 0 ? Math.round(totalMeters / Math.min(targetSections.length, targetHelpers.length)) : 0;
   const largestSectionMeters = Math.max(0, ...targetSections.map(s => s.length_meters || s.lengthMeters || 0));
-  const needsFairRechunking = strategy === 'nearby' && targetHelpers.length > 0 && largestSectionMeters > (totalMeters / targetHelpers.length) * 1.6;
+  const needsFairRechunking = strategy === 'station_first' && targetHelpers.length > 0 && largestSectionMeters > (totalMeters / targetHelpers.length) * 1.6;
 
   const handleExecute = async () => {
     if (previewAssignments.length === 0) return;
@@ -252,18 +252,18 @@ export const AutoAssignModal: React.FC<AutoAssignModalProps> = ({
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
               <button
                 type="button"
-                onClick={() => setStrategy('nearby')}
+                onClick={() => setStrategy('station_first')}
                 style={{
                   padding: '10px 12px', borderRadius: 'var(--radius-sm)',
-                  border: strategy === 'nearby' ? '2px solid #10B981' : '1px solid var(--border-subtle)',
-                  background: strategy === 'nearby' ? 'rgba(16, 185, 129, 0.12)' : 'var(--bg-card)',
-                  color: strategy === 'nearby' ? '#10B981' : 'var(--text-main)', fontWeight: 700,
+                  border: strategy === 'station_first' ? '2px solid #10B981' : '1px solid var(--border-subtle)',
+                  background: strategy === 'station_first' ? 'rgba(16, 185, 129, 0.12)' : 'var(--bg-card)',
+                  color: strategy === 'station_first' ? '#10B981' : 'var(--text-main)', fontWeight: 700,
                   fontSize: 12, textAlign: 'left', cursor: 'pointer'
                 }}
               >
-                <div>📌 Nähe + faire Meter</div>
+                <div>📍 Stand zuerst</div>
                 <div style={{ fontSize: 11, fontWeight: 400, color: 'var(--text-muted)', marginTop: 2 }}>
-                  Bevorzugt Abschnitte nahe der importierten Station
+                  Erst vor dem eigenen Stand, anschließend den Rest fair verteilen
                 </div>
               </button>
               <button
