@@ -245,7 +245,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     <aside
       className="no-print planner-sidebar"
       style={{
-        width: 440,
+        width: 400,
         height: '100vh',
         display: 'flex',
         flexDirection: 'column',

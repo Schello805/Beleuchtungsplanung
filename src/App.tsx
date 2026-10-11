@@ -10,7 +10,7 @@ const PrintView = lazy(() => import('./components/PrintView').then(module => ({ 
 const ExcelImportModal = lazy(() => import('./components/ExcelImportModal').then(module => ({ default: module.ExcelImportModal })));
 import { api, type Section, type Helper, type Street, type AuthUser, type PublicHelperInfo } from './utils/api';
 import { splitSectionInHalf, type GeneratedSection } from './utils/geo';
-import { Database, Wifi, Check, Copy, X, Undo2 } from 'lucide-react';
+import { Check, X, UserRound, ChevronDown } from 'lucide-react';
 
 export const App: React.FC = () => {
   const publicToken = window.location.pathname.match(/^\/helfer\/([A-Za-z0-9_-]{20,})\/?$/)?.[1] || null;
@@ -22,6 +22,7 @@ export const App: React.FC = () => {
   const [loginPassword, setLoginPassword] = useState('');
   const [loginError, setLoginError] = useState<string | null>(null);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
+  const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
   const [isUserManagementOpen, setIsUserManagementOpen] = useState(false);
   const [managedUsers, setManagedUsers] = useState<AuthUser[]>([]);
   const [newUser, setNewUser] = useState({ email: '', displayName: '', password: '', role: 'planner' as AuthUser['role'] });
@@ -627,9 +628,14 @@ export const App: React.FC = () => {
   return (
     <div className="planner-shell" style={{ display: 'flex', width: '100vw', height: '100vh', overflow: 'hidden' }}>
       <div className="no-print app-user-menu">
-        <span>{currentUser?.display_name} · {currentUser?.role === 'admin' ? 'Administrator' : currentUser?.role === 'planner' ? 'Planung' : 'Lesen'}</span>
-        {currentUser?.role === 'admin' && <button onClick={openUserManagement} style={{ border: 0, borderRadius: 4, padding: '3px 6px', cursor: 'pointer', background: 'rgba(59,130,246,.16)', color: '#60a5fa' }}>Benutzer</button>}
-        <button onClick={handleLogout} style={{ border: 0, borderRadius: 4, padding: '3px 6px', cursor: 'pointer', background: 'rgba(248,113,113,.16)', color: '#fb7185' }}>Abmelden</button>
+        <button className="app-user-toggle" onClick={() => setIsAccountMenuOpen(open => !open)}>
+          <UserRound size={15} /><span>{currentUser?.display_name}</span><ChevronDown size={14} />
+        </button>
+        {isAccountMenuOpen && <div className="app-user-popover">
+          <strong>{currentUser?.display_name}</strong><small>{currentUser?.role === 'admin' ? 'Administrator' : currentUser?.role === 'planner' ? 'Planung' : 'Lesen'}</small>
+          {currentUser?.role === 'admin' && <button onClick={() => { setIsAccountMenuOpen(false); openUserManagement(); }}>Benutzer verwalten</button>}
+          <button className="logout" onClick={handleLogout}>Abmelden</button>
+        </div>}
       </div>
       {/* SIDEBAR */}
       <Sidebar
@@ -675,10 +681,10 @@ export const App: React.FC = () => {
           className="no-print"
           style={{
             position: 'absolute',
-            top: 76,
+            top: 16,
             left: 16,
             zIndex: 1000,
-            width: 380,
+            width: 350,
             maxHeight: 'calc(100vh - 32px)',
             overflowY: 'auto'
           }}
@@ -699,8 +705,9 @@ export const App: React.FC = () => {
           />
         </div>
 
-        {/* Central Database & Multi-PC Status Badge */}
-        <div
+        {/* The former technical database/network badge has been intentionally
+            removed from the workspace: planning actions are the priority. */}
+        {false && <div
           className="no-print"
           style={{
             position: 'absolute',
@@ -785,7 +792,7 @@ export const App: React.FC = () => {
               </button>
             </div>
           )}
-        </div>
+        </div>}
 
         {/* Migration notice banner */}
         {migrationNotice && (

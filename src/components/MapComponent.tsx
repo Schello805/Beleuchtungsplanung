@@ -976,8 +976,10 @@ export const MapComponent: React.FC<MapComponentProps> = ({
           style={{
             position: 'absolute',
             top: 16,
-            left: '50%',
-            transform: 'translateX(-50%)',
+            left: 382,
+            transform: 'none',
+            maxWidth: 'calc(100% - 400px)',
+            flexWrap: 'wrap',
             zIndex: 1000,
             display: 'flex',
             alignItems: 'center',
