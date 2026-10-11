@@ -263,7 +263,8 @@ export function calculateNearbyFairAssignment(
  */
 export function calculateStationFirstAssignment(
   sectionsToAssign: Section[],
-  helpers: Helper[]
+  helpers: Helper[],
+  existingSections: Section[] = []
 ): AutoAssignmentResult {
   if (sectionsToAssign.length === 0 || helpers.length === 0) {
     return {
@@ -281,6 +282,21 @@ export function calculateStationFirstAssignment(
   const assignedSections = new Set<string>();
   const stationAssigned = new Set<string>();
   const assignedByHelper = new Map(helpers.map(helper => [helper.id, [] as Section[]]));
+
+  // When only the still-open sections are distributed, the already allocated
+  // areas are part of the topology as well. Without this seed an open segment
+  // could accidentally be appended to a helper somewhere else in the town.
+  const targetIds = new Set(sectionsToAssign.map(section => section.id));
+  existingSections.forEach(section => {
+    if (targetIds.has(section.id) || !section.assigned_helper_id) return;
+    const record = totals.get(section.assigned_helper_id);
+    const helperSections = assignedByHelper.get(section.assigned_helper_id);
+    if (!record || !helperSections) return;
+    record.meters += lengthOf(section);
+    record.count++;
+    helperSections.push(section);
+    stationAssigned.add(section.assigned_helper_id);
+  });
 
   const distanceToSection = (section: Section, helper: Helper) => {
     const point = turf.point([Number(helper.longitude), Number(helper.latitude)]);
@@ -300,7 +316,7 @@ export function calculateStationFirstAssignment(
 
   // Pair the closest station/section combinations first. A section can only
   // be reserved once, so two neighbouring stands never receive the same road.
-  const nearbyPairs = locatedHelpers.flatMap(helper =>
+  const nearbyPairs = locatedHelpers.filter(helper => totals.get(helper.id)!.count === 0).flatMap(helper =>
     sectionsToAssign.map(section => ({ helper, section, distance: distanceToSection(section, helper) }))
   ).sort((a, b) => a.distance - b.distance);
 

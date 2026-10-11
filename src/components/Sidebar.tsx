@@ -219,7 +219,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
     setIsAutoAssigning(true);
     try {
-      const result = calculateStationFirstAssignment(targetSections, helpers);
+      const result = calculateStationFirstAssignment(targetSections, helpers, onlyUnassigned ? sections : []);
       await onBatchAssign(result.assignments);
       alert(`Fairness-Zuweisung abgeschlossen!\n${result.summary.helpersUsed} Helfer eingeteilt, Durchschnitt: ~${result.summary.avgMeters} m pro Helfer.`);
     } catch (err: any) {

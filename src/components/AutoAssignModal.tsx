@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { X, Zap, Users, Check, ArrowRight, Sparkles, RefreshCw, Layers } from 'lucide-react';
 import type { Section, Helper } from '../utils/api';
-import { calculateFairAssignment, calculateStationFirstAssignment } from '../utils/fairness';
+import { calculateStationFirstAssignment } from '../utils/fairness';
 
 interface AutoAssignModalProps {
   isOpen: boolean;
@@ -21,7 +21,7 @@ export const AutoAssignModal: React.FC<AutoAssignModalProps> = ({
   if (!isOpen) return null;
 
   const [mode, setMode] = useState<'unassigned_only' | 'all'>('unassigned_only');
-  const [strategy, setStrategy] = useState<'zip' | 'fair' | 'station_first'>('station_first');
+  const [strategy, setStrategy] = useState<'fair' | 'station_first'>('station_first');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
   // Compute unassigned sections and free helpers
@@ -47,47 +47,22 @@ export const AutoAssignModal: React.FC<AutoAssignModalProps> = ({
   const previewAssignments = useMemo(() => {
     if (targetSections.length === 0 || targetHelpers.length === 0) return [];
 
-    if (strategy === 'fair') {
-      const res = calculateFairAssignment(targetSections, targetHelpers);
-      return res.assignments;
+    if (strategy === 'station_first' || strategy === 'fair') {
+      return calculateStationFirstAssignment(
+        targetSections,
+        targetHelpers,
+        mode === 'unassigned_only' ? sections : []
+      ).assignments;
     }
-    if (strategy === 'station_first') {
-      return calculateStationFirstAssignment(targetSections, targetHelpers).assignments;
-    }
 
-    // Zip (Reißverschluss) strategy: sort sections logically along streets, then assign sequentially
-    const sorted = [...targetSections].sort((a, b) => {
-      // 1. Group by street
-      const streetCmp = a.street_name.localeCompare(b.street_name, 'de');
-      if (streetCmp !== 0) return streetCmp;
-
-      // 2. Sort by section index or label
-      const idxA = (a as any).section_index ?? 0;
-      const idxB = (b as any).section_index ?? 0;
-      if (idxA !== idxB) return idxA - idxB;
-
-      return a.label.localeCompare(b.label, 'de', { numeric: true });
-    });
-
-    const result: Array<{ sectionId: string; helperId: string; helperName: string }> = [];
-
-    sorted.forEach((sec, idx) => {
-      const helper = targetHelpers[idx % targetHelpers.length];
-      result.push({
-        sectionId: sec.id,
-        helperId: helper.id,
-        helperName: helper.name
-      });
-    });
-
-    return result;
-  }, [targetSections, targetHelpers, strategy]);
+    return [];
+  }, [targetSections, targetHelpers, strategy, mode, sections]);
 
   // Summary stats
   const totalMeters = targetSections.reduce((sum, s) => sum + (s.length_meters || s.lengthMeters || 0), 0);
   const avgMetersPerHelper = targetHelpers.length > 0 ? Math.round(totalMeters / Math.min(targetSections.length, targetHelpers.length)) : 0;
   const largestSectionMeters = Math.max(0, ...targetSections.map(s => s.length_meters || s.lengthMeters || 0));
-  const needsFairRechunking = strategy === 'station_first' && targetHelpers.length > 0 && largestSectionMeters > (totalMeters / targetHelpers.length) * 1.6;
+  const needsFairRechunking = targetHelpers.length > 0 && largestSectionMeters > (totalMeters / targetHelpers.length) * 1.6;
 
   const handleExecute = async () => {
     if (previewAssignments.length === 0) return;
@@ -318,22 +293,22 @@ export const AutoAssignModal: React.FC<AutoAssignModalProps> = ({
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
               <button
                 type="button"
-                onClick={() => setStrategy('zip')}
+                onClick={() => setStrategy('station_first')}
                 style={{
                   padding: '10px 12px',
                   borderRadius: 'var(--radius-sm)',
-                  border: strategy === 'zip' ? '2px solid #38BDF8' : '1px solid var(--border-subtle)',
-                  background: strategy === 'zip' ? 'rgba(56, 189, 248, 0.12)' : 'var(--bg-card)',
-                  color: strategy === 'zip' ? '#38BDF8' : 'var(--text-main)',
+                  border: strategy === 'station_first' ? '2px solid #38BDF8' : '1px solid var(--border-subtle)',
+                  background: strategy === 'station_first' ? 'rgba(56, 189, 248, 0.12)' : 'var(--bg-card)',
+                  color: strategy === 'station_first' ? '#38BDF8' : 'var(--text-main)',
                   fontWeight: 700,
                   fontSize: 12,
                   textAlign: 'left',
                   cursor: 'pointer'
                 }}
               >
-                <div>📍 Reißverschluss</div>
+                <div>🧭 Zusammenhängend + fair</div>
                 <div style={{ fontSize: 11, fontWeight: 400, color: 'var(--text-muted)', marginTop: 2 }}>
-                  Entlang der Straße nacheinander vergeben (Nachbarn stehen nebeneinander)
+                  Vergibt nur angrenzende Erweiterungen, niemals getrennte Bereiche
                 </div>
               </button>
 
@@ -352,9 +327,9 @@ export const AutoAssignModal: React.FC<AutoAssignModalProps> = ({
                   cursor: 'pointer'
                 }}
               >
-                <div>⚖️ Exakte Meter-Gleichheit</div>
+                <div>⚖️ Faire Meter</div>
                 <div style={{ fontSize: 11, fontWeight: 400, color: 'var(--text-muted)', marginTop: 2 }}>
-                  Balanciert die Meter der Helfer mathematisch optimal aus
+                  Gleiche Verteilung innerhalb zusammenhängender Bereiche
                 </div>
               </button>
             </div>

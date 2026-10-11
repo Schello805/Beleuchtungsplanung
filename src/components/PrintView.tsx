@@ -12,7 +12,7 @@ interface PrintViewProps {
   onClose: () => void;
 }
 
-const AssignmentOverviewMap: React.FC<{ sections: Section[]; helpers: Helper[] }> = ({ sections, helpers }) => {
+const AssignmentOverviewMap: React.FC<{ sections: Section[]; helpers: Helper[] }> = ({ sections }) => {
   const lines = sections.flatMap(section => {
     const geometry = section.geojson?.geometry;
     if (!geometry) return [] as Array<{ section: Section; coordinates: number[][] }>;
@@ -36,34 +36,26 @@ const AssignmentOverviewMap: React.FC<{ sections: Section[]; helpers: Helper[] }
   const currentRatio = (maxX - minX) / (maxY - minY);
   if (currentRatio < targetRatio) { const extra = ((maxY - minY) * targetRatio - (maxX - minX)) / 2; minX -= extra; maxX += extra; }
   else { const extra = ((maxX - minX) / targetRatio - (maxY - minY)) / 2; minY -= extra; maxY += extra; }
-  // A planning map needs legible section numbers, not maximum geographic reach.
   // Deliberately zoom closer to the active planning area for the paper format.
   const printZoom = 1.35;
   const centerX = (minX + maxX) / 2, centerY = (minY + maxY) / 2;
   const halfWidth = (maxX - minX) / (2 * printZoom), halfHeight = (maxY - minY) / (2 * printZoom);
   minX = centerX - halfWidth; maxX = centerX + halfWidth; minY = centerY - halfHeight; maxY = centerY + halfHeight;
   const project = (coordinate: number[]) => { const [x, y] = toWorld(coordinate); return [((x - minX) / (maxX - minX)) * 1100, ((y - minY) / (maxY - minY)) * 650]; };
-  const activeHelpers = helpers.filter(helper => sections.some(section => section.assigned_helper_id === helper.id)).sort((a, b) => a.name.localeCompare(b.name, 'de'));
-  const helperNumbers = new Map(activeHelpers.map((helper, index) => [helper.id, index + 1]));
-  const numberFor = (section: Section) => section.assigned_helper_id ? helperNumbers.get(section.assigned_helper_id) : undefined;
   const tiles = Array.from({ length: Math.ceil(maxX / tileSize) - Math.floor(minX / tileSize) + 1 }, (_, xIndex) =>
     Array.from({ length: Math.ceil(maxY / tileSize) - Math.floor(minY / tileSize) + 1 }, (_, yIndex) => ({ x: Math.floor(minX / tileSize) + xIndex, y: Math.floor(minY / tileSize) + yIndex }))
   ).flat();
 
   return <>
-    <svg viewBox="0 0 1100 650" role="img" aria-label="Gesamtkarte der Helfer-Zuweisungen" style={{ width: '100%', height: 'auto', border: '1px solid #CBD5E1', borderRadius: 10, background: '#F8FAFC' }}>
+    <svg viewBox="0 0 1100 650" role="img" aria-label="Gesamtkarte der zu beleuchtenden Straßen" style={{ width: '100%', height: 'auto', border: '1px solid #CBD5E1', borderRadius: 10, background: '#F8FAFC' }}>
       <rect width="1100" height="650" fill="#F8FAFC" />
       {tiles.map(tile => <image key={`${tile.x}-${tile.y}`} href={`https://tile.openstreetmap.org/${zoom}/${tile.x}/${tile.y}.png`} x={((tile.x * tileSize - minX) / (maxX - minX)) * 1100} y={((tile.y * tileSize - minY) / (maxY - minY)) * 650} width={(tileSize / (maxX - minX)) * 1100} height={(tileSize / (maxY - minY)) * 650} preserveAspectRatio="none" />)}
       {lines.map(({ section, coordinates: lineCoordinates }, index) => <polyline key={`${section.id}-${index}`} points={lineCoordinates.map(project).map(point => point.join(',')).join(' ')} fill="none" stroke="#FFFFFF" strokeWidth="10" strokeLinecap="round" strokeLinejoin="round" opacity=".95" />)}
-      {lines.map(({ section, coordinates: lineCoordinates }, index) => <polyline key={`${section.id}-${index}-line`} points={lineCoordinates.map(project).map(point => point.join(',')).join(' ')} fill="none" stroke={numberFor(section) ? '#0F172A' : '#64748B'} strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />)}
-      {lines.map(({ section, coordinates: lineCoordinates }, index) => { const [x, y] = project(lineCoordinates[Math.floor(lineCoordinates.length / 2)]); const number = numberFor(section); return <g key={`${section.id}-${index}-number`}><circle cx={x} cy={y} r="11" fill={number ? '#F59E0B' : '#94A3B8'} stroke="#FFFFFF" strokeWidth="3" /><text x={x} y={y + 4} textAnchor="middle" fill="#0F172A" fontSize="11" fontWeight="800">{number || '–'}</text></g>; })}
-      {points.map(point => { const [x, y] = project(point.geojson.geometry.coordinates as number[]); const number = numberFor(point); return <g key={point.id}><circle cx={x} cy={y} r="11" fill={number ? '#F59E0B' : '#94A3B8'} stroke="#FFFFFF" strokeWidth="3" /><text x={x} y={y + 4} textAnchor="middle" fill="#0F172A" fontSize="11" fontWeight="800">{number || '–'}</text></g>; })}
+      {lines.map(({ section, coordinates: lineCoordinates }, index) => <polyline key={`${section.id}-${index}-line`} points={lineCoordinates.map(project).map(point => point.join(',')).join(' ')} fill="none" stroke={section.color || '#F59E0B'} strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />)}
+      {points.map(point => { const [x, y] = project(point.geojson.geometry.coordinates as number[]); return <circle key={point.id} cx={x} cy={y} r="8" fill={point.color || '#F59E0B'} stroke="#FFFFFF" strokeWidth="3" />; })}
       <rect x="12" y="614" width="210" height="24" rx="4" fill="#FFFFFF" opacity=".88" /><text x="22" y="631" fill="#475569" fontSize="12">© OpenStreetMap-Mitwirkende</text>
     </svg>
-    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 14px', marginTop: 14 }}>
-      {activeHelpers.map(helper => { const assigned = sections.filter(section => section.assigned_helper_id === helper.id); const meters = assigned.reduce((sum, section) => sum + (section.length_meters ?? section.lengthMeters ?? 0), 0); return <div key={helper.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#334155' }}><b style={{ display: 'inline-grid', placeItems: 'center', width: 18, height: 18, borderRadius: 99, background: '#F59E0B', color: '#0F172A' }}>{helperNumbers.get(helper.id)}</b> <b>{helper.name}</b> · {Math.round(meters)} m</div>; })}
-      {sections.some(section => !section.assigned_helper_id) && <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#334155' }}><b style={{ display: 'inline-grid', placeItems: 'center', width: 18, height: 18, borderRadius: 99, background: '#94A3B8', color: '#FFFFFF' }}>–</b> <b>Offen</b></div>}
-    </div>
+    <p style={{ margin: '10px 0 0', color: '#475569', fontSize: 11 }}>Farbig markiert sind die Straßenabschnitte, die zur Lichternacht beleuchtet werden.</p>
   </>;
 };
 
