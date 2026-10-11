@@ -97,8 +97,8 @@ if [ -d "$INSTALL_DIR/.git" ]; then
         cp "$INSTALL_DIR/data/streckenplaner.sqlite" "$DB_BACKUP"
     fi
     git fetch origin
-    git checkout -B main origin/main
     git reset --hard origin/main
+    git checkout -B main origin/main
     if [ -n "$DB_BACKUP" ]; then
         mkdir -p "$INSTALL_DIR/data"
         cp "$DB_BACKUP" "$INSTALL_DIR/data/streckenplaner.sqlite"

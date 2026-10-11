@@ -40,8 +40,8 @@ fi
 # 3. Neuesten Code von Git laden
 echo -e "\n${BLUE}==> [2/4]${NC} Lade neueste Änderungen von GitHub..."
 git fetch origin main
-git checkout -B main origin/main
 git reset --hard origin/main
+git checkout -B main origin/main
 if [ -n "${DB_BACKUP:-}" ]; then
     mkdir -p "$INSTALL_DIR/data"
     cp "$DB_BACKUP" "$INSTALL_DIR/data/streckenplaner.sqlite"
