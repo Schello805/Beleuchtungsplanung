@@ -81,6 +81,7 @@ export const MapComponent: React.FC<MapComponentProps> = ({
   const [internalStampHelperId, setInternalStampHelperId] = useState<string | null>(null);
   const [internalAutoAdvance, setInternalAutoAdvance] = useState<boolean>(true);
   const [stampFeedbackToast, setStampFeedbackToast] = useState<string | null>(null);
+  const [showLayerMenu, setShowLayerMenu] = useState<boolean>(false);
 
   const activeHelperId = activeStampHelperId !== undefined ? activeStampHelperId : internalStampHelperId;
   const isAutoAdvance = autoAdvanceStamp !== undefined ? autoAdvanceStamp : internalAutoAdvance;
@@ -738,15 +739,22 @@ export const MapComponent: React.FC<MapComponentProps> = ({
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
       <div ref={mapContainerRef} style={{ width: '100%', height: '100%' }} />
 
-      {/* Layer Switcher & Settings Button (Top Right) */}
+      {/* Map controls stay compact until they are explicitly needed. */}
+      <button
+        className="no-print map-controls-toggle"
+        onClick={() => setShowLayerMenu(open => !open)}
+        title="Kartenansicht und API-Einstellungen"
+      >
+        <Settings size={15} /> Karte
+      </button>
       <div
         className="no-print"
         style={{
           position: 'absolute',
-          top: 16,
+          top: 54,
           right: 16,
           zIndex: 1000,
-          display: 'flex',
+          display: showLayerMenu ? 'flex' : 'none',
           alignItems: 'center',
           gap: 6,
           background: 'var(--bg-card)',
