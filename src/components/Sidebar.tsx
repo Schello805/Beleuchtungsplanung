@@ -913,18 +913,33 @@ export const Sidebar: React.FC<SidebarProps> = ({
                             {sec.label}
                           </span>
                         </div>
-                        <span
-                          style={{
-                            fontWeight: 700,
-                            fontSize: 12,
-                            padding: '2px 8px',
-                            borderRadius: 12,
-                            background: `${sec.color}22`,
-                            color: sec.color
-                          }}
-                        >
-                          {sec.lengthMeters} m
-                        </span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span
+                            style={{
+                              fontWeight: 700,
+                              fontSize: 12,
+                              padding: '2px 8px',
+                              borderRadius: 12,
+                              background: `${sec.color}22`,
+                              color: sec.color
+                            }}
+                          >
+                            {sec.lengthMeters} m
+                          </span>
+                          {!sec.assigned_helper_id && (
+                            <button
+                              type="button"
+                              title="Offenen Restabschnitt löschen"
+                              onClick={event => {
+                                event.stopPropagation();
+                                if (confirm(`Offenen Restabschnitt "${sec.label}" löschen?`)) onDeleteSection(sec.id);
+                              }}
+                              style={{ display: 'grid', placeItems: 'center', background: 'rgba(239, 68, 68, .12)', border: '1px solid rgba(239, 68, 68, .42)', color: '#F87171', cursor: 'pointer', padding: 4, borderRadius: 5 }}
+                            >
+                              <Trash2 size={14} />
+                            </button>
+                          )}
+                        </div>
                       </div>
 
                       {/* Helper Select */}
