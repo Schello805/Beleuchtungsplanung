@@ -807,17 +807,12 @@ export const PrintView: React.FC<PrintViewProps> = ({
                     </div>
 
                     {/* Information only – no material issue or confirmation */}
-                    <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', padding: 10, borderRadius: 6, marginBottom: 14, fontSize: 11, display: 'flex', justifyContent: 'space-between' }}>
+                    <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', padding: 10, borderRadius: 6, marginBottom: 14, fontSize: 11 }}>
                       <div>
                         <div style={{ fontWeight: 800, color: '#0F172A', marginBottom: 2 }}>🕒 Für die Lichternacht:</div>
                         <div>• Bitte deinen Bereich rechtzeitig vorbereiten.</div>
                         <div>• Lichter und benötigtes Material bitte selbst besorgen.</div>
                         <div>• Den genauen Ablauf stimmt die Orga separat mit dir ab.</div>
-                      </div>
-                      <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontWeight: 800, color: '#0F172A' }}>📞 Einsatzleitung:</div>
-                        <div style={{ color: '#D97706', fontWeight: 700 }}>{orgaPhone || '09855 / 12345'}</div>
-                        <div style={{ marginTop: 6, fontSize: 10, color: '#64748B' }}>Bei Fragen bitte bei der Orga melden.</div>
                       </div>
                     </div>
 
