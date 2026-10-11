@@ -411,7 +411,7 @@ export function rechunkSectionsByTargetLength(
  * be shorter than the target where a road ends, but it is never assembled from
  * separate streets or distant road fragments.
  */
-export function createFairWorkPackages(sections: any[], helperCount: number): any[] {
+export function createFairWorkPackages(sections: any[], helperCount: number, minMeters = 40, maxMeters = 110): any[] {
   const lines = sections
     .filter(section => section.type === 'line')
     .flatMap(section => {
@@ -430,17 +430,17 @@ export function createFairWorkPackages(sections: any[], helperCount: number): an
   // planning lengths (rounding and OSM geometry). Preserve the latter for
   // exports/material calculations instead of silently changing the total.
   const declaredTotalMeters = sections.reduce((sum, section) => sum + Number(section.length_meters ?? section.lengthMeters ?? 0), 0);
-  const desiredCount = Math.max(1, Math.min(helperCount, Math.floor(declaredTotalMeters / 40)));
+  const desiredCount = Math.max(1, Math.min(helperCount, Math.floor(declaredTotalMeters / minMeters)));
   // Every continuous road component needs a package of its own. Long roads
   // are split further, first to respect the 110 m ceiling, then towards the
   // requested helper count while keeping each part at least 40 m long.
-  const pieceCounts = lines.map(({ feature }) => Math.max(1, Math.ceil(turf.length(feature, { units: 'kilometers' }) / 0.11)));
+  const pieceCounts = lines.map(({ feature }) => Math.max(1, Math.ceil(turf.length(feature, { units: 'kilometers' }) / (maxMeters / 1000))));
   while (pieceCounts.reduce((sum, count) => sum + count, 0) < desiredCount) {
     let bestIndex = -1;
     let bestNextLength = 0;
     lines.forEach(({ feature }, index) => {
       const nextLength = turf.length(feature, { units: 'kilometers' }) / (pieceCounts[index] + 1);
-      if (nextLength >= 0.04 && nextLength > bestNextLength) {
+      if (nextLength >= minMeters / 1000 && nextLength > bestNextLength) {
         bestIndex = index;
         bestNextLength = nextLength;
       }

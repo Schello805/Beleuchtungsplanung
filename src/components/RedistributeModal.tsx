@@ -29,17 +29,23 @@ export const RedistributeModal: React.FC<RedistributeModalProps> = ({
   const [targetCount, setTargetCount] = useState<number>(defaultTarget);
   const [mode, setMode] = useState<'by_count' | 'by_length'>('by_count');
   const [targetChunkLength, setTargetChunkLength] = useState<number>(40);
+  const [minWorkMeters, setMinWorkMeters] = useState<number>(35);
+  const [maxWorkMeters, setMaxWorkMeters] = useState<number>(50);
+  const [maxDifferenceMeters, setMaxDifferenceMeters] = useState<number>(15);
   const [autoAssign, setAutoAssign] = useState<boolean>(true);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
   // Live calculation preview
   const previewResult = useMemo(() => {
     const rechunked = mode === 'by_count'
-      ? createFairWorkPackages(sections, targetCount)
-      : rechunkSectionsByTargetLength(sections, targetChunkLength, 40);
+      ? createFairWorkPackages(sections, targetCount, minWorkMeters, maxWorkMeters)
+      : rechunkSectionsByTargetLength(sections, targetChunkLength, minWorkMeters);
     if (!autoAssign) return rechunked;
 
-    const assignments = calculateStationFirstAssignment(rechunked, helpers).assignments;
+    const assignments = calculateStationFirstAssignment(rechunked, helpers, [], {
+      maxMeters: maxWorkMeters,
+      maxDifferenceMeters
+    }).assignments;
     const assignmentBySection = new Map(assignments.map(item => [item.sectionId, item]));
     return rechunked.map(section => {
       const assignment = assignmentBySection.get(section.id);
@@ -47,12 +53,18 @@ export const RedistributeModal: React.FC<RedistributeModalProps> = ({
         ? { ...section, assigned_helper_id: assignment.helperId, assigned_helper_name: assignment.helperName }
         : { ...section, assigned_helper_id: null, assigned_helper_name: null };
     });
-  }, [sections, mode, targetCount, targetChunkLength, autoAssign, helpers]);
+  }, [sections, mode, targetCount, targetChunkLength, minWorkMeters, maxWorkMeters, maxDifferenceMeters, autoAssign, helpers]);
 
   const previewCount = previewResult.length;
   const previewAvgLength = previewCount > 0 ? Math.round(totalMeters / previewCount) : 0;
   const previewMin = previewCount > 0 ? Math.min(...previewResult.map(s => s.length_meters || s.lengthMeters || 0)) : 0;
   const previewMax = previewCount > 0 ? Math.max(...previewResult.map(s => s.length_meters || s.lengthMeters || 0)) : 0;
+  const previewHelperMeters = helpers.map(helper => previewResult
+    .filter(section => section.assigned_helper_id === helper.id)
+    .reduce((sum, section) => sum + (section.length_meters || section.lengthMeters || 0), 0)
+  ).filter(meters => meters > 0);
+  const previewHelperMin = previewHelperMeters.length ? Math.min(...previewHelperMeters) : 0;
+  const previewHelperMax = previewHelperMeters.length ? Math.max(...previewHelperMeters) : 0;
 
   const handleExecute = async () => {
     setIsSubmitting(true);
@@ -316,6 +328,23 @@ export const RedistributeModal: React.FC<RedistributeModalProps> = ({
             </div>
           )}
 
+          <div style={{ background: '#EFF6FF', border: '1px solid #93C5FD', padding: 14, borderRadius: 'var(--radius-md)', display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div>
+              <div style={{ fontWeight: 800, color: '#1E3A8A', fontSize: 13 }}>Deine Fairness-Regeln</div>
+              <div style={{ color: '#475569', fontSize: 11, marginTop: 2 }}>Diese Grenzen gelten für die Meter pro Helfer. Zusammenhängende Bereiche bleiben dabei Vorrang.</div>
+            </div>
+            <label style={{ fontSize: 12, fontWeight: 700, color: '#1E3A8A' }}>Mindestens {minWorkMeters} m pro Helfer
+              <input type="range" min={20} max={60} step={5} value={minWorkMeters} onChange={e => setMinWorkMeters(Math.min(Number(e.target.value), maxWorkMeters - 5))} style={{ display: 'block', width: '100%', accentColor: '#2563EB', marginTop: 5 }} />
+            </label>
+            <label style={{ fontSize: 12, fontWeight: 700, color: '#1E3A8A' }}>Höchstens {maxWorkMeters} m pro Helfer
+              <input type="range" min={Math.max(25, minWorkMeters + 5)} max={120} step={5} value={maxWorkMeters} onChange={e => setMaxWorkMeters(Number(e.target.value))} style={{ display: 'block', width: '100%', accentColor: '#2563EB', marginTop: 5 }} />
+            </label>
+            <label style={{ fontSize: 12, fontWeight: 700, color: '#1E3A8A' }}>Maximale Differenz: {maxDifferenceMeters} m
+              <input type="range" min={5} max={60} step={5} value={maxDifferenceMeters} onChange={e => setMaxDifferenceMeters(Number(e.target.value))} style={{ display: 'block', width: '100%', accentColor: '#2563EB', marginTop: 5 }} />
+            </label>
+            <div style={{ fontSize: 11, color: '#475569', lineHeight: 1.35 }}>Beispiel: Mit 35–50 m und maximal 15 m Differenz entsteht keine Verteilung wie 20 m gegenüber 90 m. Ist das wegen einer einzelnen langen Straße nicht möglich, bleibt sie sichtbar zur manuellen Entscheidung.</div>
+          </div>
+
           {/* Result Calculation Preview */}
           <div style={{
             background: 'rgba(16, 185, 129, 0.08)',
@@ -332,7 +361,7 @@ export const RedistributeModal: React.FC<RedistributeModalProps> = ({
             </div>
             <div style={{
               display: 'grid',
-              gridTemplateColumns: 'repeat(3, 1fr)',
+              gridTemplateColumns: 'repeat(4, 1fr)',
               gap: 8,
               textAlign: 'center'
             }}>
@@ -347,6 +376,10 @@ export const RedistributeModal: React.FC<RedistributeModalProps> = ({
               <div>
                 <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Min / Max</div>
                 <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--text-main)' }}>{previewMin}m – {previewMax}m</div>
+              </div>
+              <div>
+                <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Helfer-Meter</div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: previewHelperMax - previewHelperMin <= maxDifferenceMeters ? '#10B981' : '#DC2626' }}>{previewHelperMin}m – {previewHelperMax}m</div>
               </div>
             </div>
           </div>

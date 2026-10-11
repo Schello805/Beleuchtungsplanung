@@ -16,6 +16,13 @@ export interface AutoAssignmentResult {
   };
 }
 
+export interface FairnessRules {
+  /** No helper receives more than this value unless a single section is already longer. */
+  maxMeters?: number;
+  /** Maximum difference between the currently lightest and heaviest helper. */
+  maxDifferenceMeters?: number;
+}
+
 function lineFeatures(section: Section): GeoJSON.Feature<GeoJSON.LineString>[] {
   const geometry = section.geojson?.geometry;
   if (geometry?.type === 'LineString') return [section.geojson as GeoJSON.Feature<GeoJSON.LineString>];
@@ -264,7 +271,8 @@ export function calculateNearbyFairAssignment(
 export function calculateStationFirstAssignment(
   sectionsToAssign: Section[],
   helpers: Helper[],
-  existingSections: Section[] = []
+  existingSections: Section[] = [],
+  rules: FairnessRules = {}
 ): AutoAssignmentResult {
   if (sectionsToAssign.length === 0 || helpers.length === 0) {
     return {
@@ -344,7 +352,14 @@ export function calculateStationFirstAssignment(
     const unusedHelpers = helpers.filter(helper => totals.get(helper.id)!.count === 0);
     // A second, detached area is never assigned to an already active helper.
     // If a road component cannot be continued, an unused helper starts it.
-    const candidates = (connectedHelpers.length ? connectedHelpers : unusedHelpers).sort((a, b) => {
+    const baseCandidates = connectedHelpers.length ? connectedHelpers : unusedHelpers;
+    const lightestMeters = Math.min(...helpers.map(helper => totals.get(helper.id)!.meters));
+    const candidates = baseCandidates.filter(helper => {
+      const proposedMeters = totals.get(helper.id)!.meters + lengthOf(section);
+      const respectsMaximum = !rules.maxMeters || proposedMeters <= rules.maxMeters || lengthOf(section) > rules.maxMeters;
+      const respectsDifference = !rules.maxDifferenceMeters || proposedMeters - lightestMeters <= rules.maxDifferenceMeters;
+      return respectsMaximum && respectsDifference;
+    }).sort((a, b) => {
       const loadDifference = totals.get(a.id)!.meters - totals.get(b.id)!.meters;
       if (loadDifference !== 0) return loadDifference;
       const aLocated = Number.isFinite(Number(a.latitude)) && Number.isFinite(Number(a.longitude));
