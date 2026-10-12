@@ -118,6 +118,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [isAutoAssigning, setIsAutoAssigning] = useState<boolean>(false);
   const [focusedHelperId, setFocusedHelperId] = useState<string | null>(null);
   const [focusedHelperSectionIndex, setFocusedHelperSectionIndex] = useState(0);
+  const [showHelperDataActions, setShowHelperDataActions] = useState(false);
+  const [showDataTools, setShowDataTools] = useState(false);
 
   // Calculations
   const totalMeters = sections.reduce((sum, s) => sum + s.lengthMeters, 0);
@@ -1005,9 +1007,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* TAB: HELFER VERWALTUNG */}
         {activeTab === 'helpers' && (
           <div>
-            {/* Helfer Import & Verwaltung Toolbar */}
+            {/* Eine klare Hauptaktion; seltene Datenaktionen bleiben aufgeräumt darunter. */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
-              {/* Row 1: Importieren / Überschreiben + Copy-Paste */}
               <div style={{ display: 'flex', gap: 6 }}>
                 <button
                   type="button"
@@ -1027,15 +1028,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     fontSize: 12,
                     cursor: 'pointer'
                   }}
-                  title="Helferliste per Excel oder CSV hochladen und alte Platzhalter überschreiben"
+                  title="Stations- oder Helferliste aus der Lichternacht-App übernehmen"
                 >
                   <FileUp size={15} />
-                  📥 Helferliste importieren / überschreiben
+                  Liste übernehmen
                 </button>
 
                 <button
                   type="button"
-                  onClick={() => onOpenHelperImport ? onOpenHelperImport('paste') : onOpenExcelImport?.()}
+                  onClick={() => setShowHelperDataActions(open => !open)}
                   style={{
                     display: 'flex',
                     alignItems: 'center',
@@ -1050,26 +1051,27 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     fontSize: 12,
                     cursor: 'pointer'
                   }}
-                  title="Namen direkt per Textfeld aus WhatsApp, Word oder E-Mail einfügen"
+                  title="Vorlage, Textimport, Export und weitere Helferaktionen"
                 >
-                  <ClipboardList size={14} />
-                  📋 Namen einfügen
+                  <ChevronDown size={14} /> Mehr
                 </button>
               </div>
 
-              {/* Row 2: Vorlage, Export & Alle Helfer löschen */}
-              <div style={{ display: 'flex', gap: 6 }}>
+              {showHelperDataActions && <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, padding: 8, borderRadius: 'var(--radius-sm)', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)' }}>
+                <button
+                  type="button"
+                  onClick={() => onOpenHelperImport ? onOpenHelperImport('paste') : onOpenExcelImport?.()}
+                  title="Namen direkt aus WhatsApp, Word oder E-Mail einfügen"
+                  style={{ padding: '7px 8px', borderRadius: 'var(--radius-sm)', background: 'rgba(56, 189, 248, 0.12)', border: '1px solid rgba(56, 189, 248, 0.35)', color: '#38BDF8', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
+                >
+                  <ClipboardList size={12} /> Text einfügen
+                </button>
                 <button
                   type="button"
                   onClick={handleDownloadHelperTemplate}
                   title="Muster-Excel-Vorlage für Helferliste herunterladen"
                   style={{
-                    flex: 1,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 4,
-                    padding: '6px 8px',
+                    padding: '7px 8px',
                     borderRadius: 'var(--radius-sm)',
                     background: 'var(--bg-secondary)',
                     border: '1px solid var(--border-subtle)',
@@ -1088,12 +1090,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   onClick={() => exportHelpersToExcel(helpers, sections, candleSpacing)}
                   title="Aktuelle Helferliste mit Abschnitten als Excel (.xlsx) herunterladen"
                   style={{
-                    flex: 1,
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    gap: 4,
-                    padding: '6px 8px',
+                    padding: '7px 8px',
                     borderRadius: 'var(--radius-sm)',
                     background: 'var(--bg-secondary)',
                     border: '1px solid var(--border-subtle)',
@@ -1117,11 +1114,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     }}
                     title="Alle bestehenden Helfer (z.B. Platzhalter 'Helfer 01' - '35') löschen und Liste leeren"
                     style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      gap: 4,
-                      padding: '6px 8px',
+                      padding: '7px 8px',
                       borderRadius: 'var(--radius-sm)',
                       background: 'rgba(239, 68, 68, 0.1)',
                       border: '1px solid rgba(239, 68, 68, 0.3)',
@@ -1132,10 +1125,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     }}
                   >
                     <Trash2 size={12} />
-                    Liste leeren
+                      Helferliste leeren
                   </button>
                 )}
-              </div>
+              </div>}
             </div>
 
             <form onSubmit={handleCreateHelper} style={{ display: 'flex', gap: 6, marginBottom: 14 }}>
@@ -1724,7 +1717,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         )}
       </div>
 
-      {/* FOOTER: EXPORTS, BACKUP & SYSTEM ACTIONS */}
+      {/* Seltene Datei- und Sicherungsaktionen sind bewusst nur bei Bedarf sichtbar. */}
       <div
         style={{
           padding: '12px 16px',
@@ -1735,113 +1728,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
           gap: 8
         }}
       >
-        {/* Export & Import formats row */}
-        <div style={{ display: 'flex', gap: 6 }}>
-          <button
-            onClick={() => exportSectionsToExcel(sections, helpers, candleSpacing, candleBuffer)}
-            title="Vollständigen Strecken- & Helferplan als echte Excel-Arbeitsmappe (.xlsx mit 3 Tabellenblättern) herunterladen"
-            style={{
-              flex: 1.1,
-              background: 'rgba(16, 185, 129, 0.12)',
-              border: '1px solid rgba(16, 185, 129, 0.4)',
-              color: '#10B981',
-              padding: '6px 8px',
-              borderRadius: 'var(--radius-sm)',
-              fontSize: 11,
-              fontWeight: 700,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 4
-            }}
-          >
-            <FileSpreadsheet size={13} color="#10B981" />
-            Excel Export
-          </button>
-
-          {onOpenExcelImport && (
-            <button
-              onClick={onOpenExcelImport}
-              title="Excel-Arbeitsmappe (.xlsx) oder Helferliste importieren & synchronisieren"
-              style={{
-                flex: 1.1,
-                background: 'rgba(56, 189, 248, 0.12)',
-                border: '1px solid rgba(56, 189, 248, 0.4)',
-                color: '#38BDF8',
-                padding: '6px 8px',
-                borderRadius: 'var(--radius-sm)',
-                fontSize: 11,
-                fontWeight: 700,
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 4
-              }}
-            >
-              <Upload size={13} color="#38BDF8" />
-              Excel Import
-            </button>
-          )}
-
-          <button
-            onClick={() => exportSectionsToGeoJSON(sections)}
-            title="GeoJSON für QGIS / Google Maps exportieren"
-            style={{
-              flex: 1,
-              background: 'transparent',
-              border: '1px solid var(--border-subtle)',
-              color: 'var(--text-main)',
-              padding: '5px 8px',
-              borderRadius: 'var(--radius-sm)',
-              fontSize: 11,
-              fontWeight: 600,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 4
-            }}
-          >
-            <Compass size={13} color="#3B82F6" />
-            GeoJSON
-          </button>
-
-          <button
-            onClick={() => exportSectionsToGPX(sections)}
-            title="GPX-Track für Smartphone Outdoor-Apps exportieren"
-            style={{
-              flex: 1,
-              background: 'transparent',
-              border: '1px solid var(--border-subtle)',
-              color: 'var(--text-main)',
-              padding: '5px 8px',
-              borderRadius: 'var(--radius-sm)',
-              fontSize: 11,
-              fontWeight: 600,
-              cursor: 'pointer',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              gap: 4
-            }}
-          >
-            <Download size={13} color="var(--accent-gold)" />
-            GPX
-          </button>
-        </div>
-
-        {/* Database actions */}
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ display: 'flex', gap: 6 }}>
+        <button type="button" onClick={() => setShowDataTools(open => !open)} style={{ width: '100%', padding: '8px 10px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)', background: 'var(--bg-card)', color: 'var(--text-muted)', fontSize: 12, fontWeight: 700, cursor: 'pointer', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <span>📁 Daten & Sicherung</span><ChevronDown size={15} style={{ transform: showDataTools ? 'rotate(180deg)' : undefined, transition: 'transform .15s ease' }} />
+        </button>
+        {showDataTools && <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6 }}>
+          <button onClick={() => exportSectionsToExcel(sections, helpers, candleSpacing, candleBuffer)} title="Vollständigen Plan als Excel herunterladen" style={{ padding: '7px 8px', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(16,185,129,.4)', background: 'rgba(16,185,129,.12)', color: '#10B981', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}><FileSpreadsheet size={13} /> Plan als Excel</button>
+          {onOpenExcelImport && <button onClick={onOpenExcelImport} title="Kompletten Plan aus Excel importieren" style={{ padding: '7px 8px', borderRadius: 'var(--radius-sm)', border: '1px solid rgba(56,189,248,.4)', background: 'rgba(56,189,248,.12)', color: '#38BDF8', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}><Upload size={13} /> Plan importieren</button>}
+          <button onClick={() => exportSectionsToGeoJSON(sections)} title="GeoJSON für QGIS / Google Maps exportieren" style={{ padding: '7px 8px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)', background: 'transparent', color: 'var(--text-main)', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}><Compass size={13} /> GeoJSON</button>
+          <button onClick={() => exportSectionsToGPX(sections)} title="GPX-Track für Smartphone Outdoor-Apps exportieren" style={{ padding: '7px 8px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)', background: 'transparent', color: 'var(--text-main)', fontSize: 11, fontWeight: 600, cursor: 'pointer' }}><Download size={13} /> GPX</button>
             <button
               onClick={onExportBackup}
               title="Datenbank als JSON herunterladen"
               style={{
-                background: 'transparent',
-                border: 'none',
-                color: 'var(--text-muted)',
+                background: 'transparent', border: '1px solid var(--border-subtle)', color: 'var(--text-muted)',
+                padding: '7px 8px', borderRadius: 'var(--radius-sm)',
                 fontSize: 11,
                 cursor: 'pointer',
                 display: 'flex',
@@ -1850,15 +1750,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
               }}
             >
               <Download size={12} />
-              JSON-Backup
+              Backup speichern
             </button>
 
             <label
               title="JSON-Backup wiederherstellen"
               style={{
-                background: 'transparent',
-                border: 'none',
-                color: 'var(--text-muted)',
+                background: 'transparent', border: '1px solid var(--border-subtle)', color: 'var(--text-muted)',
+                padding: '7px 8px', borderRadius: 'var(--radius-sm)',
                 fontSize: 11,
                 cursor: 'pointer',
                 display: 'flex',
@@ -1867,7 +1766,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               }}
             >
               <Upload size={12} />
-              Import
+              Backup einspielen
               <input
                 type="file"
                 accept=".json"
@@ -1881,14 +1780,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 }}
               />
             </label>
-          </div>
-
           <button
             onClick={onResetDatabase}
             title="Alle Strecken & Daten zurücksetzen"
             style={{
-              background: 'transparent',
-              border: 'none',
+              background: 'transparent', border: '1px solid rgba(239,68,68,.3)', padding: '7px 8px', borderRadius: 'var(--radius-sm)',
               color: 'var(--text-light)',
               fontSize: 11,
               cursor: 'pointer',
@@ -1900,9 +1796,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
             onMouseLeave={e => (e.currentTarget.style.color = 'var(--text-light)')}
           >
             <RotateCcw size={12} />
-            Reset
+            Alles zurücksetzen
           </button>
-        </div>
+        </div>}
       </div>
 
     </aside>
