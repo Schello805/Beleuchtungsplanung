@@ -559,6 +559,12 @@ export const dbService = {
     return true;
   },
 
+  updateSectionGeometry(sectionId: string, geojson: unknown, lengthMeters: number) {
+    db.prepare('UPDATE sections SET geojson = ?, length_meters = ? WHERE id = ?')
+      .run(JSON.stringify(geojson), lengthMeters, sectionId);
+    return true;
+  },
+
   deleteSection(sectionId: string) {
     db.prepare('DELETE FROM sections WHERE id = ?').run(sectionId);
     return true;

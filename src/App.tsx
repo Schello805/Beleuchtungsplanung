@@ -12,6 +12,7 @@ const ExcelImportModal = lazy(() => import('./components/ExcelImportModal').then
 import { api, type Section, type Helper, type Street, type AuthUser, type PublicHelperInfo } from './utils/api';
 import { splitSectionInHalf, type GeneratedSection } from './utils/geo';
 import { Check, X, UserRound, ChevronDown, Menu, Wrench } from 'lucide-react';
+import * as turf from '@turf/turf';
 
 export const App: React.FC = () => {
   const publicToken = window.location.pathname.match(/^\/helfer\/([A-Za-z0-9_-]{20,})\/?$/)?.[1] || null;
@@ -50,6 +51,7 @@ export const App: React.FC = () => {
   const [segmentPoints, setSegmentPoints] = useState<[number, number][]>([]);
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [focusedPreviewId, setFocusedPreviewId] = useState<string | null>(null);
+  const [extensionSectionId, setExtensionSectionId] = useState<string | null>(null);
 
   // Theme & Map Layer (Synced directly with SQLite DB)
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
@@ -283,6 +285,43 @@ export const App: React.FC = () => {
       if (typeof (window as any).__onPointMapClick === 'function') {
         (window as any).__onPointMapClick(lat, lon);
       }
+    }
+  };
+
+  const handleExtendSection = async (targetLat: number, targetLon: number) => {
+    const sectionId = extensionSectionId;
+    const section = sections.find(item => item.id === sectionId);
+    setExtensionSectionId(null);
+    if (!sectionId || !section || section.geojson.geometry.type !== 'LineString') {
+      alert('Dieser Abschnitt kann nur verlängert werden, wenn er als zusammenhängende Linie vorliegt.');
+      return;
+    }
+
+    const existingCoordinates = section.geojson.geometry.coordinates;
+    if (existingCoordinates.length < 2) return;
+    const first = existingCoordinates[0];
+    const last = existingCoordinates[existingCoordinates.length - 1];
+    const target: [number, number] = [targetLon, targetLat];
+    const firstDistance = turf.distance(turf.point(first), turf.point(target), { units: 'kilometers' });
+    const lastDistance = turf.distance(turf.point(last), turf.point(target), { units: 'kilometers' });
+    const extendAtStart = firstDistance <= lastDistance;
+    const endpoint = extendAtStart ? first : last;
+
+    try {
+      const route = await api.getFootRoute(endpoint[0], endpoint[1], targetLon, targetLat);
+      const routeCoordinates = route.geometry.coordinates as [number, number][];
+      const combinedCoordinates = extendAtStart
+        ? [...routeCoordinates.slice().reverse().slice(0, -1), ...existingCoordinates]
+        : [...existingCoordinates, ...routeCoordinates.slice(1)];
+      const geojson = turf.lineString(combinedCoordinates);
+      const lengthMeters = Math.max(1, Math.round(turf.length(geojson, { units: 'kilometers' }) * 1000));
+      await api.updateSection(sectionId, { geojson, length_meters: lengthMeters });
+      setSections(current => current.map(item => item.id === sectionId
+        ? { ...item, geojson, length_meters: lengthMeters, lengthMeters }
+        : item));
+    } catch (error) {
+      console.error('Abschnitt verlängern fehlgeschlagen:', error);
+      alert('Der Abschnitt konnte nicht verlängert werden. Bitte versuche es erneut.');
     }
   };
 
@@ -872,6 +911,10 @@ export const App: React.FC = () => {
             onSelectSection={setSelectedSectionId}
             onUpdateSectionHelper={handleUpdateSectionHelper}
             onDeleteSection={handleDeleteSection}
+            extensionSectionId={extensionSectionId}
+            onStartExtension={(sectionId) => { setSelectedSectionId(sectionId); setExtensionSectionId(sectionId); }}
+            onExtensionTarget={handleExtendSection}
+            onCancelExtension={() => setExtensionSectionId(null)}
             activeStampHelperId={activeStampHelperId}
             onSelectStampHelper={setActiveStampHelperId}
             autoAdvanceStamp={autoAdvanceStamp}

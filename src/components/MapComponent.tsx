@@ -12,6 +12,10 @@ interface MapComponentProps {
   onSelectSection: (id: string | null) => void;
   onUpdateSectionHelper: (sectionId: string, helperId: string | null, helperName: string | null) => void;
   onDeleteSection: (sectionId: string) => void;
+  extensionSectionId?: string | null;
+  onStartExtension?: (sectionId: string) => void;
+  onExtensionTarget?: (lat: number, lon: number) => void;
+  onCancelExtension?: () => void;
   // Stamp props (Direktes Zuweisen per Klick auf der Karte)
   activeStampHelperId?: string | null;
   onSelectStampHelper?: (id: string | null) => void;
@@ -52,6 +56,10 @@ export const MapComponent: React.FC<MapComponentProps> = ({
   onSelectSection,
   onUpdateSectionHelper,
   onDeleteSection,
+  extensionSectionId,
+  onStartExtension,
+  onExtensionTarget,
+  onCancelExtension,
   activeStampHelperId,
   onSelectStampHelper,
   autoAdvanceStamp,
@@ -253,7 +261,9 @@ export const MapComponent: React.FC<MapComponentProps> = ({
     if (!map) return;
 
     const handleClick = (e: L.LeafletMouseEvent) => {
-      if (captureMode !== 'none') {
+      if (extensionSectionId) {
+        onExtensionTarget?.(e.latlng.lat, e.latlng.lng);
+      } else if (captureMode !== 'none') {
         onMapClick(e.latlng.lat, e.latlng.lng);
       }
     };
@@ -262,13 +272,13 @@ export const MapComponent: React.FC<MapComponentProps> = ({
     return () => {
       map.off('click', handleClick);
     };
-  }, [captureMode, onMapClick]);
+  }, [captureMode, extensionSectionId, onMapClick, onExtensionTarget]);
 
   // Cursor style
   useEffect(() => {
     if (!mapContainerRef.current) return;
-    mapContainerRef.current.style.cursor = captureMode !== 'none' ? 'crosshair' : 'grab';
-  }, [captureMode]);
+    mapContainerRef.current.style.cursor = captureMode !== 'none' || extensionSectionId ? 'crosshair' : 'grab';
+  }, [captureMode, extensionSectionId]);
 
   // Render Interactive Capture Points
   useEffect(() => {
@@ -590,7 +600,10 @@ export const MapComponent: React.FC<MapComponentProps> = ({
                 Zuweisung lösen
               </button>
             ` : '<span></span>'}
-            <button id="popup-delete-btn-${sec.id}" style="background:#FEE2E2; color:#DC2626; border:none; padding:4px 8px; border-radius:4px; font-size:11px; cursor:pointer; font-weight:600;">Abschnitt löschen</button>
+            <div style="display:flex; gap:5px;">
+              <button id="popup-extend-btn-${sec.id}" style="background:#EDE9FE; color:#6D28D9; border:none; padding:4px 8px; border-radius:4px; font-size:11px; cursor:pointer; font-weight:700;">Verlängern</button>
+              <button id="popup-delete-btn-${sec.id}" style="background:#FEE2E2; color:#DC2626; border:none; padding:4px 8px; border-radius:4px; font-size:11px; cursor:pointer; font-weight:600;">Abschnitt löschen</button>
+            </div>
           </div>
         `;
 
@@ -637,6 +650,13 @@ export const MapComponent: React.FC<MapComponentProps> = ({
                 onDeleteSection(sec.id);
                 map.closePopup();
               }
+            };
+          }
+          const extendBtn = document.getElementById(`popup-extend-btn-${sec.id}`);
+          if (extendBtn) {
+            extendBtn.onclick = () => {
+              onStartExtension?.(sec.id);
+              map.closePopup();
             };
           }
         });
@@ -713,7 +733,7 @@ export const MapComponent: React.FC<MapComponentProps> = ({
         });
       }
     });
-  }, [sections, selectedSectionId, helpers, activeHelperId, onSelectSection, onUpdateSectionHelper, onDeleteSection]);
+  }, [sections, selectedSectionId, helpers, activeHelperId, onSelectSection, onUpdateSectionHelper, onDeleteSection, onStartExtension]);
 
   // Zoom to selected section
   useEffect(() => {
@@ -1147,7 +1167,7 @@ export const MapComponent: React.FC<MapComponentProps> = ({
       )}
 
       {/* Crosshair instruction overlay */}
-      {captureMode !== 'none' && (
+      {(captureMode !== 'none' || extensionSectionId) && (
         <div
           style={{
             position: 'absolute',
@@ -1181,6 +1201,12 @@ export const MapComponent: React.FC<MapComponentProps> = ({
           )}
           {captureMode === 'point' && (
             <span>Klicke auf die Karte, um den <b>Einzelpunkt (z.B. Brunnen)</b> zu platzieren</span>
+          )}
+          {extensionSectionId && (
+            <>
+              <span>Klicke auf die <b>nächste Station oder den Zielpunkt</b> – der Abschnitt wird dorthin verlängert.</span>
+              <button type="button" onClick={onCancelExtension} style={{ border: '1px solid rgba(255,255,255,.35)', borderRadius: 14, padding: '3px 8px', background: 'transparent', color: '#fff', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>Abbrechen</button>
+            </>
           )}
         </div>
       )}

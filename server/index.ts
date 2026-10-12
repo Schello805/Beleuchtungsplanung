@@ -307,13 +307,19 @@ app.get('/api/sections', (req, res) => {
 app.put('/api/sections/:id', (req, res) => {
   try {
     const { id } = req.params;
-    const { assigned_helper_id, assigned_helper_name, notes } = req.body;
+    const { assigned_helper_id, assigned_helper_name, notes, geojson, length_meters } = req.body;
 
     if (assigned_helper_id !== undefined || assigned_helper_name !== undefined) {
       dbService.updateSectionHelper(id, assigned_helper_id, assigned_helper_name);
     }
     if (notes !== undefined) {
       dbService.updateSectionNotes(id, notes);
+    }
+    if (geojson !== undefined || length_meters !== undefined) {
+      if (!geojson || !Number.isFinite(Number(length_meters)) || Number(length_meters) <= 0) {
+        return res.status(400).json({ error: 'Geometrie oder Streckenlänge ungültig' });
+      }
+      dbService.updateSectionGeometry(id, geojson, Number(length_meters));
     }
 
     res.json({ success: true });

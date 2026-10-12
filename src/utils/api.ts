@@ -327,7 +327,7 @@ export const api = {
     }));
   },
 
-  async updateSection(id: string, updates: { assigned_helper_id?: string | null; assigned_helper_name?: string | null; notes?: string }): Promise<void> {
+  async updateSection(id: string, updates: { assigned_helper_id?: string | null; assigned_helper_name?: string | null; notes?: string; geojson?: GeoJSON.Feature<GeoJSON.LineString>; length_meters?: number }): Promise<void> {
     const res = await fetch(`${API_BASE}/sections/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
