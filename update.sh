@@ -69,6 +69,8 @@ AUTH_REQUIRED=true
 ADMIN_EMAIL=admin@example.org
 ADMIN_NAME=Administrator
 ADMIN_PASSWORD=BITTE_HIER_EIN_LANGES_EINMALIGES_PASSWORT_SETZEN
+# Optional fuer den E-Mail-Versand; Host, Port und Absender werden in der Admin-Oberflaeche gepflegt.
+# SMTP_PASSWORD=BITTE_HIER_SMTP_PASSWORT_SETZEN
 EOF
             chmod 600 /etc/lichternacht/lichternacht.env
             echo -e "${YELLOW}!${NC} Administrator noch einrichten: /etc/lichternacht/lichternacht.env bearbeiten und Dienst neu starten."

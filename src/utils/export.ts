@@ -26,6 +26,7 @@ export function exportSectionsToExcel(
     'Typ',
     'Zugewiesener Helfer',
     'Telefon Helfer',
+    'E-Mail Helfer',
     'Status',
     'Notizen / Besonderheiten'
   ];
@@ -45,6 +46,7 @@ export function exportSectionsToExcel(
       sec.type === 'point' ? 'Einzelpunkt' : 'Straßenlinie',
       sec.assigned_helper_name || (isAssigned ? 'Zugewiesen' : 'Nicht zugewiesen'),
       helper?.phone || '',
+      helper?.email || '',
       isAssigned ? 'Besetzt' : 'Offen',
       sec.notes || ''
     ];
@@ -57,6 +59,7 @@ export function exportSectionsToExcel(
     { wch: 24 },
     { wch: 14 },
     { wch: 18 },
+    { wch: 32 },
     { wch: 14 },
     { wch: 26 },
     { wch: 18 },
@@ -72,6 +75,7 @@ export function exportSectionsToExcel(
     'Nr.',
     'Helfer-Name',
     'Telefon',
+    'E-Mail',
     'Abschnitte (Anz.)',
     'Gesamtstrecke (m)',
     'Lichter-Bedarf (ca. Stk.)',
@@ -97,6 +101,7 @@ export function exportSectionsToExcel(
         idx + 1,
         helper.name,
         helper.phone || '',
+        helper.email || '',
         assigned.length,
         meters,
         candles,
@@ -112,6 +117,7 @@ export function exportSectionsToExcel(
     { wch: 6 },
     { wch: 26 },
     { wch: 18 },
+    { wch: 32 },
     { wch: 18 },
     { wch: 18 },
     { wch: 24 },
@@ -168,7 +174,7 @@ export function exportHelpersToExcel(
   const wb = XLSX.utils.book_new();
   const dateStr = new Date().toISOString().slice(0, 10);
 
-  const headers = ['Nr.', 'Name', 'Telefon', 'Abschnitte (Anz.)', 'Meter (m)', 'Lichter (ca.)'];
+  const headers = ['Nr.', 'Name', 'Telefon', 'E-Mail', 'Abschnitte (Anz.)', 'Meter (m)', 'Lichter (ca.)'];
   const rows = helpers.map((h, idx) => {
     const assigned = sections.filter(s => s.assigned_helper_id === h.id);
     const meters = assigned.reduce((sum, s) => sum + (s.length_meters ?? (s as any).lengthMeters ?? 0), 0);
@@ -178,11 +184,11 @@ export function exportHelpersToExcel(
       return len > 0 ? Math.max(1, Math.round(len / candleSpacing)) : 0;
     }, 0);
 
-    return [idx + 1, h.name, h.phone || '', assigned.length, meters, candles];
+    return [idx + 1, h.name, h.phone || '', h.email || '', assigned.length, meters, candles];
   });
 
   const ws = XLSX.utils.aoa_to_sheet([headers, ...rows]);
-  ws['!cols'] = [{ wch: 6 }, { wch: 26 }, { wch: 20 }, { wch: 18 }, { wch: 14 }, { wch: 16 }];
+  ws['!cols'] = [{ wch: 6 }, { wch: 26 }, { wch: 20 }, { wch: 32 }, { wch: 18 }, { wch: 14 }, { wch: 16 }];
   XLSX.utils.book_append_sheet(wb, ws, 'Helferliste');
 
   XLSX.writeFile(wb, `lichternacht_helfer_${dateStr}.xlsx`);
@@ -192,7 +198,7 @@ export function exportHelpersToExcel(
  * Fallback: Exports sections as CSV with UTF-8 BOM.
  */
 export function exportSectionsToCSV(sections: Section[], helpers: Helper[], candleSpacing: number = 2.0): void {
-  const headers = ['Abschnitt', 'Straße', 'Länge (m)', 'Lichter (ca. Stk.)', 'Typ', 'Helfer', 'Telefon Helfer', 'Notizen'];
+  const headers = ['Abschnitt', 'Straße', 'Länge (m)', 'Lichter (ca. Stk.)', 'Typ', 'Helfer', 'Telefon Helfer', 'E-Mail Helfer', 'Notizen'];
   
   const rows = sections.map(sec => {
     const helper = helpers.find(h => h.id === sec.assigned_helper_id);
@@ -206,6 +212,7 @@ export function exportSectionsToCSV(sections: Section[], helpers: Helper[], cand
       sec.type === 'point' ? 'Punkt' : 'Linie',
       `"${(sec.assigned_helper_name || 'Nicht zugewiesen').replace(/"/g, '""')}"`,
       `"${(helper?.phone || '').replace(/"/g, '""')}"`,
+      `"${(helper?.email || '').replace(/"/g, '""')}"`,
       `"${(sec.notes || '').replace(/"/g, '""')}"`
     ];
   });

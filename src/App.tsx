@@ -473,18 +473,18 @@ export const App: React.FC = () => {
   };
 
   // Helper CRUD
-  const handleAddHelper = async (name: string, color?: string, phone?: string) => {
+  const handleAddHelper = async (name: string, color?: string, phone?: string, email?: string) => {
     try {
-      const created = await api.addHelper(name, color, phone);
+      const created = await api.addHelper(name, color, phone, email);
       setHelpers(prev => [...prev, created].sort((a, b) => a.name.localeCompare(b.name, 'de')));
     } catch (err: any) {
       alert(err.message);
     }
   };
 
-  const handleUpdateHelper = async (id: string, name: string, color?: string, phone?: string) => {
+  const handleUpdateHelper = async (id: string, name: string, color?: string, phone?: string, email?: string) => {
     try {
-      await api.updateHelper(id, name, color, phone);
+      await api.updateHelper(id, name, color, phone, email);
       await loadData();
     } catch (err: any) {
       alert(err.message);
@@ -500,7 +500,7 @@ export const App: React.FC = () => {
     }
   };
 
-  const handleImportHelpers = async (helperList: Array<{ name: string; phone?: string; color?: string }>, mode: 'replace' | 'append' | 'sync') => {
+  const handleImportHelpers = async (helperList: Array<{ name: string; phone?: string; email?: string; color?: string }>, mode: 'replace' | 'append' | 'sync') => {
     try {
       const count = await api.importHelpers(helperList, mode);
       await loadData();

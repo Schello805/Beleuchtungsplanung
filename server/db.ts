@@ -50,6 +50,7 @@ db.exec(`
     name TEXT NOT NULL UNIQUE,
     color TEXT,
     phone TEXT,
+    email TEXT,
     created_at TEXT NOT NULL
   );
 
@@ -108,6 +109,16 @@ db.exec(`
     created_at TEXT NOT NULL
   );
   CREATE INDEX IF NOT EXISTS sessions_expires_at_idx ON sessions(expires_at);
+
+  CREATE TABLE IF NOT EXISTS mail_log (
+    id TEXT PRIMARY KEY,
+    helper_id TEXT REFERENCES helpers(id) ON DELETE SET NULL,
+    recipient TEXT NOT NULL,
+    subject TEXT NOT NULL,
+    status TEXT NOT NULL CHECK(status IN ('sent', 'failed', 'test')),
+    error_message TEXT,
+    created_at TEXT NOT NULL
+  );
 `);
 
 // Kept separate from CREATE TABLE so existing event databases are upgraded in place.
@@ -122,6 +133,7 @@ addHelperColumn('address', 'TEXT');
 addHelperColumn('latitude', 'REAL');
 addHelperColumn('longitude', 'REAL');
 addHelperColumn('public_token', 'TEXT');
+addHelperColumn('email', 'TEXT');
 db.exec('CREATE UNIQUE INDEX IF NOT EXISTS helpers_source_station_id_unique ON helpers(source_station_id) WHERE source_station_id IS NOT NULL');
 db.exec('CREATE UNIQUE INDEX IF NOT EXISTS helpers_public_token_unique ON helpers(public_token) WHERE public_token IS NOT NULL');
 const missingPublicTokens = db.prepare('SELECT id FROM helpers WHERE public_token IS NULL OR public_token = \'\'').all() as Array<{ id: string }>;
@@ -153,6 +165,7 @@ export interface HelperRecord {
   name: string;
   color?: string;
   phone?: string;
+  email?: string;
   source_station_id?: string | null;
   address?: string | null;
   latitude?: number | null;
@@ -249,17 +262,17 @@ export const dbService = {
     return { name: helper.name, sections };
   },
 
-  addHelper(name: string, color?: string, phone?: string): HelperRecord {
+  addHelper(name: string, color?: string, phone?: string, email?: string): HelperRecord {
     const id = 'h-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6);
     const created_at = new Date().toISOString();
-    db.prepare('INSERT INTO helpers (id, name, color, phone, created_at) VALUES (?, ?, ?, ?, ?)')
-      .run(id, name.trim(), color || '#3B82F6', phone || '', created_at);
-    return { id, name: name.trim(), color, phone, created_at };
+    db.prepare('INSERT INTO helpers (id, name, color, phone, email, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(id, name.trim(), color || '#3B82F6', phone || '', email?.trim().toLowerCase() || '', created_at);
+    return { id, name: name.trim(), color, phone, email, created_at };
   },
 
-  updateHelper(id: string, name: string, color?: string, phone?: string): boolean {
-    db.prepare('UPDATE helpers SET name = ?, color = ?, phone = ? WHERE id = ?')
-      .run(name.trim(), color || '#3B82F6', phone || '', id);
+  updateHelper(id: string, name: string, color?: string, phone?: string, email?: string): boolean {
+    db.prepare('UPDATE helpers SET name = ?, color = ?, phone = ?, email = ? WHERE id = ?')
+      .run(name.trim(), color || '#3B82F6', phone || '', email?.trim().toLowerCase() || '', id);
     // Also update assigned_helper_name in sections table
     db.prepare('UPDATE sections SET assigned_helper_name = ? WHERE assigned_helper_id = ?')
       .run(name.trim(), id);
@@ -284,7 +297,7 @@ export const dbService = {
     }
   },
 
-  importHelpers(helpersList: Array<{ name: string; phone?: string; color?: string }>, mode: 'replace' | 'append' | 'sync' = 'replace'): number {
+  importHelpers(helpersList: Array<{ name: string; phone?: string; email?: string; color?: string }>, mode: 'replace' | 'append' | 'sync' = 'replace'): number {
     const colors = [
       '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6',
       '#EC4899', '#14B8A6', '#F97316', '#6366F1', '#84CC16',
@@ -317,10 +330,11 @@ export const dbService = {
       }
 
       const insertStmt = db.prepare(`
-        INSERT INTO helpers (id, name, color, phone, created_at)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO helpers (id, name, color, phone, email, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
         ON CONFLICT(name) DO UPDATE SET
           phone = CASE WHEN excluded.phone != '' THEN excluded.phone ELSE helpers.phone END,
+          email = CASE WHEN excluded.email != '' THEN excluded.email ELSE helpers.email END,
           color = COALESCE(excluded.color, helpers.color)
       `);
 
@@ -330,7 +344,7 @@ export const dbService = {
         if (!trimmedName) continue;
         const id = 'h-' + Date.now() + '-' + count + '-' + Math.random().toString(36).substring(2, 6);
         const color = h.color || colors[count % colors.length];
-        insertStmt.run(id, trimmedName, color, h.phone || '', new Date().toISOString());
+        insertStmt.run(id, trimmedName, color, h.phone || '', h.email?.trim().toLowerCase() || '', new Date().toISOString());
         count++;
       }
 
@@ -342,7 +356,7 @@ export const dbService = {
     }
   },
 
-  importStations(stations: Array<{ stationId: string; name: string; address?: string; latitude: number; longitude: number }>) {
+  importStations(stations: Array<{ stationId: string; name: string; address?: string; email?: string; latitude: number; longitude: number }>) {
     createBackup('before_import_stations');
     const valid = stations.filter(station =>
       station.stationId && station.name?.trim() && Number.isFinite(station.latitude) && Number.isFinite(station.longitude) &&
@@ -365,21 +379,23 @@ export const dbService = {
       const byStationId = db.prepare('SELECT id FROM helpers WHERE source_station_id = ?');
       const byNameWithoutStation = db.prepare('SELECT id FROM helpers WHERE name = ? AND source_station_id IS NULL');
       const update = db.prepare(`UPDATE helpers
-        SET name = ?, source_station_id = ?, address = ?, latitude = ?, longitude = ? WHERE id = ?`);
+        SET name = ?, source_station_id = ?, address = ?, latitude = ?, longitude = ?,
+            email = CASE WHEN ? != '' THEN ? ELSE email END WHERE id = ?`);
       const insert = db.prepare(`INSERT INTO helpers
-        (id, name, color, phone, source_station_id, address, latitude, longitude, created_at)
-        VALUES (?, ?, ?, '', ?, ?, ?, ?, ?)`);
+        (id, name, color, phone, email, source_station_id, address, latitude, longitude, created_at)
+        VALUES (?, ?, ?, '', ?, ?, ?, ?, ?, ?)`);
 
       valid.forEach((station, index) => {
         const stationId = String(station.stationId);
         const existing = (byStationId.get(stationId) || byNameWithoutStation.get(station.name.trim())) as { id: string } | undefined;
         if (existing) {
-          update.run(station.name.trim(), stationId, station.address?.trim() || '', station.latitude, station.longitude, existing.id);
+          const email = station.email?.trim().toLowerCase() || '';
+          update.run(station.name.trim(), stationId, station.address?.trim() || '', station.latitude, station.longitude, email, email, existing.id);
           db.prepare('UPDATE sections SET assigned_helper_name = ? WHERE assigned_helper_id = ?').run(station.name.trim(), existing.id);
           updated++;
         } else {
           const id = `station-${stationId}`;
-          insert.run(id, station.name.trim(), colors[index % colors.length], stationId, station.address?.trim() || '', station.latitude, station.longitude, new Date().toISOString());
+          insert.run(id, station.name.trim(), colors[index % colors.length], station.email?.trim().toLowerCase() || '', stationId, station.address?.trim() || '', station.latitude, station.longitude, new Date().toISOString());
           created++;
         }
       });
@@ -576,6 +592,16 @@ export const dbService = {
     `).run(key, value, now);
   },
 
+  addMailLog(entry: { helperId?: string | null; recipient: string; subject: string; status: 'sent' | 'failed' | 'test'; errorMessage?: string | null }): void {
+    db.prepare('INSERT INTO mail_log (id, helper_id, recipient, subject, status, error_message, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .run(crypto.randomUUID(), entry.helperId || null, entry.recipient, entry.subject, entry.status, entry.errorMessage || null, new Date().toISOString());
+  },
+
+  getMailLog(limit = 50) {
+    return db.prepare(`SELECT mail_log.*, helpers.name AS helper_name FROM mail_log
+      LEFT JOIN helpers ON helpers.id = mail_log.helper_id ORDER BY created_at DESC LIMIT ?`).all(limit);
+  },
+
   exportDatabase() {
     return {
       exportedAt: new Date().toISOString(),
@@ -595,9 +621,9 @@ export const dbService = {
     }
     if (data.helpers && Array.isArray(data.helpers)) {
       db.prepare('DELETE FROM helpers').run();
-      const insertH = db.prepare('INSERT INTO helpers (id, name, color, phone, created_at) VALUES (?, ?, ?, ?, ?)');
+      const insertH = db.prepare('INSERT INTO helpers (id, name, color, phone, email, created_at) VALUES (?, ?, ?, ?, ?, ?)');
       for (const h of data.helpers) {
-        insertH.run(h.id, h.name, h.color || '#3B82F6', h.phone || '', h.created_at || new Date().toISOString());
+        insertH.run(h.id, h.name, h.color || '#3B82F6', h.phone || '', h.email || '', h.created_at || new Date().toISOString());
       }
     }
 

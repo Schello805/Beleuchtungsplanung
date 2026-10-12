@@ -28,7 +28,7 @@ interface ExcelImportModalProps {
   sections: Section[];
   helpers: Helper[];
   onApplyAssignments: (assignments: Array<{ sectionId: string; helperId: string; helperName: string }>) => Promise<void>;
-  onImportHelpers: (helpers: Array<{ name: string; phone?: string; color?: string }>, mode: 'replace' | 'append' | 'sync') => Promise<void>;
+  onImportHelpers: (helpers: Array<{ name: string; phone?: string; email?: string; color?: string }>, mode: 'replace' | 'append' | 'sync') => Promise<void>;
   onRefreshData?: () => Promise<void>;
   onDeleteAllHelpers?: () => Promise<void>;
 }
@@ -80,7 +80,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
   const [wipeHelpersBeforeSchedule, setWipeHelpersBeforeSchedule] = useState<boolean>(false);
 
   // Pure helpers list from file
-  const [fileHelpers, setFileHelpers] = useState<Array<{ name: string; phone: string }>>([]);
+  const [fileHelpers, setFileHelpers] = useState<Array<{ name: string; phone: string; email?: string }>>([]);
   const [stationRows, setStationRows] = useState<ParsedStationItem[]>([]);
 
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
@@ -931,6 +931,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                               {h.phone}
                             </span>
                           )}
+                          {h.email && <span style={{ fontSize: 10, color: '#60A5FA', marginLeft: 4 }}>{h.email}</span>}
                         </div>
                       ))}
                     </div>

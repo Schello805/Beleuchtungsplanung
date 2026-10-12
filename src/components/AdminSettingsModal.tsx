@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Check, Copy, Mail, Settings, X } from 'lucide-react';
+import { Check, Copy, Mail, Send, Settings, X } from 'lucide-react';
 import { api } from '../utils/api';
 
 interface AdminSettingsModalProps {
@@ -23,7 +23,9 @@ const defaults: SettingValues = {
   smtp_host: '',
   smtp_port: '587',
   smtp_user: '',
-  smtp_from: ''
+  smtp_from: '',
+  mail_subject: '{{event}}: Dein Beleuchtungsbereich',
+  mail_body: 'Hallo {{name}},\n\nhier ist dein persönlicher Bereich für die Lichternacht:\n{{link}}\n\nUmfang: ca. {{meter}} m\n\nVielen Dank für deine Unterstützung!'
 };
 
 const fieldLabels: Record<string, string> = {
@@ -59,25 +61,43 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({ isOpen, 
   const [values, setValues] = useState<SettingValues>(defaults);
   const [isSaving, setIsSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [testRecipient, setTestRecipient] = useState('');
+  const [mailStatus, setMailStatus] = useState<string | null>(null);
+  const [mailLog, setMailLog] = useState<Array<{ id: string; helper_name?: string; recipient: string; subject: string; status: string; created_at: string }>>([]);
 
   useEffect(() => {
     if (!isOpen) return;
     api.getSettings().then(settings => setValues({ ...defaults, ...settings }));
+    api.getMailLog().then(setMailLog).catch(() => setMailLog([]));
   }, [isOpen]);
 
   if (!isOpen) return null;
 
   const change = (name: string, value: string) => setValues(current => ({ ...current, [name]: value }));
+  const persistValues = async () => {
+    await Promise.all(Object.entries(values).map(([key, value]) => api.setSetting(key, value.trim())));
+    await onSaved();
+  };
   const save = async () => {
     setIsSaving(true);
     try {
-      await Promise.all(Object.entries(values).map(([key, value]) => api.setSetting(key, value.trim())));
-      await onSaved();
+      await persistValues();
       setSaved(true);
       window.setTimeout(() => setSaved(false), 2200);
     } finally {
       setIsSaving(false);
     }
+  };
+  const sendTest = async () => {
+    setMailStatus(null);
+    try { await persistValues(); await api.sendTestMail(testRecipient); setMailStatus('Test-E-Mail wurde versendet.'); setMailLog(await api.getMailLog()); }
+    catch (err: any) { setMailStatus(err.message); }
+  };
+  const sendAll = async () => {
+    if (!window.confirm('Jetzt an alle Helfer mit E-Mail-Adresse und persönlichem Link senden?')) return;
+    setMailStatus(null);
+    try { await persistValues(); const result = await api.sendHelperMails(); setMailStatus(`${result.sent} E-Mails versendet${result.failed ? `, ${result.failed} fehlgeschlagen` : ''}.`); setMailLog(await api.getMailLog()); }
+    catch (err: any) { setMailStatus(err.message); }
   };
 
   return (
@@ -131,6 +151,20 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({ isOpen, 
             <Field name="smtp_from" values={values} onChange={change} placeholder="lichternacht@example.de" type="email" />
           </div>
           <div className="admin-security-note"><Copy size={15} /> SMTP-Passwort nicht hier eintragen: Es bleibt als <code>SMTP_PASSWORD</code> ausschließlich in <code>/etc/lichternacht/lichternacht.env</code> auf dem Server.</div>
+        </section>
+
+        <section className="admin-settings-section">
+          <h3>Mailvorlage & Versand</h3>
+          <p>Platzhalter: <code>{'{{event}}'}</code>, <code>{'{{name}}'}</code>, <code>{'{{meter}}'}</code> und <code>{'{{link}}'}</code>.</p>
+          <label className="admin-template-field">Betreff<input value={values.mail_subject || ''} onChange={event => change('mail_subject', event.target.value)} /></label>
+          <label className="admin-template-field">Nachricht<textarea rows={7} value={values.mail_body || ''} onChange={event => change('mail_body', event.target.value)} /></label>
+          <div className="admin-mail-actions">
+            <input type="email" value={testRecipient} onChange={event => setTestRecipient(event.target.value)} placeholder="test@example.de" />
+            <button type="button" onClick={sendTest} disabled={!testRecipient}><Mail size={15} /> Testmail senden</button>
+            <button type="button" className="admin-send-all" onClick={sendAll}><Send size={15} /> Alle Helfer informieren</button>
+          </div>
+          {mailStatus && <p className="admin-mail-status">{mailStatus}</p>}
+          {mailLog.length > 0 && <div className="admin-mail-log"><strong>Letzte Versandvorgänge</strong>{mailLog.slice(0, 5).map(entry => <span key={entry.id}>{entry.status === 'failed' ? '✕' : '✓'} {entry.recipient} · {entry.status === 'test' ? 'Test' : entry.helper_name || entry.subject}</span>)}</div>}
         </section>
 
         <div className="admin-settings-footer">

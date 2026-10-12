@@ -5,7 +5,11 @@
 export interface ParsedHelperItem {
   name: string;
   phone: string;
+  email?: string;
 }
+
+const helperItem = (name: string, phone: string, email = ''): ParsedHelperItem =>
+  email ? { name, phone, email } : { name, phone };
 
 export interface ParsedStationItem {
   stationId: string;
@@ -13,6 +17,7 @@ export interface ParsedStationItem {
   address: string;
   latitude: number;
   longitude: number;
+  email?: string;
 }
 
 /** Parses the official `stationen.xlsx` export of the Lichternacht admin. */
@@ -24,6 +29,7 @@ export function parseLichternachtStations(rawRows: any[][]): ParsedStationItem[]
   const address = header.indexOf('address');
   const lat = header.indexOf('lat');
   const lng = header.indexOf('lng');
+  const email = header.findIndex(cell => /^(e-?mail|email)$/i.test(cell));
   if ([id, name, lat, lng].some(index => index < 0)) return [];
 
   const seen = new Set<string>();
@@ -36,7 +42,8 @@ export function parseLichternachtStations(rawRows: any[][]): ParsedStationItem[]
     const longitude = Number(rawLongitude);
     if (!stationId || !stationName || seen.has(stationId) || String(rawLatitude ?? '').trim() === '' || String(rawLongitude ?? '').trim() === '' || !Number.isFinite(latitude) || !Number.isFinite(longitude) || latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180 || (latitude === 0 && longitude === 0)) return [];
     seen.add(stationId);
-    return [{ stationId, name: stationName, address: address >= 0 ? String(row[address] ?? '').trim() : '', latitude, longitude }];
+    const stationEmail = email >= 0 ? String(row[email] ?? '').trim().toLowerCase() : '';
+    return [{ stationId, name: stationName, address: address >= 0 ? String(row[address] ?? '').trim() : '', latitude, longitude, ...(stationEmail ? { email: stationEmail } : {}) }];
   });
 }
 
@@ -73,22 +80,25 @@ export function parsePastedHelperText(text: string): ParsedHelperItem[] {
     if (line.includes('\t')) {
       const parts = line.split('\t').map(p => p.trim()).filter(Boolean);
       if (parts.length >= 2) {
+        const isPart1Email = /^\S+@\S+\.\S+$/.test(parts[1]);
         const isPart1Phone = /[\d+]{5,}/.test(parts[1]);
-        if (isPart1Phone) {
+        if (isPart1Phone || isPart1Email) {
           const name = parts[0];
-          const phone = parts[1];
+          const phone = isPart1Phone ? parts[1] : '';
+          const email = isPart1Email ? parts[1].toLowerCase() : '';
           if (name && !seen.has(name.toLowerCase())) {
             seen.add(name.toLowerCase());
-            result.push({ name, phone });
+            result.push(helperItem(name, phone, email));
           }
           continue;
-        } else if (parts.length >= 3 && /[\d+]{5,}/.test(parts[2])) {
-          // Vorname \t Nachname \t Telefon
+        } else if (parts.length >= 3 && (/[\d+]{5,}/.test(parts[2]) || /^\S+@\S+\.\S+$/.test(parts[2]))) {
+          // Vorname \t Nachname \t Telefon oder E-Mail
           const name = `${parts[0]} ${parts[1]}`.trim();
-          const phone = parts[2];
+          const phone = /[\d+]{5,}/.test(parts[2]) ? parts[2] : '';
+          const email = /^\S+@\S+\.\S+$/.test(parts[2]) ? parts[2].toLowerCase() : '';
           if (name && !seen.has(name.toLowerCase())) {
             seen.add(name.toLowerCase());
-            result.push({ name, phone });
+            result.push(helperItem(name, phone, email));
           }
           continue;
         } else {
@@ -97,7 +107,7 @@ export function parsePastedHelperText(text: string): ParsedHelperItem[] {
           const phone = parts.slice(2).join(' ').trim();
           if (name && !seen.has(name.toLowerCase())) {
             seen.add(name.toLowerCase());
-            result.push({ name, phone });
+            result.push(helperItem(name, phone));
           }
           continue;
         }
@@ -106,6 +116,9 @@ export function parsePastedHelperText(text: string): ParsedHelperItem[] {
 
     // Try extracting phone number from line
     // e.g. "Name (0171 12345)" or "Name, 0171 12345" or "Name - +49 171..." or "Name: 0171..."
+    const emailMatch = line.match(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/i);
+    const email = emailMatch?.[0].toLowerCase() || '';
+    if (email) line = line.replace(emailMatch![0], '').replace(/[,;|]+\s*$/, '').trim();
     let name = line;
     let phone = '';
 
@@ -129,7 +142,7 @@ export function parsePastedHelperText(text: string): ParsedHelperItem[] {
 
     if (name && !seen.has(name.toLowerCase())) {
       seen.add(name.toLowerCase());
-      result.push({ name, phone });
+      result.push(helperItem(name, phone, email));
     }
   }
 
@@ -151,6 +164,7 @@ export function parseSheetHelpers(rawRows: any[][]): ParsedHelperItem[] {
   let vornameCol = -1;
   let nachnameCol = -1;
   let phoneCol = -1;
+  let emailCol = -1;
   let helperCol = -1;
 
   for (let r = 0; r < Math.min(6, rawRows.length); r++) {
@@ -165,6 +179,7 @@ export function parseSheetHelpers(rawRows: any[][]): ParsedHelperItem[] {
       if (/\b(telefon|phone|mobil|handy|tel)\b/i.test(cell)) {
         phoneCol = idx;
       }
+      if (/\b(e-?mail|email)\b/i.test(cell)) emailCol = idx;
     });
 
     if (vornameCol !== -1 || nameCol !== -1 || helperCol !== -1) {
@@ -183,6 +198,7 @@ export function parseSheetHelpers(rawRows: any[][]): ParsedHelperItem[] {
 
     let name = '';
     let phone = '';
+    let email = '';
 
     if (vornameCol !== -1 && nachnameCol !== -1) {
       const v = String(row[vornameCol] || '').trim();
@@ -206,6 +222,7 @@ export function parseSheetHelpers(rawRows: any[][]): ParsedHelperItem[] {
         phone = candidate;
       }
     }
+    if (emailCol !== -1) email = String(row[emailCol] || '').trim().toLowerCase();
 
     const lower = name.toLowerCase();
     if (!name || lower === 'name' || lower === 'helfer' || lower === 'vorname' || lower === 'nachname' || lower === 'nr.' || lower === 'nr') {
@@ -219,7 +236,7 @@ export function parseSheetHelpers(rawRows: any[][]): ParsedHelperItem[] {
 
     if (!seen.has(lower)) {
       seen.add(lower);
-      result.push({ name, phone });
+      result.push(helperItem(name, phone, email));
     }
   }
 

@@ -42,10 +42,10 @@ interface SidebarProps {
   onSelectSection: (id: string | null) => void;
   onUpdateSectionHelper: (sectionId: string, helperId: string | null, helperName: string | null) => void;
   onDeleteSection: (sectionId: string) => void;
-  onAddHelper: (name: string, color?: string, phone?: string) => Promise<void>;
-  onUpdateHelper: (id: string, name: string, color?: string, phone?: string) => Promise<void>;
+  onAddHelper: (name: string, color?: string, phone?: string, email?: string) => Promise<void>;
+  onUpdateHelper: (id: string, name: string, color?: string, phone?: string, email?: string) => Promise<void>;
   onDeleteHelper: (id: string) => Promise<void>;
-  onImportHelpers?: (helpers: Array<{ name: string; phone?: string; color?: string }>, mode: 'replace' | 'append') => Promise<void>;
+  onImportHelpers?: (helpers: Array<{ name: string; phone?: string; email?: string; color?: string }>, mode: 'replace' | 'append') => Promise<void>;
   onOpenPrintView: () => void;
   onExportBackup: () => void;
   onImportBackup: (file: File) => void;
@@ -191,9 +191,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   const handleDownloadHelperTemplate = () => {
     const worksheet = XLSX.utils.json_to_sheet([
-      { Name: 'Beispiel Helfer', Telefon: '0171 1234567' }
+      { Name: 'Beispiel Helfer', Telefon: '0171 1234567', 'E-Mail': 'helfer@example.de' }
     ]);
-    worksheet['!cols'] = [{ wch: 28 }, { wch: 20 }];
+    worksheet['!cols'] = [{ wch: 28 }, { wch: 20 }, { wch: 32 }];
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Helfer');
     XLSX.writeFile(workbook, 'lichternacht-helfer-vorlage.xlsx');

@@ -5,6 +5,7 @@ export interface Helper {
   name: string;
   color?: string;
   phone?: string;
+  email?: string;
   source_station_id?: string | null;
   address?: string | null;
   latitude?: number | null;
@@ -247,21 +248,21 @@ export const api = {
     return data;
   },
 
-  async addHelper(name: string, color?: string, phone?: string): Promise<Helper> {
+  async addHelper(name: string, color?: string, phone?: string, email?: string): Promise<Helper> {
     const res = await fetch(`${API_BASE}/helpers`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, color, phone })
+      body: JSON.stringify({ name, color, phone, email })
     });
     if (!res.ok) throw new Error('Fehler beim Speichern des Helfers in SQLite');
     return await res.json();
   },
 
-  async updateHelper(id: string, name: string, color?: string, phone?: string): Promise<void> {
+  async updateHelper(id: string, name: string, color?: string, phone?: string, email?: string): Promise<void> {
     const res = await fetch(`${API_BASE}/helpers/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, color, phone })
+      body: JSON.stringify({ name, color, phone, email })
     });
     if (!res.ok) throw new Error('Fehler beim Aktualisieren des Helfers in SQLite');
   },
@@ -276,7 +277,7 @@ export const api = {
     if (!res.ok) throw new Error('Fehler beim Löschen aller Helfer in SQLite');
   },
 
-  async importHelpers(helpers: Array<{ name: string; phone?: string; color?: string }>, mode: 'replace' | 'append' | 'sync' = 'replace'): Promise<number> {
+  async importHelpers(helpers: Array<{ name: string; phone?: string; email?: string; color?: string }>, mode: 'replace' | 'append' | 'sync' = 'replace'): Promise<number> {
     const res = await fetch(`${API_BASE}/helpers/import`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -580,5 +581,22 @@ out body geom;`;
         body: JSON.stringify({ value })
       });
     } catch {}
+  },
+
+  async sendTestMail(to: string): Promise<void> {
+    const res = await fetch(`${API_BASE}/mail/test`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to }) });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Test-E-Mail konnte nicht gesendet werden.');
+  },
+
+  async sendHelperMails(): Promise<{ sent: number; failed: number; eligible: number }> {
+    const res = await fetch(`${API_BASE}/mail/helpers`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Helfer-E-Mails konnten nicht gesendet werden.');
+    return await res.json();
+  },
+
+  async getMailLog(): Promise<Array<{ id: string; helper_name?: string; recipient: string; subject: string; status: string; error_message?: string; created_at: string }>> {
+    const res = await fetch(`${API_BASE}/mail/log`);
+    if (!res.ok) throw new Error('Versandprotokoll konnte nicht geladen werden.');
+    return await res.json();
   }
 };

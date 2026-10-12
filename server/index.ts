@@ -3,6 +3,7 @@ import cors from 'cors';
 import path from 'node:path';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
+import nodemailer from 'nodemailer';
 import { dbService, type UserRecord, type UserRole } from './db.ts';
 import { getBechhofenStreets, getStreetGeometry } from './overpass.ts';
 import { getFootRoute } from './routing.ts';
@@ -144,7 +145,7 @@ app.post('/api/users', (req, res) => {
 
 app.use('/api', (req, res, next) => {
   const user = (req as AuthenticatedRequest).authUser!;
-  const adminOnly = req.path.startsWith('/settings') || req.path.startsWith('/database');
+  const adminOnly = req.path.startsWith('/settings') || req.path.startsWith('/database') || req.path.startsWith('/mail');
   const writeRequest = !['GET', 'HEAD', 'OPTIONS'].includes(req.method);
   if ((adminOnly && user.role !== 'admin') || (writeRequest && !['admin', 'planner'].includes(user.role))) {
     return res.status(403).json({ error: 'Für diese Aktion fehlen die erforderlichen Rechte.' });
@@ -164,11 +165,11 @@ app.get('/api/helpers', (req, res) => {
 
 app.post('/api/helpers', (req, res) => {
   try {
-    const { name, color, phone } = req.body;
+    const { name, color, phone, email } = req.body;
     if (!name || !name.trim()) {
       return res.status(400).json({ error: 'Name ist erforderlich' });
     }
-    const created = dbService.addHelper(name, color, phone);
+    const created = dbService.addHelper(name, color, phone, email);
     res.json(created);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -178,11 +179,11 @@ app.post('/api/helpers', (req, res) => {
 app.put('/api/helpers/:id', (req, res) => {
   try {
     const { id } = req.params;
-    const { name, color, phone } = req.body;
+    const { name, color, phone, email } = req.body;
     if (!name || !name.trim()) {
       return res.status(400).json({ error: 'Name ist erforderlich' });
     }
-    dbService.updateHelper(id, name, color, phone);
+    dbService.updateHelper(id, name, color, phone, email);
     res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -478,6 +479,77 @@ app.post('/api/database/reset', (req, res) => {
   try {
     dbService.resetDatabase();
     res.json({ success: true, message: 'Datenbank zurückgesetzt' });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+const mailTemplate = (template: string, helper: { name: string }, link: string, meters: number) =>
+  template
+    .replaceAll('{{name}}', helper.name)
+    .replaceAll('{{link}}', link)
+    .replaceAll('{{meter}}', String(Math.round(meters)));
+
+const getSmtpTransport = () => {
+  const settings = dbService.getAllSettings();
+  const host = settings.smtp_host?.trim();
+  const port = Number(settings.smtp_port || 587);
+  const user = settings.smtp_user?.trim();
+  const password = process.env.SMTP_PASSWORD?.trim();
+  const from = settings.smtp_from?.trim();
+  if (!host || !Number.isFinite(port) || !user || !password || !from) {
+    throw new Error('SMTP ist noch nicht vollständig eingerichtet (Host, Port, Benutzer, Absender und SMTP_PASSWORD).');
+  }
+  return {
+    transport: nodemailer.createTransport({ host, port, secure: port === 465, auth: { user, pass: password } }),
+    from,
+    settings
+  };
+};
+
+app.get('/api/mail/log', (req, res) => {
+  res.json(dbService.getMailLog());
+});
+
+app.post('/api/mail/test', async (req, res) => {
+  const recipient = String(req.body?.to || '').trim().toLowerCase();
+  if (!/^\S+@\S+\.\S+$/.test(recipient)) return res.status(400).json({ error: 'Bitte eine gültige Empfänger-E-Mail-Adresse angeben.' });
+  try {
+    const { transport, from, settings } = getSmtpTransport();
+    const subject = `[Test] ${settings.event_name || 'Lichternacht'} – Versand eingerichtet`;
+    await transport.sendMail({ from, to: recipient, subject, text: 'Dies ist eine Test-E-Mail des Lichternacht-Streckenplaners. Der SMTP-Versand ist erreichbar.' });
+    dbService.addMailLog({ recipient, subject, status: 'test' });
+    res.json({ success: true });
+  } catch (err: any) {
+    dbService.addMailLog({ recipient, subject: '[Test] SMTP', status: 'failed', errorMessage: err.message });
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/mail/helpers', async (req, res) => {
+  const requestedIds = Array.isArray(req.body?.helperIds) ? new Set(req.body.helperIds.map(String)) : null;
+  try {
+    const { transport, from, settings } = getSmtpTransport();
+    const baseUrl = (settings.public_base_url || '').trim().replace(/\/$/, '');
+    if (!baseUrl.startsWith('https://')) throw new Error('Bitte zuerst die öffentliche HTTPS-Adresse in den Grundeinstellungen speichern.');
+    const subjectTemplate = settings.mail_subject || '{{event}}: Dein Beleuchtungsbereich';
+    const bodyTemplate = settings.mail_body || 'Hallo {{name}},\n\nhier ist dein persönlicher Bereich für die Lichternacht:\n{{link}}\n\nUmfang: ca. {{meter}} m\n\nVielen Dank für deine Unterstützung!';
+    const helpers = dbService.getHelpers().filter(helper => helper.email && helper.public_token && (!requestedIds || requestedIds.has(helper.id)));
+    let sent = 0; let failed = 0;
+    for (const helper of helpers) {
+      const sections = dbService.getPublicHelper(helper.public_token!)?.sections || [];
+      const meters = sections.reduce((sum, section) => sum + section.length_meters, 0);
+      const link = `${baseUrl}/helfer/${helper.public_token}`;
+      const subject = mailTemplate(subjectTemplate.replaceAll('{{event}}', settings.event_name || 'Lichternacht'), helper, link, meters);
+      const text = mailTemplate(bodyTemplate.replaceAll('{{event}}', settings.event_name || 'Lichternacht'), helper, link, meters);
+      try {
+        await transport.sendMail({ from, to: helper.email, subject, text });
+        dbService.addMailLog({ helperId: helper.id, recipient: helper.email, subject, status: 'sent' }); sent++;
+      } catch (err: any) {
+        dbService.addMailLog({ helperId: helper.id, recipient: helper.email, subject, status: 'failed', errorMessage: err.message }); failed++;
+      }
+    }
+    res.json({ success: true, sent, failed, eligible: helpers.length });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
