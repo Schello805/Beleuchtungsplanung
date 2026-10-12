@@ -360,12 +360,20 @@ export function calculateStationFirstAssignment(
     // If a road component cannot be continued, an unused helper starts it.
     const baseCandidates = connectedHelpers.length ? connectedHelpers : unusedHelpers;
     const lightestMeters = Math.min(...helpers.map(helper => totals.get(helper.id)!.meters));
-    const candidates = baseCandidates.filter(helper => {
+    const candidatesWithinPreferredLimits = baseCandidates.filter(helper => {
       const proposedMeters = totals.get(helper.id)!.meters + lengthOf(section);
-      const respectsMaximum = !rules.maxMeters || proposedMeters <= rules.maxMeters || lengthOf(section) > rules.maxMeters;
-      const respectsDifference = !rules.maxDifferenceMeters || proposedMeters - lightestMeters <= rules.maxDifferenceMeters;
+      // A single long, indivisible area (e.g. a 100 m bridge) must not make
+      // the whole allocation impossible. It is still assigned as one area;
+      // the fairness values remain a preference for all normal sections.
+      const indivisibleOversize = Boolean(rules.maxMeters && lengthOf(section) > rules.maxMeters);
+      const respectsMaximum = !rules.maxMeters || proposedMeters <= rules.maxMeters || indivisibleOversize;
+      const respectsDifference = !rules.maxDifferenceMeters || proposedMeters - lightestMeters <= rules.maxDifferenceMeters || indivisibleOversize;
       return respectsMaximum && respectsDifference;
-    }).sort((a, b) => {
+    });
+    // Limits guide the automatic plan but never block a possible, contiguous
+    // assignment. If every suitable neighbour would exceed a preference,
+    // choose the lightest suitable neighbour rather than leave work open.
+    const candidates = (candidatesWithinPreferredLimits.length ? candidatesWithinPreferredLimits : baseCandidates).sort((a, b) => {
       const loadDifference = totals.get(a.id)!.meters - totals.get(b.id)!.meters;
       if (loadDifference !== 0) return loadDifference;
       const aLocated = Number.isFinite(Number(a.latitude)) && Number.isFinite(Number(a.longitude));

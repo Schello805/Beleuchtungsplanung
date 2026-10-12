@@ -286,8 +286,8 @@ export const AutoAssignModal: React.FC<AutoAssignModalProps> = ({
 
           {/* LIVE PREVIEW LIST */}
           {needsFairRechunking && (
-            <div style={{ marginBottom: 14, padding: '10px 12px', borderRadius: 'var(--radius-sm)', background: 'rgba(239, 68, 68, .12)', border: '1px solid rgba(239, 68, 68, .45)', color: 'var(--text-main)', fontSize: 12, lineHeight: 1.4 }}>
-              <b style={{ color: '#EF4444' }}>Noch nicht fair teilbar:</b> Der längste Abschnitt hat {largestSectionMeters} m, der Zielwert liegt bei etwa {Math.round(totalMeters / targetHelpers.length)} m. Passe die Teilstücke zuerst unter <b>Verteilen → „Abschnittslänge einstellen“</b> an.
+            <div style={{ marginBottom: 14, padding: '10px 12px', borderRadius: 'var(--radius-sm)', background: 'rgba(245, 158, 11, .12)', border: '1px solid rgba(245, 158, 11, .45)', color: 'var(--text-main)', fontSize: 12, lineHeight: 1.4 }}>
+              <b style={{ color: '#F59E0B' }}>Hinweis zur Fairness:</b> Der längste Abschnitt hat {largestSectionMeters} m, der Zielwert liegt bei etwa {Math.round(totalMeters / targetHelpers.length)} m. Er wird trotzdem als zusammenhängender Bereich zugewiesen. Falls gewünscht, kannst du ihn später unter <b>Verteilen → „Abschnittslänge einstellen“</b> feiner teilen.
             </div>
           )}
           <div>
@@ -386,7 +386,7 @@ export const AutoAssignModal: React.FC<AutoAssignModalProps> = ({
           <button
             type="button"
             onClick={handleExecute}
-            disabled={isSubmitting || previewAssignments.length === 0 || needsFairRechunking}
+            disabled={isSubmitting || previewAssignments.length === 0}
             style={{
               padding: '9px 20px',
               borderRadius: 'var(--radius-sm)',
@@ -395,7 +395,7 @@ export const AutoAssignModal: React.FC<AutoAssignModalProps> = ({
               color: previewAssignments.length === 0 ? 'var(--text-muted)' : '#0F172A',
               fontSize: 13,
               fontWeight: 800,
-              cursor: previewAssignments.length === 0 || isSubmitting || needsFairRechunking ? 'not-allowed' : 'pointer',
+              cursor: previewAssignments.length === 0 || isSubmitting ? 'not-allowed' : 'pointer',
               display: 'flex',
               alignItems: 'center',
               gap: 8,
