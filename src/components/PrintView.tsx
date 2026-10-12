@@ -1,6 +1,6 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { Printer, ArrowLeft, FileText, Grid, Phone, Scissors, QrCode, Clock, MapPin, CheckSquare, Sparkles, Map as MapIcon } from 'lucide-react';
-import { api, type Section, type Helper } from '../utils/api';
+import { type Section, type Helper } from '../utils/api';
 
 interface PrintViewProps {
   sections: Section[];
@@ -8,6 +8,9 @@ interface PrintViewProps {
   candleSpacing?: number;
   candleBuffer?: number;
   publicBaseUrl?: string;
+  eventName?: string;
+  eventLocation?: string;
+  organizerPhone?: string;
   onSavePublicBaseUrl?: (value: string) => Promise<void>;
   onClose: () => void;
 }
@@ -95,33 +98,14 @@ export const PrintView: React.FC<PrintViewProps> = ({
   candleSpacing = 2.0,
   candleBuffer = 10,
   publicBaseUrl = '',
+  eventName = 'Lichternacht Bechhofen',
+  eventLocation = 'Bechhofen a.d. Heide (PLZ 91572)',
+  organizerPhone = '',
   onSavePublicBaseUrl,
   onClose
 }) => {
   const [printLayout, setPrintLayout] = useState<'table' | 'overview-map' | 'cards' | 'sheets'>('sheets');
   const [publicUrlInput, setPublicUrlInput] = useState(publicBaseUrl);
-  const [showDeliveryAdmin, setShowDeliveryAdmin] = useState(false);
-  const [smtp, setSmtp] = useState({ host: '', port: '587', user: '', from: '' });
-  const [smtpSaved, setSmtpSaved] = useState(false);
-
-  useEffect(() => {
-    if (!showDeliveryAdmin) return;
-    api.getSettings().then(settings => setSmtp({
-      host: settings.smtp_host || '', port: settings.smtp_port || '587',
-      user: settings.smtp_user || '', from: settings.smtp_from || ''
-    }));
-  }, [showDeliveryAdmin]);
-
-  const saveDeliverySettings = async () => {
-    await Promise.all([
-      api.setSetting('smtp_host', smtp.host.trim()), api.setSetting('smtp_port', smtp.port.trim()),
-      api.setSetting('smtp_user', smtp.user.trim()), api.setSetting('smtp_from', smtp.from.trim()),
-      onSavePublicBaseUrl?.(publicUrlInput.trim())
-    ]);
-    setSmtpSaved(true);
-    window.setTimeout(() => setSmtpSaved(false), 2200);
-  };
-  const [orgaPhone, setOrgaPhone] = useState<string>('09855 / 12345 (Einsatzleitung)');
   const [meetingTime, setMeetingTime] = useState<string>('17:30 Uhr Materialausgabe • 18:15 Uhr Entzünden');
 
   const totalMeters = sections.reduce((sum, s) => sum + (s.length_meters ?? (s as any).lengthMeters ?? 0), 0);
@@ -354,24 +338,10 @@ export const PrintView: React.FC<PrintViewProps> = ({
 
         {/* Action Buttons & Config Inputs */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,0.08)', padding: '4px 8px', borderRadius: 6 }}>
+          {organizerPhone && <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,0.08)', padding: '4px 8px', borderRadius: 6 }}>
             <Phone size={13} color="#F59E0B" />
-            <input
-              type="text"
-              value={orgaPhone}
-              onChange={e => setOrgaPhone(e.target.value)}
-              placeholder="Orga-Telefonnummer..."
-              title="Wird auf allen Kärtchen als Notfallkontakt aufgedruckt"
-              style={{
-                background: 'transparent',
-                border: 'none',
-                color: '#FFFFFF',
-                fontSize: 11,
-                outline: 'none',
-                width: 170
-              }}
-            />
-          </div>
+            <span style={{ color: '#FFFFFF', fontSize: 11 }}>{organizerPhone}</span>
+          </div>}
           <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(255,255,255,0.08)', padding: '4px 8px', borderRadius: 6 }}>
             <MapPin size={13} color="#38BDF8" />
             <input
@@ -385,12 +355,6 @@ export const PrintView: React.FC<PrintViewProps> = ({
             />
           </div>
 
-          <button
-            onClick={() => setShowDeliveryAdmin(value => !value)}
-            style={{ background: 'rgba(56,189,248,.16)', color: '#E0F2FE', border: '1px solid rgba(56,189,248,.45)', padding: '8px 12px', borderRadius: 6, fontWeight: 700, fontSize: 12, cursor: 'pointer' }}
-          >
-            Versand & SMTP
-          </button>
           <button
             onClick={() => window.print()}
             style={{
@@ -414,21 +378,6 @@ export const PrintView: React.FC<PrintViewProps> = ({
         </div>
       </div>
 
-      {showDeliveryAdmin && (
-        <div className="no-print" style={{ maxWidth: 960, margin: '14px auto 0', padding: 16, border: '1px solid #38BDF8', borderRadius: 8, background: '#EFF6FF', color: '#0F172A' }}>
-          <div style={{ fontWeight: 900, fontSize: 14, marginBottom: 8 }}>Versand & öffentliche Links</div>
-          <div style={{ fontSize: 12, color: '#475569', marginBottom: 12 }}>Die Basis-URL landet als lesbare Adresse und QR-Code auf jedem Helferblatt. SMTP wird für den späteren Mailversand vorbereitet.</div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 8 }}>
-            {([
-              ['SMTP-Host', 'host', 'mail.example.de'], ['Port', 'port', '587'],
-              ['SMTP-Benutzer', 'user', 'benutzer'], ['Absender', 'from', 'lichternacht@example.de']
-            ] as const).map(([label, key, placeholder]) => <label key={key} style={{ fontSize: 11, fontWeight: 700 }}>{label}<input value={smtp[key]} onChange={e => setSmtp({ ...smtp, [key]: e.target.value })} placeholder={placeholder} style={{ display: 'block', boxSizing: 'border-box', width: '100%', marginTop: 4, padding: '7px 8px', border: '1px solid #93C5FD', borderRadius: 5 }} /></label>)}
-          </div>
-          <div style={{ fontSize: 11, color: '#475569', marginTop: 10 }}>Das SMTP-Passwort wird absichtlich nicht im Frontend gespeichert. Beim Serverbetrieb wird es als Umgebungsvariable <code>SMTP_PASSWORD</code> gesetzt. Der Versand wird verfügbar, sobald E-Mail-Adressen in der Helferliste vorliegen.</div>
-          <button onClick={saveDeliverySettings} style={{ marginTop: 12, background: '#0284C7', color: '#fff', border: 'none', borderRadius: 5, padding: '8px 12px', fontWeight: 800, cursor: 'pointer' }}>{smtpSaved ? 'Gespeichert ✓' : 'Einstellungen speichern'}</button>
-        </div>
-      )}
-
       {/* PRINT CONTENT CONTAINER */}
       <div style={{ maxWidth: 960, margin: '0 auto', padding: '24px 20px' }}>
         {/* DOCUMENT HEADER */}
@@ -436,7 +385,7 @@ export const PrintView: React.FC<PrintViewProps> = ({
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div>
               <h1 style={{ fontSize: 24, fontWeight: 900, color: '#0F172A', margin: 0, textTransform: 'uppercase', letterSpacing: '0.02em' }}>
-                Lichternacht Bechhofen (91572)
+                {eventName}
               </h1>
               <div style={{ fontSize: 15, fontWeight: 700, color: '#D97706', marginTop: 4 }}>
                 {printLayout === 'table'
@@ -451,7 +400,8 @@ export const PrintView: React.FC<PrintViewProps> = ({
             <div style={{ textAlign: 'right', fontSize: 12, color: '#64748B' }}>
               <div>Stand: <b>{currentDate}</b></div>
               <div>Gemeinde Bechhofen a.d. Heide</div>
-              {orgaPhone && <div style={{ color: '#0F172A', fontWeight: 600, marginTop: 2 }}>📞 {orgaPhone}</div>}
+              {eventLocation && <div style={{ color: '#475569', fontWeight: 600, marginTop: 2 }}>{eventLocation}</div>}
+              {organizerPhone && <div style={{ color: '#0F172A', fontWeight: 600, marginTop: 2 }}>📞 {organizerPhone}</div>}
             </div>
           </div>
 
@@ -641,7 +591,7 @@ export const PrintView: React.FC<PrintViewProps> = ({
                       >
                         <div>
                           <div style={{ fontSize: 10, fontWeight: 800, color: '#D97706', textTransform: 'uppercase', letterSpacing: 0.5 }}>
-                            Lichternacht Bechhofen • Helfer-Pass
+                            {eventName} • Helfer-Pass
                           </div>
                           <div style={{ fontSize: 17, fontWeight: 900, color: '#0F172A', lineHeight: 1.2 }}>
                             {group.helper.name}
@@ -776,7 +726,7 @@ export const PrintView: React.FC<PrintViewProps> = ({
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '3px solid #0F172A', paddingBottom: 10, marginBottom: 12 }}>
                       <div>
                         <div style={{ fontSize: 12, fontWeight: 800, color: '#D97706', textTransform: 'uppercase' }}>
-                          Lichternacht Bechhofen • Dein Bereich
+                          {eventName} • Dein Bereich
                         </div>
                         <div style={{ fontSize: 22, fontWeight: 900, color: '#0F172A' }}>
                           {group.helper.name}

@@ -4,6 +4,7 @@ import { CapturePanel } from './components/CapturePanel';
 import { RedistributeModal } from './components/RedistributeModal';
 import { AutoAssignModal } from './components/AutoAssignModal';
 import { PublicHelperPage } from './components/PublicHelperPage';
+import { AdminSettingsModal } from './components/AdminSettingsModal';
 
 const MapComponent = lazy(() => import('./components/MapComponent').then(module => ({ default: module.MapComponent })));
 const PrintView = lazy(() => import('./components/PrintView').then(module => ({ default: module.PrintView })));
@@ -26,6 +27,7 @@ export const App: React.FC = () => {
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [isMobileCaptureOpen, setIsMobileCaptureOpen] = useState(false);
   const [isUserManagementOpen, setIsUserManagementOpen] = useState(false);
+  const [isAdminSettingsOpen, setIsAdminSettingsOpen] = useState(false);
   const [managedUsers, setManagedUsers] = useState<AuthUser[]>([]);
   const [newUser, setNewUser] = useState({ email: '', displayName: '', password: '', role: 'planner' as AuthUser['role'] });
   const [userManagementError, setUserManagementError] = useState<string | null>(null);
@@ -54,6 +56,9 @@ export const App: React.FC = () => {
   const [mapTileTheme, setMapTileTheme] = useState<string>('dark');
   const [mapboxToken, setMapboxToken] = useState<string>('');
   const [publicBaseUrl, setPublicBaseUrl] = useState<string>('');
+  const [eventName, setEventName] = useState<string>('Lichternacht Bechhofen');
+  const [eventLocation, setEventLocation] = useState<string>('Bechhofen a.d. Heide (PLZ 91572)');
+  const [organizerPhone, setOrganizerPhone] = useState<string>('');
   const [isPrintOpen, setIsPrintOpen] = useState<boolean>(false);
   const [isRedistributeOpen, setIsRedistributeOpen] = useState<boolean>(false);
   const [isAutoAssignOpen, setIsAutoAssignOpen] = useState<boolean>(false);
@@ -160,6 +165,9 @@ export const App: React.FC = () => {
       if (settings.public_base_url !== undefined) {
         setPublicBaseUrl(settings.public_base_url);
       }
+      if (settings.event_name) setEventName(settings.event_name);
+      if (settings.event_location) setEventLocation(settings.event_location);
+      if (settings.organizer_phone !== undefined) setOrganizerPhone(settings.organizer_phone);
       if (settings.map_tile_theme) {
         setMapTileTheme(settings.map_tile_theme);
       }
@@ -643,7 +651,10 @@ export const App: React.FC = () => {
         </button>
         {isAccountMenuOpen && <div className="app-user-popover">
           <strong>{currentUser?.display_name}</strong><small>{currentUser?.role === 'admin' ? 'Administrator' : currentUser?.role === 'planner' ? 'Planung' : 'Lesen'}</small>
-          {currentUser?.role === 'admin' && <button onClick={() => { setIsAccountMenuOpen(false); openUserManagement(); }}>Benutzer verwalten</button>}
+          {currentUser?.role === 'admin' && <>
+            <button onClick={() => { setIsAccountMenuOpen(false); setIsAdminSettingsOpen(true); }}>Einstellungen & Anleitung</button>
+            <button onClick={() => { setIsAccountMenuOpen(false); openUserManagement(); }}>Benutzer verwalten</button>
+          </>}
           <button className="logout" onClick={handleLogout}>Abmelden</button>
         </div>}
       </div>
@@ -885,6 +896,9 @@ export const App: React.FC = () => {
             candleSpacing={candleSpacing}
             candleBuffer={candleBuffer}
             publicBaseUrl={publicBaseUrl}
+            eventName={eventName}
+            eventLocation={eventLocation}
+            organizerPhone={organizerPhone}
             onSavePublicBaseUrl={handleSavePublicBaseUrl}
             onClose={() => setIsPrintOpen(false)}
           />
@@ -941,6 +955,13 @@ export const App: React.FC = () => {
             </form>
           </section>
         </div>
+      )}
+      {currentUser?.role === 'admin' && (
+        <AdminSettingsModal
+          isOpen={isAdminSettingsOpen}
+          onClose={() => setIsAdminSettingsOpen(false)}
+          onSaved={loadData}
+        />
       )}
     </div>
   );
