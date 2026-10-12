@@ -216,6 +216,7 @@ export const PrintView: React.FC<PrintViewProps> = ({
 
   return (
     <div
+      className="print-view-root"
       style={{
         position: 'fixed',
         inset: 0,
@@ -237,12 +238,35 @@ export const PrintView: React.FC<PrintViewProps> = ({
             -webkit-print-color-adjust: exact !important;
             print-color-adjust: exact !important;
           }
+          html, body, #root, .planner-shell {
+            width: auto !important;
+            height: auto !important;
+            min-height: 0 !important;
+            overflow: visible !important;
+          }
+          .print-view-root {
+            position: static !important;
+            inset: auto !important;
+            width: auto !important;
+            height: auto !important;
+            min-height: 0 !important;
+            max-height: none !important;
+            overflow: visible !important;
+          }
           .no-print {
             display: none !important;
           }
           .print-card {
             break-inside: avoid !important;
             page-break-inside: avoid !important;
+          }
+          .helper-info-sheet {
+            break-after: page !important;
+            page-break-after: always !important;
+          }
+          .helper-info-sheet:last-child {
+            break-after: auto !important;
+            page-break-after: auto !important;
           }
         }
       `}</style>
@@ -739,7 +763,7 @@ export const PrintView: React.FC<PrintViewProps> = ({
                 return (
                   <div
                     key={group.helper.id}
-                    className="print-card"
+                    className="print-card helper-info-sheet"
                     style={{
                       border: '2px solid #0F172A',
                       borderRadius: 10,
