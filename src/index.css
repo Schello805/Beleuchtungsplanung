@@ -203,5 +203,69 @@ button, input, select, textarea {
 .app-user-menu { position: fixed; right: 90px; top: 16px; z-index: 2000; font-size: 11px; color: var(--text-main); }
 .map-controls-toggle { position: absolute; top: 16px; right: 16px; z-index: 1001; display: flex; align-items: center; gap: 6px; padding: 7px 10px; border: 1px solid rgba(148, 163, 184, .25); border-radius: 8px; background: rgba(15, 23, 42, .9); color: var(--text-main); box-shadow: 0 8px 24px rgba(2, 6, 23, .2); backdrop-filter: blur(12px); cursor: pointer; font-size: 11px; font-weight: 700; }
 .app-user-toggle { display: flex; align-items: center; gap: 6px; padding: 7px 9px; border: 1px solid rgba(148, 163, 184, .25); border-radius: 8px; background: rgba(15, 23, 42, .92); color: var(--text-main); box-shadow: 0 8px 24px rgba(2, 6, 23, .3); backdrop-filter: blur(14px); cursor: pointer; }.app-user-toggle svg:first-child { color: var(--accent-gold); }.app-user-popover { position: absolute; right: 0; top: calc(100% + 7px); min-width: 178px; display: grid; gap: 7px; padding: 12px; border: 1px solid rgba(148, 163, 184, .24); border-radius: 10px; background: rgba(15, 23, 42, .98); box-shadow: 0 16px 35px rgba(2, 6, 23, .42); }.app-user-popover small { color: var(--text-muted); margin-top: -5px; }.app-user-popover button { text-align: left; border: 0; border-radius: 6px; padding: 7px 8px; background: rgba(59, 130, 246, .14); color: #93c5fd; cursor: pointer; }.app-user-popover .logout { background: rgba(248, 113, 113, .13); color: #fda4af; }
+.mobile-admin-toggle, .mobile-map-tools-toggle, .mobile-sidebar-close, .mobile-sidebar-scrim { display: none; }
 @media (max-width: 1050px) { .planner-sidebar { width: 360px !important; }.app-user-menu { top: 16px; right: 88px; } }
-@media (max-width: 760px) { .planner-sidebar { display: none !important; }.app-user-menu { top: 12px; }.planner-shell main { min-width: 100%; } }
+@media (max-width: 760px) {
+  /* The admin view stays available as a proper drawer instead of disappearing.
+     The map stays usable while the drawer is closed. */
+  .planner-sidebar {
+    position: fixed !important;
+    inset: 0 auto 0 0 !important;
+    width: min(88vw, 390px) !important;
+    max-width: 390px;
+    height: 100dvh !important;
+    display: flex !important;
+    z-index: 2600 !important;
+    transform: translateX(-105%);
+    transition: transform .22s ease;
+    box-shadow: 18px 0 42px rgba(2, 6, 23, .48) !important;
+  }
+  .planner-sidebar.mobile-open { transform: translateX(0); }
+  .mobile-sidebar-scrim { display: block; position: fixed; inset: 0; z-index: 2500; border: 0; background: rgba(2, 6, 23, .48); }
+  .mobile-admin-toggle, .mobile-map-tools-toggle {
+    position: fixed;
+    z-index: 1900;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    border: 1px solid rgba(148, 163, 184, .3);
+    border-radius: 9px;
+    padding: 8px 10px;
+    background: rgba(15, 23, 42, .94);
+    color: var(--text-main);
+    box-shadow: 0 8px 22px rgba(2, 6, 23, .32);
+    backdrop-filter: blur(12px);
+    font-size: 12px;
+    font-weight: 800;
+    cursor: pointer;
+  }
+  .mobile-admin-toggle { left: 10px; top: 10px; }
+  .mobile-map-tools-toggle { left: 10px; bottom: 16px; }
+  .mobile-sidebar-close { display: inline-flex; align-items: center; justify-content: center; width: 34px; height: 34px; padding: 0; border: 1px solid var(--border-subtle); border-radius: 7px; background: var(--bg-input); color: var(--text-main); cursor: pointer; }
+  .sidebar-print-label { display: none; }
+  .app-user-menu { top: 10px; right: 10px; z-index: 1900; }
+  .app-user-toggle > span { display: none; }
+  .planner-shell main { min-width: 100%; }
+  .capture-panel-wrapper { display: none !important; }
+  .capture-panel-wrapper.mobile-capture-open { display: block !important; top: 58px !important; left: 8px !important; width: calc(100% - 16px) !important; max-height: calc(100dvh - 132px) !important; z-index: 1800 !important; }
+  .map-controls-toggle { top: 58px; right: 10px; }
+  .map-layer-menu { top: 96px !important; right: 10px !important; max-width: calc(100% - 20px); flex-wrap: wrap !important; justify-content: flex-end; }
+  .helper-finder { top: 104px !important; left: 8px !important; right: 8px; max-width: none !important; width: auto; justify-content: center; gap: 7px !important; padding: 7px 9px !important; }
+  .helper-finder select { max-width: 210px; }
+  .leaflet-control-zoom { margin-top: 154px !important; }
+
+  /* Personal helper links are primarily opened on a phone. */
+  .public-helper-page { display: block; min-height: 100dvh; padding: 12px; }
+  .public-helper-card { width: 100%; min-height: calc(100dvh - 24px); padding: 22px 18px; border-radius: 14px; }
+  .public-helper-card h1 { font-size: 28px; line-height: 1.1; }
+  .public-helper-card h2 { font-size: 18px; line-height: 1.25; overflow-wrap: anywhere; }
+  .public-helper-distance { margin: 15px 0 10px; font-size: 18px; }
+  .public-helper-intro { font-size: 14px; line-height: 1.55; }
+  .public-helper-sections { margin: 18px 0; }
+  .public-helper-sections > div { padding: 14px 12px; align-items: flex-start; }
+  .public-helper-sections strong, .public-helper-sections small { overflow-wrap: anywhere; }
+  .public-helper-map { width: 100%; min-height: 46px; justify-content: center; }
+  .public-helper-footnote { line-height: 1.5; }
+  .auth-screen { padding: 14px; align-items: start; padding-top: max(56px, env(safe-area-inset-top)); }
+  .auth-card { padding: 25px 20px; border-radius: 14px; }
+}

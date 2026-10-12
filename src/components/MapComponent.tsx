@@ -719,7 +719,7 @@ export const MapComponent: React.FC<MapComponentProps> = ({
         <Settings size={15} /> Karte
       </button>
       <div
-        className="no-print"
+        className="no-print map-layer-menu"
         style={{
           position: 'absolute',
           top: 54,
@@ -951,7 +951,7 @@ export const MapComponent: React.FC<MapComponentProps> = ({
       {/* Floating helper finder (Top Center) */}
       {captureMode === 'none' && helpers.length > 0 && (
         <div
-          className="no-print glass-panel"
+          className="no-print glass-panel helper-finder"
           style={{
             position: 'absolute',
             top: 16,

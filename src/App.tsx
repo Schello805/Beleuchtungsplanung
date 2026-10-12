@@ -10,7 +10,7 @@ const PrintView = lazy(() => import('./components/PrintView').then(module => ({ 
 const ExcelImportModal = lazy(() => import('./components/ExcelImportModal').then(module => ({ default: module.ExcelImportModal })));
 import { api, type Section, type Helper, type Street, type AuthUser, type PublicHelperInfo } from './utils/api';
 import { splitSectionInHalf, type GeneratedSection } from './utils/geo';
-import { Check, X, UserRound, ChevronDown } from 'lucide-react';
+import { Check, X, UserRound, ChevronDown, Menu, Wrench } from 'lucide-react';
 
 export const App: React.FC = () => {
   const publicToken = window.location.pathname.match(/^\/helfer\/([A-Za-z0-9_-]{20,})\/?$/)?.[1] || null;
@@ -23,6 +23,8 @@ export const App: React.FC = () => {
   const [loginError, setLoginError] = useState<string | null>(null);
   const [isLoggingIn, setIsLoggingIn] = useState(false);
   const [isAccountMenuOpen, setIsAccountMenuOpen] = useState(false);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
+  const [isMobileCaptureOpen, setIsMobileCaptureOpen] = useState(false);
   const [isUserManagementOpen, setIsUserManagementOpen] = useState(false);
   const [managedUsers, setManagedUsers] = useState<AuthUser[]>([]);
   const [newUser, setNewUser] = useState({ email: '', displayName: '', password: '', role: 'planner' as AuthUser['role'] });
@@ -627,6 +629,14 @@ export const App: React.FC = () => {
 
   return (
     <div className="planner-shell" style={{ display: 'flex', width: '100vw', height: '100vh', overflow: 'hidden' }}>
+      <button
+        type="button"
+        className="no-print mobile-admin-toggle"
+        onClick={() => setIsMobileSidebarOpen(true)}
+        aria-label="Planungsmenü öffnen"
+      >
+        <Menu size={20} /> <span>Planung</span>
+      </button>
       <div className="no-print app-user-menu">
         <button className="app-user-toggle" onClick={() => setIsAccountMenuOpen(open => !open)}>
           <UserRound size={15} /><span>{currentUser?.display_name}</span><ChevronDown size={14} />
@@ -672,13 +682,24 @@ export const App: React.FC = () => {
         candleSpacing={candleSpacing}
         candleBuffer={candleBuffer}
         onUpdateCandleConfig={handleUpdateCandleConfig}
+        mobileOpen={isMobileSidebarOpen}
+        onCloseMobile={() => setIsMobileSidebarOpen(false)}
       />
+      {isMobileSidebarOpen && <button type="button" className="no-print mobile-sidebar-scrim" aria-label="Planungsmenü schließen" onClick={() => setIsMobileSidebarOpen(false)} />}
 
       {/* MAP & CAPTURE AREA */}
       <main style={{ flex: 1, position: 'relative', height: '100%' }}>
+        <button
+          type="button"
+          className="no-print mobile-map-tools-toggle"
+          onClick={() => setIsMobileCaptureOpen(open => !open)}
+          aria-expanded={isMobileCaptureOpen}
+        >
+          <Wrench size={17} /> {isMobileCaptureOpen ? 'Karte' : 'Werkzeuge'}
+        </button>
         {/* Floating Capture Panel */}
         <div
-          className="no-print"
+          className={`no-print capture-panel-wrapper${isMobileCaptureOpen ? ' mobile-capture-open' : ''}`}
           style={{
             position: 'absolute',
             top: 16,

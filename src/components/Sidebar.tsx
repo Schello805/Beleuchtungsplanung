@@ -64,6 +64,8 @@ interface SidebarProps {
   candleSpacing?: number;
   candleBuffer?: number;
   onUpdateCandleConfig?: (spacing: number, buffer: number) => Promise<void>;
+  mobileOpen?: boolean;
+  onCloseMobile?: () => void;
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({
@@ -95,7 +97,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
   onToggleTheme,
   candleSpacing = 2.0,
   candleBuffer = 10,
-  onUpdateCandleConfig
+  onUpdateCandleConfig,
+  mobileOpen = false,
+  onCloseMobile
 }) => {
   const [activeTab, setActiveTab] = useState<'workflow' | 'sections' | 'helpers' | 'stats'>('workflow');
 
@@ -248,7 +252,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   return (
     <aside
-      className="no-print planner-sidebar"
+      className={`no-print planner-sidebar${mobileOpen ? ' mobile-open' : ''}`}
       style={{
         width: 400,
         height: '100vh',
@@ -286,6 +290,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
           <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
             <button
+              type="button"
+              className="mobile-sidebar-close"
+              onClick={onCloseMobile}
+              aria-label="Planungsmenü schließen"
+            >
+              <X size={18} />
+            </button>
+            <button
               onClick={onToggleTheme}
               title={theme === 'dark' ? 'Helles Design aktivieren' : 'Dunkles Design aktivieren'}
               style={{
@@ -319,7 +331,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               }}
             >
               <Printer size={15} />
-              Druckansicht
+              <span className="sidebar-print-label">Druckansicht</span>
             </button>
           </div>
         </div>
@@ -648,7 +660,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   }}
                 >
                   <Sparkles size={12} />
-                  Auf alle Helfer aufteilen
+                  Abschnittslänge einstellen
                 </button>
               </div>
             )}
@@ -1411,13 +1423,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
                   <Scissors size={18} color="#F59E0B" />
                   <h4 style={{ fontSize: 13, fontWeight: 800, color: 'var(--text-main)', margin: 0 }}>
-                    Strecken auf alle Helfer aufteilen ({helpers.length} Helfer)
+                    Straßen in Teilstücke einteilen
                   </h4>
                 </div>
                 <p style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 12, lineHeight: 1.4 }}>
-                  Aktuell: <b>{sections.length} Abschnitte</b> für <b>{helpers.length} Helfer</b>.
+                  Aktuell: <b>{sections.length} Abschnitte</b> auf <b>{totalMeters.toLocaleString('de-DE')} m</b>.
                   <br />
-                  Teilt die langen 85–100-m-Stücke auf etwa 40 m und ordnet anschließend nach Stationsnähe <b>und</b> Meterlast zu.
+                  Stelle z. B. 40 m, 50 m oder 60 m ein und sieh sofort, wie viele freie Abschnitte entstehen. Die Zuordnung bleibt zunächst offen.
                 </p>
                 <button
                   type="button"
@@ -1439,7 +1451,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   }}
                 >
                   <Scissors size={14} />
-                  Für faire ~40-m-Abschnitte neu zuschneiden
+                  Abschnittslänge einstellen
                 </button>
               </div>
             )}
