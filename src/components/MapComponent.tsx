@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import type { Section, Helper } from '../utils/api';
 import type { GeneratedSection } from '../utils/geo';
-import { Settings, Key, Check, Globe, ChevronLeft, ChevronRight, X, UserCheck } from 'lucide-react';
+import { Settings, ChevronLeft, ChevronRight, X, UserCheck } from 'lucide-react';
 
 interface MapComponentProps {
   sections: Section[];
@@ -33,7 +33,6 @@ interface MapComponentProps {
   mapTileTheme: string;
   onMapTileThemeChange: (theme: string) => void;
   mapboxToken: string;
-  onSaveMapboxToken: (token: string) => void;
 }
 
 function toLeafletLineCoordinates(feature: any): L.LatLngExpression[] | L.LatLngExpression[][] {
@@ -73,8 +72,7 @@ export const MapComponent: React.FC<MapComponentProps> = ({
   onMapClick,
   mapTileTheme,
   onMapTileThemeChange,
-  mapboxToken,
-  onSaveMapboxToken
+  mapboxToken
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapRef = useRef<L.Map | null>(null);
@@ -125,10 +123,6 @@ export const MapComponent: React.FC<MapComponentProps> = ({
     const firstAssigned = sections.find(section => section.assigned_helper_id === activeHelperId);
     if (firstAssigned && firstAssigned.id !== selectedSectionId) onSelectSection(firstAssigned.id);
   }, [activeHelperId, sections, selectedSectionId, onSelectSection]);
-
-  // Settings modal
-  const [showSettingsModal, setShowSettingsModal] = useState<boolean>(false);
-  const [tokenInput, setTokenInput] = useState<string>(mapboxToken);
 
   // Helper to get tile configuration
   const getTileConfig = (theme: string, token: string) => {
@@ -848,149 +842,7 @@ export const MapComponent: React.FC<MapComponentProps> = ({
           OSM
         </button>
 
-        <div style={{ width: 1, height: 18, background: 'var(--border-subtle)', margin: '0 2px' }} />
-
-        <button
-          onClick={() => setShowSettingsModal(true)}
-          title="Karten-API & Mapbox Key konfigurieren"
-          style={{
-            padding: '5px 8px',
-            fontSize: 11,
-            fontWeight: 600,
-            borderRadius: 4,
-            border: 'none',
-            background: mapboxToken ? 'rgba(16, 185, 129, 0.2)' : 'transparent',
-            color: mapboxToken ? '#10B981' : 'var(--text-muted)',
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            gap: 4
-          }}
-        >
-          <Key size={13} />
-          {mapboxToken ? 'Mapbox Aktiv' : 'API Key'}
-        </button>
       </div>
-
-      {/* Map API Key Modal */}
-      {showSettingsModal && (
-        <div
-          style={{
-            position: 'absolute',
-            inset: 0,
-            zIndex: 2000,
-            background: 'rgba(0,0,0,0.65)',
-            backdropFilter: 'blur(6px)',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: 20
-          }}
-        >
-          <div
-            className="glass-panel"
-            style={{
-              width: 480,
-              maxWidth: '100%',
-              background: 'var(--bg-secondary)',
-              border: '1px solid var(--border-subtle)',
-              borderRadius: 'var(--radius-md)',
-              padding: 24,
-              boxShadow: 'var(--shadow-lg)'
-            }}
-          >
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
-              <h3 style={{ fontSize: 17, fontWeight: 800, display: 'flex', alignItems: 'center', gap: 8, color: 'var(--text-main)' }}>
-                <Key size={18} color="var(--accent-gold)" />
-                Karten-API & Mapbox Integration
-              </h3>
-              <button
-                onClick={() => setShowSettingsModal(false)}
-                style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', fontSize: 18, cursor: 'pointer' }}
-              >
-                ✕
-              </button>
-            </div>
-
-            <p style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 16, lineHeight: 1.5 }}>
-              Die App funktioniert standardmäßig <b>ohne API-Key</b> (über OpenStreetMap, CartoDB und Esri-Satellit).
-              Wenn du einen <b>Mapbox Access Token</b> hast, kannst du ihn hier eintragen, um die originalen Mapbox Streets, Dark und Satellite Vektorkacheln freizuschalten.
-            </p>
-
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--text-main)', marginBottom: 6 }}>
-                Mapbox Access Token (pk.eyJ...):
-              </label>
-              <input
-                type="text"
-                placeholder="pk.eyJ1Ijo..."
-                value={tokenInput}
-                onChange={e => setTokenInput(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '9px 12px',
-                  borderRadius: 'var(--radius-sm)',
-                  border: '1px solid var(--border-subtle)',
-                  background: 'var(--bg-input)',
-                  fontSize: 12,
-                  color: 'var(--text-main)',
-                  outline: 'none',
-                  fontFamily: 'monospace'
-                }}
-              />
-              <div style={{ fontSize: 11, color: 'var(--text-light)', marginTop: 4 }}>
-                Wird dauerhaft im Browser gespeichert. Frei lassen für Standard-Karten.
-              </div>
-            </div>
-
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-              {mapboxToken && (
-                <button
-                  onClick={() => {
-                    setTokenInput('');
-                    onSaveMapboxToken('');
-                    setShowSettingsModal(false);
-                  }}
-                  style={{
-                    background: 'transparent',
-                    border: '1px solid #EF4444',
-                    color: '#EF4444',
-                    padding: '8px 14px',
-                    borderRadius: 'var(--radius-sm)',
-                    fontSize: 12,
-                    fontWeight: 600,
-                    cursor: 'pointer'
-                  }}
-                >
-                  Token löschen
-                </button>
-              )}
-              <button
-                onClick={() => {
-                  onSaveMapboxToken(tokenInput.trim());
-                  setShowSettingsModal(false);
-                }}
-                style={{
-                  background: 'var(--accent-gold)',
-                  color: '#0F172A',
-                  border: 'none',
-                  padding: '8px 18px',
-                  borderRadius: 'var(--radius-sm)',
-                  fontSize: 12,
-                  fontWeight: 700,
-                  cursor: 'pointer',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: 6
-                }}
-              >
-                <Check size={14} />
-                Speichern
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Floating helper finder (Top Center) */}
       {captureMode === 'none' && helpers.length > 0 && (

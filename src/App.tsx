@@ -83,11 +83,6 @@ export const App: React.FC = () => {
     await api.setSetting('candle_buffer', String(buffer));
   };
 
-  const handleSaveMapboxToken = async (token: string) => {
-    setMapboxToken(token);
-    await api.setSetting('mapbox_token', token);
-  };
-
   const handleSavePublicBaseUrl = async (value: string) => {
     setPublicBaseUrl(value);
     await api.setSetting('public_base_url', value);
@@ -929,7 +924,6 @@ export const App: React.FC = () => {
             mapTileTheme={mapTileTheme}
             onMapTileThemeChange={handleMapTileThemeChange}
             mapboxToken={mapboxToken}
-            onSaveMapboxToken={handleSaveMapboxToken}
           />
         </Suspense>
       </main>

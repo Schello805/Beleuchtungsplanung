@@ -20,6 +20,7 @@ const defaults: SettingValues = {
   currency: 'EUR',
   candle_spacing: '2',
   candle_buffer: '10',
+  mapbox_token: '',
   smtp_host: '',
   smtp_port: '587',
   smtp_user: '',
@@ -38,6 +39,7 @@ const fieldLabels: Record<string, string> = {
   currency: 'Währung',
   candle_spacing: 'Kerzenabstand in Metern',
   candle_buffer: 'Materialreserve in Prozent',
+  mapbox_token: 'Mapbox Public Token',
   smtp_host: 'SMTP-Host',
   smtp_port: 'SMTP-Port',
   smtp_user: 'SMTP-Benutzer',
@@ -139,6 +141,15 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({ isOpen, 
             <Field name="candle_spacing" values={values} onChange={change} type="number" />
             <Field name="candle_buffer" values={values} onChange={change} type="number" />
           </div>
+        </section>
+
+        <section className="admin-settings-section">
+          <h3>Karte</h3>
+          <p>Optional für Mapbox-Kartenstile und Satellitenbilder. Die App funktioniert auch ohne Token mit OpenStreetMap. Verwende ausschließlich einen öffentlichen Token, der mit <code>pk.</code> beginnt.</p>
+          <div className="admin-settings-grid">
+            <Field name="mapbox_token" values={values} onChange={change} placeholder="pk.eyJ1Ijo..." />
+          </div>
+          <div className="admin-security-note"><Copy size={15} /> Der Token wird zentral für diese Planung gespeichert und an den Browser ausgeliefert. Er ist daher kein Geheimnis: niemals einen <code>sk.</code>-Token eintragen.</div>
         </section>
 
         <section className="admin-settings-section admin-smtp-settings">
