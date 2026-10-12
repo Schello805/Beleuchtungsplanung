@@ -1331,7 +1331,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         <button
                           type="button"
                           onClick={() => onSelectStampHelper(activeStampHelperId === h.id ? null : h.id)}
-                          title={activeStampHelperId === h.id ? "Stempel-Modus für diesen Helfer deaktivieren" : `Stempel-Modus aktivieren: Klicke Abschnitte auf der Karte, um sie direkt ${h.name} zuzuweisen`}
+                          title={activeStampHelperId === h.id ? "Kartenansicht für diesen Helfer schließen" : `Zeigt die Abschnitte von ${h.name} auf der Karte`}
                           style={{
                             background: activeStampHelperId === h.id ? 'var(--accent-gold)' : 'rgba(255, 255, 255, 0.06)',
                             border: activeStampHelperId === h.id ? '1px solid var(--accent-gold)' : '1px solid var(--border-subtle)',
@@ -1346,8 +1346,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                             gap: 3
                           }}
                         >
-                          <Paintbrush size={11} />
-                          {activeStampHelperId === h.id ? 'Aktiv' : 'Stempel'}
+                          <MapPin size={11} />
+                          {activeStampHelperId === h.id ? 'Auf Karte' : 'Zeigen'}
                         </button>
                       )}
 

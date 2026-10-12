@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import type { Section, Helper } from '../utils/api';
 import type { GeneratedSection } from '../utils/geo';
-import { Settings, Key, Check, Globe, Paintbrush, ChevronLeft, ChevronRight, X, Sparkles, UserCheck, Zap } from 'lucide-react';
+import { Settings, Key, Check, Globe, ChevronLeft, ChevronRight, X, UserCheck } from 'lucide-react';
 
 interface MapComponentProps {
   sections: Section[];
@@ -77,23 +77,17 @@ export const MapComponent: React.FC<MapComponentProps> = ({
   const captureLayerGroupRef = useRef<L.LayerGroup | null>(null);
   const helperLayerGroupRef = useRef<L.LayerGroup | null>(null);
 
-  // Stamp state (Direktes Zuweisen per Klick)
+  // The selected helper is a map focus, not an assignment tool.
   const [internalStampHelperId, setInternalStampHelperId] = useState<string | null>(null);
-  const [internalAutoAdvance, setInternalAutoAdvance] = useState<boolean>(true);
-  const [stampFeedbackToast, setStampFeedbackToast] = useState<string | null>(null);
   const [showLayerMenu, setShowLayerMenu] = useState<boolean>(false);
 
   const activeHelperId = activeStampHelperId !== undefined ? activeStampHelperId : internalStampHelperId;
-  const isAutoAdvance = autoAdvanceStamp !== undefined ? autoAdvanceStamp : internalAutoAdvance;
 
   const setStampHelper = (id: string | null) => {
     if (onSelectStampHelper) onSelectStampHelper(id);
     setInternalStampHelperId(id);
-  };
-
-  const setAutoAdvance = (val: boolean) => {
-    if (onToggleAutoAdvanceStamp) onToggleAutoAdvanceStamp(val);
-    setInternalAutoAdvance(val);
+    const firstAssigned = id ? sections.find(section => section.assigned_helper_id === id) : undefined;
+    onSelectSection(firstAssigned?.id || null);
   };
 
   const handlePrevHelper = () => {
@@ -115,6 +109,14 @@ export const MapComponent: React.FC<MapComponentProps> = ({
       setStampHelper(helpers[0].id);
     }
   };
+
+  // Selecting a helper from either the finder or the sidebar immediately
+  // reveals their first section; all of their sections receive a white outline.
+  useEffect(() => {
+    if (!activeHelperId) return;
+    const firstAssigned = sections.find(section => section.assigned_helper_id === activeHelperId);
+    if (firstAssigned && firstAssigned.id !== selectedSectionId) onSelectSection(firstAssigned.id);
+  }, [activeHelperId, sections, selectedSectionId, onSelectSection]);
 
   // Settings modal
   const [showSettingsModal, setShowSettingsModal] = useState<boolean>(false);
@@ -471,45 +473,22 @@ export const MapComponent: React.FC<MapComponentProps> = ({
       const helperName = assignedHelper?.name || sec.assigned_helper_name || 'Nicht zugewiesen';
       const lineColor = assignedHelper?.color || sec.color || '#F59E0B';
 
-      // Function to handle stamping when clicking section
       const handleSectionClick = (e: L.LeafletMouseEvent, element: L.Polyline | L.Marker) => {
         onSelectSection(sec.id);
-
-        if (activeHelperId) {
-          const targetHelper = helpers.find(h => h.id === activeHelperId);
-          if (targetHelper) {
-            onUpdateSectionHelper(sec.id, targetHelper.id, targetHelper.name);
-            setStampFeedbackToast(`✓ "${sec.label}" zugewiesen an ${targetHelper.name}`);
-            setTimeout(() => setStampFeedbackToast(null), 2400);
-
-            if (isAutoAdvance) {
-              const currentIdx = helpers.findIndex(h => h.id === activeHelperId);
-              if (currentIdx !== -1 && currentIdx < helpers.length - 1) {
-                setStampHelper(helpers[currentIdx + 1].id);
-              } else if (helpers.length > 0) {
-                setStampHelper(helpers[0].id);
-              }
-            }
-            if (e && (e as any).originalEvent) {
-              L.DomEvent.stopPropagation(e as any);
-            }
-            element.closePopup();
-            return true;
-          }
-        }
         return false;
       };
 
       if (sec.type === 'line' && ['LineString', 'MultiLineString'].includes(sec.geojson?.geometry?.type)) {
         const coords = toLeafletLineCoordinates(sec.geojson);
 
-        if (isSelected) {
+        const isFocusedHelperSection = Boolean(activeHelperId && sec.assigned_helper_id === activeHelperId);
+        if (isSelected || isFocusedHelperSection) {
           L.polyline(coords, {
-            color: '#FDE047',
-            weight: 15,
-            opacity: 0.95,
-            dashArray: '14 10',
-            className: 'section-highlight-pulse'
+            color: isSelected ? '#FDE047' : '#FFFFFF',
+            weight: isSelected ? 15 : 11,
+            opacity: 0.92,
+            dashArray: isSelected ? '14 10' : undefined,
+            className: isSelected ? 'section-highlight-pulse' : undefined
           }).addTo(group);
         }
 
@@ -537,7 +516,6 @@ export const MapComponent: React.FC<MapComponentProps> = ({
                 : `<span style="background:#F59E0B22; color:#D97706; font-weight:700; padding:2px 6px; border-radius:4px; font-size:11px;">⚠️ FREI (Klick zum Zuweisen)</span>`
               }
             </div>
-            ${activeHelperId ? `<div style="font-size:10px; color:#2563EB; margin-top:4px; font-weight:700;">🖌️ Klick stempelt aktiven Helfer!</div>` : ''}
           </div>`,
           { sticky: true }
         );
@@ -595,11 +573,6 @@ export const MapComponent: React.FC<MapComponentProps> = ({
         polyline.bindPopup(popupDiv);
 
         polyline.on('popupopen', () => {
-          if (activeHelperId) {
-            polyline.closePopup();
-            return;
-          }
-
           // Quick assign buttons
           const quickBtns = document.querySelectorAll(`.quick-assign-btn-${sec.id}`);
           quickBtns.forEach(btn => {
@@ -690,10 +663,6 @@ export const MapComponent: React.FC<MapComponentProps> = ({
         marker.bindPopup(popupDiv);
 
         marker.on('popupopen', () => {
-          if (activeHelperId) {
-            marker.closePopup();
-            return;
-          }
           const unassignBtn = document.getElementById(`popup-pt-unassign-${sec.id}`);
           if (unassignBtn) {
             unassignBtn.onclick = () => {
@@ -720,7 +689,7 @@ export const MapComponent: React.FC<MapComponentProps> = ({
         });
       }
     });
-  }, [sections, selectedSectionId, helpers, activeHelperId, isAutoAdvance, onSelectSection, onUpdateSectionHelper, onDeleteSection]);
+  }, [sections, selectedSectionId, helpers, activeHelperId, onSelectSection, onUpdateSectionHelper, onDeleteSection]);
 
   // Zoom to selected section
   useEffect(() => {
@@ -979,7 +948,7 @@ export const MapComponent: React.FC<MapComponentProps> = ({
         </div>
       )}
 
-      {/* Floating Stempel-Modus Toolbar (Top Center) */}
+      {/* Floating helper finder (Top Center) */}
       {captureMode === 'none' && helpers.length > 0 && (
         <div
           className="no-print glass-panel"
@@ -1015,8 +984,8 @@ export const MapComponent: React.FC<MapComponentProps> = ({
               fontSize: 12
             }}
           >
-            <Paintbrush size={16} />
-            <span>Stempel-Modus</span>
+            <UserCheck size={16} />
+            <span>Helfer-Finder</span>
           </div>
 
           {/* Helper Selector / Cycle */}
@@ -1113,7 +1082,7 @@ export const MapComponent: React.FC<MapComponentProps> = ({
               }}
             >
               <option value="" style={{ background: '#0F172A', color: '#94A3B8' }}>
-                -- Helfer wählen zum Stempeln --
+                -- Helfer suchen / anzeigen --
               </option>
               {helpers.map(h => {
                 const count = sections.filter(s => s.assigned_helper_id === h.id).length;
@@ -1126,38 +1095,12 @@ export const MapComponent: React.FC<MapComponentProps> = ({
             </select>
           )}
 
-          {/* Auto-Advance Toggle */}
-          {activeHelperId && (
-            <label
-              title="Nach jedem Klick auf einen Abschnitt automatisch zum nächsten Helfer weiterspringen"
-              style={{
-                display: 'flex',
-                alignItems: 'center',
-                gap: 5,
-                fontSize: 11,
-                color: isAutoAdvance ? 'var(--accent-gold)' : '#94A3B8',
-                cursor: 'pointer',
-                fontWeight: 600,
-                borderLeft: '1px solid rgba(255, 255, 255, 0.15)',
-                paddingLeft: 10
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={isAutoAdvance}
-                onChange={e => setAutoAdvance(e.target.checked)}
-                style={{ accentColor: 'var(--accent-gold)', cursor: 'pointer' }}
-              />
-              ⚡ Auto-Weiter
-            </label>
-          )}
-
-          {/* Exit Stamp Mode Button */}
+          {/* Clear helper focus */}
           {activeHelperId && (
             <button
               type="button"
               onClick={() => setStampHelper(null)}
-              title="Stempel-Modus beenden"
+              title="Helfer-Auswahl schließen"
               style={{
                 background: 'rgba(239, 68, 68, 0.2)',
                 border: 'none',
@@ -1176,59 +1119,6 @@ export const MapComponent: React.FC<MapComponentProps> = ({
             </button>
           )}
 
-          {/* Quick 1-Click Auto-Assign Button */}
-          {onOpenAutoAssign && (
-            <button
-              type="button"
-              onClick={onOpenAutoAssign}
-              title="1-Klick Auto-Verteilung: Alle Abschnitte automatisch an freie Helfer vergeben"
-              style={{
-                background: 'linear-gradient(135deg, rgba(245, 158, 11, 0.2), rgba(217, 119, 6, 0.25))',
-                border: '1px solid rgba(245, 158, 11, 0.5)',
-                color: '#F59E0B',
-                borderRadius: 16,
-                padding: '4px 10px',
-                fontSize: 11,
-                fontWeight: 700,
-                display: 'flex',
-                alignItems: 'center',
-                gap: 5,
-                cursor: 'pointer',
-                marginLeft: 4,
-                boxShadow: '0 0 10px rgba(245, 158, 11, 0.2)'
-              }}
-            >
-              <Zap size={13} />
-              Auto-Verteilen
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* Floating Stamping Toast Feedback */}
-      {stampFeedbackToast && (
-        <div
-          style={{
-            position: 'absolute',
-            top: 76,
-            left: '50%',
-            transform: 'translateX(-50%)',
-            background: 'linear-gradient(135deg, #10B981, #059669)',
-            color: '#FFFFFF',
-            padding: '8px 18px',
-            borderRadius: 24,
-            fontWeight: 700,
-            fontSize: 13,
-            boxShadow: '0 8px 24px rgba(16, 185, 129, 0.4)',
-            zIndex: 1100,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 8,
-            pointerEvents: 'none'
-          }}
-        >
-          <UserCheck size={16} />
-          <span>{stampFeedbackToast}</span>
         </div>
       )}
 
