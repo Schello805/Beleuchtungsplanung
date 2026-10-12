@@ -738,14 +738,10 @@ export const PrintView: React.FC<PrintViewProps> = ({
                       </div>
                     </div>
 
-                    {/* Card footer: pure information, no confirmation fields */}
+                    {/* Card footer: concise obligation and coordination reminder */}
                     <div style={{ borderTop: '1px solid #E2E8F0', paddingTop: 6, marginTop: 4, fontSize: 10, color: '#475569' }}>
-                      <div style={{ marginBottom: 5 }}><b>Bitte selbst mitbringen:</b> Lichter und benötigtes Material für deinen Bereich.</div>
-
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: 9, color: '#64748B', borderTop: '1px dotted #CBD5E1', paddingTop: 4, marginTop: 4 }}>
-                        <span>📞 Orga: <b>{orgaPhone || '09855 / 12345'}</b></span>
-                        <span>Gemeinde Bechhofen</span>
-                      </div>
+                      <div><b>Kerzenbeleuchtung ist verpflichtend.</b> Bitte Lichter und Material selbst besorgen.</div>
+                      <div style={{ fontSize: 9, color: '#64748B', borderTop: '1px dotted #CBD5E1', paddingTop: 4, marginTop: 4 }}>Mit angrenzenden Mitwirkenden abstimmen, damit die Beleuchtung durchgängig bleibt.</div>
                     </div>
                   </div>
                 );
@@ -801,10 +797,11 @@ export const PrintView: React.FC<PrintViewProps> = ({
                     {/* Information only – no material issue or confirmation */}
                     <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', padding: 10, borderRadius: 6, marginBottom: 14, fontSize: 11 }}>
                       <div>
-                        <div style={{ fontWeight: 800, color: '#0F172A', marginBottom: 2 }}>🕒 Für die Lichternacht:</div>
-                        <div>• Bitte deinen Bereich rechtzeitig vorbereiten.</div>
+                        <div style={{ fontWeight: 800, color: '#0F172A', marginBottom: 2 }}>🕯️ Kerzenbeleuchtung:</div>
+                        <div>• Die Beleuchtung deines ausgewiesenen Bereichs ist verpflichtend.</div>
+                        <div>• Deinen Bereich findest du auf diesem Plan sowie über den QR-Code.</div>
                         <div>• Lichter und benötigtes Material bitte selbst besorgen.</div>
-                        <div>• Den genauen Ablauf stimmt die Orga separat mit dir ab.</div>
+                        <div>• Stimme dich mit angrenzenden Mitwirkenden ab, damit die Kerzenbeleuchtung durchgängig bleibt.</div>
                       </div>
                     </div>
 
@@ -856,7 +853,7 @@ export const PrintView: React.FC<PrintViewProps> = ({
                     </div>
 
                     <div style={{ borderTop: '1px solid #CBD5E1', paddingTop: 10, fontSize: 11, color: '#475569' }}>
-                      Diese Information dient nur zur Orientierung. Eine Rückmeldung oder Unterschrift ist nicht erforderlich.
+                      Wir zählen auf eine zuverlässige Umsetzung. Diese Information dient zur Orientierung; eine Rückmeldung oder Unterschrift ist nicht erforderlich.
                     </div>
                   </div>
                 );
