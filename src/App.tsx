@@ -46,7 +46,7 @@ export const App: React.FC = () => {
     totalLength: number;
   } | null>(null);
 
-  const [captureMode, setCaptureMode] = useState<'none' | 'segment' | 'point'>('none');
+  const [captureMode, setCaptureMode] = useState<'none' | 'segment' | 'custom_path' | 'point'>('none');
   const [segmentPoints, setSegmentPoints] = useState<[number, number][]>([]);
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [focusedPreviewId, setFocusedPreviewId] = useState<string | null>(null);
@@ -275,6 +275,10 @@ export const App: React.FC = () => {
       } else if (segmentPoints.length === 1) {
         setSegmentPoints([segmentPoints[0], [lat, lon]]);
       }
+    } else if (captureMode === 'custom_path') {
+      // Sonderwege werden bewusst frei auf der Karte gezeichnet. Damit können
+      // auch Wege, Brücken oder Platzränder ohne OSM-Straßenname erfasst werden.
+      setSegmentPoints(points => [...points, [lat, lon]]);
     } else if (captureMode === 'point') {
       if (typeof (window as any).__onPointMapClick === 'function') {
         (window as any).__onPointMapClick(lat, lon);

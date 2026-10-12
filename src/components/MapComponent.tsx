@@ -23,7 +23,7 @@ interface MapComponentProps {
   focusedPreviewId?: string | null;
   onFocusPreviewSection?: (id: string | null) => void;
   // Interactive capture props
-  captureMode: 'none' | 'segment' | 'point';
+  captureMode: 'none' | 'segment' | 'custom_path' | 'point';
   segmentPoints: [number, number][];
   onMapClick: (lat: number, lon: number) => void;
   mapTileTheme: string;
@@ -276,6 +276,17 @@ export const MapComponent: React.FC<MapComponentProps> = ({
     if (!group) return;
     group.clearLayers();
 
+    if (captureMode === 'custom_path' && segmentPoints.length > 1) {
+      L.polyline(segmentPoints, {
+        color: '#A855F7',
+        weight: 5,
+        opacity: 0.9,
+        dashArray: '8, 6',
+        lineCap: 'round',
+        lineJoin: 'round'
+      }).addTo(group);
+    }
+
     if (segmentPoints.length > 0) {
       const start = segmentPoints[0];
       const startIcon = L.divIcon({
@@ -285,11 +296,24 @@ export const MapComponent: React.FC<MapComponentProps> = ({
         iconAnchor: [13, 13]
       });
       L.marker([start[0], start[1]], { icon: startIcon })
-        .bindTooltip('Startpunkt (A)', { permanent: true, direction: 'top', offset: [0, -10] })
+        .bindTooltip(captureMode === 'custom_path' ? 'Punkt 1' : 'Startpunkt (A)', { permanent: true, direction: 'top', offset: [0, -10] })
         .addTo(group);
     }
 
-    if (segmentPoints.length > 1) {
+    if (captureMode === 'custom_path') {
+      segmentPoints.slice(1).forEach((point, index) => {
+        const number = index + 2;
+        const icon = L.divIcon({
+          className: 'custom-step-marker',
+          html: `<div style="background:#A855F7; width:24px; height:24px; border-radius:50%; display:flex; align-items:center; justify-content:center; color:white; font-weight:bold; box-shadow:0 0 10px #A855F7; border:2px solid white; font-size:11px;">${number}</div>`,
+          iconSize: [24, 24],
+          iconAnchor: [12, 12]
+        });
+        L.marker([point[0], point[1]], { icon })
+          .bindTooltip(`Punkt ${number}`, { permanent: true, direction: 'top', offset: [0, -9] })
+          .addTo(group);
+      });
+    } else if (segmentPoints.length > 1) {
       const end = segmentPoints[1];
       const endIcon = L.divIcon({
         className: 'custom-step-marker',
@@ -301,7 +325,7 @@ export const MapComponent: React.FC<MapComponentProps> = ({
         .bindTooltip('Zielpunkt (B)', { permanent: true, direction: 'top', offset: [0, -10] })
         .addTo(group);
     }
-  }, [segmentPoints]);
+  }, [segmentPoints, captureMode]);
 
   // Imported Lichternacht stations stay visible as small blue markers. They
   // make proximity-based proposals understandable without replacing manual work.
@@ -1151,6 +1175,9 @@ export const MapComponent: React.FC<MapComponentProps> = ({
           )}
           {captureMode === 'segment' && segmentPoints.length === 1 && (
             <span>Klicke nun auf die Straße für den <b>Zielpunkt (B)</b></span>
+          )}
+          {captureMode === 'custom_path' && (
+            <span>Klicke nacheinander auf den <b>Verlauf des Sonderwegs</b> · {segmentPoints.length} Punkt{segmentPoints.length === 1 ? '' : 'e'} gesetzt</span>
           )}
           {captureMode === 'point' && (
             <span>Klicke auf die Karte, um den <b>Einzelpunkt (z.B. Brunnen)</b> zu platzieren</span>

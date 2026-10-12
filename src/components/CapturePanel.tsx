@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Scissors, MapPin, Search, Check, X, RefreshCw, AlertCircle, Compass, Layers, Users, Plus, Trash2, ListPlus } from 'lucide-react';
+import { Scissors, MapPin, Search, Check, X, RefreshCw, AlertCircle, Compass, Layers, Users, Plus, Trash2, ListPlus, Route } from 'lucide-react';
 import { api } from '../utils/api';
 import { chunkLineWithFairness, createPointSection, type GeneratedSection } from '../utils/geo';
 import * as turf from '@turf/turf';
@@ -13,8 +13,8 @@ interface CapturePanelProps {
   onFocusPreviewSection?: (id: string | null) => void;
   onSavePreview: () => Promise<void>;
   isSaving: boolean;
-  captureMode: 'none' | 'segment' | 'point';
-  setCaptureMode: (mode: 'none' | 'segment' | 'point') => void;
+  captureMode: 'none' | 'segment' | 'custom_path' | 'point';
+  setCaptureMode: (mode: 'none' | 'segment' | 'custom_path' | 'point') => void;
   segmentPoints: [number, number][];
   setSegmentPoints: (points: [number, number][]) => void;
 }
@@ -33,7 +33,7 @@ export const CapturePanel: React.FC<CapturePanelProps> = ({
   segmentPoints,
   setSegmentPoints
 }) => {
-  const [method, setMethod] = useState<'full_street' | 'batch' | 'segment' | 'point'>('full_street');
+  const [method, setMethod] = useState<'full_street' | 'batch' | 'segment' | 'custom_path' | 'point'>('full_street');
   const [isCollapsed, setIsCollapsed] = useState<boolean>(false);
 
   // Capture uses stable, coarse defaults. Fair length limits are deliberately
@@ -70,6 +70,7 @@ export const CapturePanel: React.FC<CapturePanelProps> = ({
 
   // Point capture
   const [pointLabel, setPointLabel] = useState<string>('Brunnen');
+  const [customPathLabel, setCustomPathLabel] = useState<string>('Weg St. Katharina');
 
   // Loading state
   const [isLoading, setIsLoading] = useState<boolean>(false);
@@ -113,7 +114,7 @@ export const CapturePanel: React.FC<CapturePanelProps> = ({
   }, [batchSearchQuery, availableStreets, batchStreetList]);
 
   // Method switch handler
-  const handleMethodChange = (newMethod: 'full_street' | 'batch' | 'segment' | 'point') => {
+  const handleMethodChange = (newMethod: 'full_street' | 'batch' | 'segment' | 'custom_path' | 'point') => {
     setMethod(newMethod);
     setErrorMessage(null);
     setFairnessNotice(null);
@@ -121,6 +122,9 @@ export const CapturePanel: React.FC<CapturePanelProps> = ({
 
     if (newMethod === 'segment') {
       setCaptureMode('segment');
+      setSegmentPoints([]);
+    } else if (newMethod === 'custom_path') {
+      setCaptureMode('custom_path');
       setSegmentPoints([]);
     } else if (newMethod === 'point') {
       setCaptureMode('point');
@@ -387,6 +391,38 @@ export const CapturePanel: React.FC<CapturePanelProps> = ({
     });
   };
 
+  const handleCreateCustomPath = () => {
+    if (segmentPoints.length < 2) {
+      setErrorMessage('Bitte setze mindestens zwei Punkte auf der Karte, um einen Weg zu zeichnen.');
+      return;
+    }
+
+    const name = customPathLabel.trim() || 'Sonderweg';
+    const label = `Sonderbereich – ${name}`;
+    const coordinates = segmentPoints.map(([lat, lon]) => [lon, lat] as [number, number]);
+    const line = turf.lineString(coordinates);
+    const lengthMeters = Math.max(1, Math.round(turf.length(line, { units: 'kilometers' }) * 1000));
+    const section = {
+      id: `sec-${Date.now()}-sonderweg`,
+      streetName: name,
+      sectionIndex: 1,
+      label,
+      lengthMeters,
+      color: '#A855F7',
+      type: 'line' as const,
+      geojson: line
+    };
+
+    onPreviewGenerated([section], {
+      name,
+      method: 'custom_path',
+      chunkLength: lengthMeters,
+      minLength: 0,
+      totalLength: lengthMeters
+    });
+    setErrorMessage(null);
+  };
+
   // Expose point click to parent
   useEffect(() => {
     (window as any).__onPointMapClick = handlePointCreated;
@@ -471,7 +507,7 @@ export const CapturePanel: React.FC<CapturePanelProps> = ({
       </div>
 
       {/* Method Tabs */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 4, marginBottom: 14 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 4, marginBottom: 14 }}>
         <button
           onClick={() => handleMethodChange('full_street')}
           style={{
@@ -521,6 +557,19 @@ export const CapturePanel: React.FC<CapturePanelProps> = ({
           }}
         >
           Teilstück
+        </button>
+
+        <button
+          onClick={() => handleMethodChange('custom_path')}
+          title="Weg, Brücke oder Platzrand frei auf der Karte zeichnen"
+          style={{
+            padding: '7px 2px', fontSize: 11, fontWeight: 700, borderRadius: 'var(--radius-sm)',
+            border: method === 'custom_path' ? '1px solid #A855F7' : '1px solid var(--border-subtle)',
+            background: method === 'custom_path' ? 'rgba(168, 85, 247, .14)' : 'transparent',
+            color: method === 'custom_path' ? '#C084FC' : 'var(--text-muted)', cursor: 'pointer', transition: 'all .15s ease'
+          }}
+        >
+          Weg
         </button>
 
         <button
@@ -1110,6 +1159,32 @@ export const CapturePanel: React.FC<CapturePanelProps> = ({
               </button>
             )}
           </div>
+        </div>
+      )}
+
+      {method === 'custom_path' && (
+        <div style={{ marginBottom: 14 }}>
+          <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: 'var(--text-muted)', marginBottom: 4 }}>
+            Bezeichnung des Sonderbereichs:
+          </label>
+          <input
+            type="text"
+            placeholder="z.B. Weg St. Katharina, Fußweg zum Parkplatz, Brücke"
+            value={customPathLabel}
+            onChange={e => setCustomPathLabel(e.target.value)}
+            style={{ width: '100%', padding: '7px 10px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)', background: 'var(--bg-input)', fontSize: 13, color: 'var(--text-main)', outline: 'none', marginBottom: 8 }}
+          />
+          <div style={{ padding: 10, borderRadius: 'var(--radius-sm)', background: 'rgba(168, 85, 247, .1)', border: '1px solid rgba(168, 85, 247, .3)', fontSize: 12, color: 'var(--text-main)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontWeight: 700, color: '#C084FC', marginBottom: 5 }}><Route size={15} /> Weg, Brücke oder Platzrand frei einzeichnen</div>
+            <div>Klicke die Punkte entlang des tatsächlichen Verlaufs an. Der violette Linienzug zeigt die Vorschau.</div>
+            <div style={{ display: 'flex', gap: 8, alignItems: 'center', justifyContent: 'space-between', marginTop: 9 }}>
+              <span style={{ color: segmentPoints.length >= 2 ? '#34D399' : 'var(--text-muted)', fontWeight: 600 }}>{segmentPoints.length} Punkt{segmentPoints.length === 1 ? '' : 'e'} gesetzt</span>
+              <button type="button" onClick={() => { setSegmentPoints([]); onClearPreview(); }} disabled={!segmentPoints.length} style={{ fontSize: 11, background: 'transparent', border: '1px solid var(--border-subtle)', color: 'var(--text-muted)', padding: '4px 7px', borderRadius: 4, cursor: segmentPoints.length ? 'pointer' : 'not-allowed' }}>Zurücksetzen</button>
+            </div>
+          </div>
+          <button type="button" onClick={handleCreateCustomPath} disabled={segmentPoints.length < 2} style={{ width: '100%', marginTop: 8, padding: '8px 10px', border: 0, borderRadius: 'var(--radius-sm)', background: segmentPoints.length >= 2 ? '#A855F7' : 'var(--bg-input)', color: '#fff', fontWeight: 800, fontSize: 12, cursor: segmentPoints.length >= 2 ? 'pointer' : 'not-allowed', opacity: segmentPoints.length >= 2 ? 1 : .6 }}>
+            Weg als Vorschau übernehmen
+          </button>
         </div>
       )}
 
