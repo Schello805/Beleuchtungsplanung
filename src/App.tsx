@@ -70,7 +70,7 @@ export const App: React.FC = () => {
   const [candleSpacing, setCandleSpacing] = useState<number>(2.0);
   const [candleBuffer, setCandleBuffer] = useState<number>(10);
 
-  // Stempel-Modus (Schnell-Zuweisung per Klick auf der Karte)
+  // Helfer-Finder: zeigt auf der Karte die zugehörigen Abschnitte an.
   const [activeStampHelperId, setActiveStampHelperId] = useState<string | null>(null);
   const [autoAdvanceStamp, setAutoAdvanceStamp] = useState<boolean>(true);
 

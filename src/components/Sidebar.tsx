@@ -101,7 +101,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   mobileOpen = false,
   onCloseMobile
 }) => {
-  const [activeTab, setActiveTab] = useState<'workflow' | 'sections' | 'helpers' | 'stats'>('workflow');
+  const [activeTab, setActiveTab] = useState<'workflow' | 'sections' | 'distribute' | 'helpers' | 'stats'>('workflow');
 
   // Filter & Search
   const [searchQuery, setSearchQuery] = useState<string>('');
@@ -359,7 +359,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
       <div
         style={{
           display: 'grid',
-          gridTemplateColumns: 'repeat(4, 1fr)',
+          gridTemplateColumns: 'repeat(5, 1fr)',
           borderBottom: '1px solid var(--border-subtle)',
           background: 'var(--bg-secondary)'
         }}
@@ -373,7 +373,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 5
           }}
         >
-          <ClipboardList size={15} /> Ablauf
+          <ClipboardList size={15} /> Start
         </button>
         <button
           onClick={() => setActiveTab('sections')}
@@ -393,7 +393,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
           }}
         >
           <MapPin size={15} />
-          Straßen
+          Karte
+        </button>
+
+        <button
+          onClick={() => setActiveTab('distribute')}
+          style={{
+            padding: '10px 3px', fontSize: 11, fontWeight: 700, border: 'none',
+            borderBottom: activeTab === 'distribute' ? '2px solid var(--accent-gold)' : '2px solid transparent',
+            background: 'transparent', color: activeTab === 'distribute' ? 'var(--accent-gold)' : 'var(--text-muted)',
+            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4
+          }}
+        >
+          <Zap size={14} /> Verteilen
         </button>
 
         <button
@@ -414,7 +426,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           }}
         >
           <Users size={15} />
-          Stationen
+          Helfer
         </button>
 
         <button
@@ -435,7 +447,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
           }}
         >
           <BarChart3 size={15} />
-          Kontrolle
+          Prüfen
         </button>
       </div>
 
@@ -459,9 +471,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
             {
               number: 3, title: 'Nähegerecht verteilen',
               detail: sections.length === 0 ? 'Wird verfügbar, sobald Abschnitte angelegt sind' : unassignedSections.length ? `${unassignedSections.length} Abschnitte sind noch offen` : 'Alle Abschnitte sind zugewiesen',
-              action: 'Auto-Zuweisung öffnen', complete: sections.length > 0 && unassignedSections.length === 0,
+              action: 'Verteilung öffnen', complete: sections.length > 0 && unassignedSections.length === 0,
               disabled: sections.length === 0,
-              onClick: () => onOpenAutoAssign?.()
+              onClick: () => setActiveTab('distribute')
             },
             {
               number: 4, title: 'Prüfen & nachbessern',
@@ -472,7 +484,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
               onClick: () => { setActiveTab(unassignedSections.length ? 'sections' : 'stats'); if (unassignedSections.length) setFilterStatus('unassigned'); }
             },
             {
-              number: 5, title: 'Abschließen & ausgeben',
+              number: 5, title: 'Kommunizieren & drucken',
               detail: sections.length === 0 ? 'Druckansicht wird nach der Planung relevant' : unassignedSections.length ? 'Noch offene Abschnitte vor dem Ausdruck prüfen' : 'Laufzettel, Materialbedarf und Excel/PDF erzeugen',
               action: 'Druckansicht öffnen', complete: false,
               disabled: sections.length === 0,
@@ -483,7 +495,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <div>
               <div style={{ padding: '12px 14px', borderRadius: 'var(--radius-md)', background: 'linear-gradient(135deg, rgba(245,158,11,.18), rgba(56,189,248,.1))', border: '1px solid rgba(245,158,11,.35)', marginBottom: 14 }}>
                 <div style={{ fontWeight: 800, color: 'var(--text-main)', fontSize: 15 }}>Dein Planungsablauf</div>
-                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>Starte mit Schritt {nextStep}; die Spezialwerkzeuge bleiben in den anderen Bereichen verfügbar.</div>
+                <div style={{ fontSize: 12, color: 'var(--text-muted)', marginTop: 4 }}>Starte mit Schritt {nextStep}. Jede Arbeitsphase hat ihren eigenen Bereich.</div>
               </div>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 9 }}>
                 {steps.map(step => {
@@ -501,7 +513,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 })}
               </div>
               <div style={{ marginTop: 14, padding: '10px 12px', borderRadius: 'var(--radius-sm)', background: 'var(--bg-input)', color: 'var(--text-muted)', fontSize: 11, lineHeight: 1.4 }}>
-                <b style={{ color: 'var(--text-main)' }}>Manuell bleibt alles steuerbar:</b> Unter Straßen kannst du jeden Abschnitt einzeln ändern; unter Stationen Namen pflegen und unter Kontrolle Fairness, Aufteilung und Export nutzen.
+                <b style={{ color: 'var(--text-main)' }}>Kurz erklärt:</b> Karte = Abschnitte bearbeiten, Verteilen = Zuweisungen, Helfer = Stations- und Kontaktdaten, Prüfen = Fairness und offene Punkte.
               </div>
             </div>
           );
@@ -619,92 +631,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </div>
             </div>
 
-            {/* Fair Redistribution Action Banner */}
-            {sections.length > 0 && onOpenRedistributeModal && (
-              <div style={{
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'space-between',
-                padding: '9px 12px',
-                background: 'rgba(245, 158, 11, 0.12)',
-                border: '1px solid rgba(245, 158, 11, 0.35)',
-                borderRadius: 'var(--radius-sm)',
-                marginBottom: 12,
-                gap: 8
-              }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: 'var(--text-main)' }}>
-                  <Scissors size={14} style={{ color: '#F59E0B' }} />
-                  <span>
-                    <b>{sections.length} Abschnitte</b>
-                    {helpers.length > sections.length ? (
-                      <span style={{ color: '#F59E0B', marginLeft: 4 }}>({helpers.length} Helfer vorhanden)</span>
-                    ) : ''}
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  onClick={onOpenRedistributeModal}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 5,
-                    padding: '5px 10px',
-                    borderRadius: 4,
-                    background: '#F59E0B',
-                    color: '#000',
-                    border: 'none',
-                    fontSize: 11,
-                    fontWeight: 700,
-                    cursor: 'pointer',
-                    boxShadow: 'var(--shadow-sm)'
-                  }}
-                >
-                  <Sparkles size={12} />
-                  Abschnittslänge einstellen
-                </button>
-              </div>
-            )}
-
-            {/* 1-Click Auto Assign Banner */}
-            {unassignedSections.length > 0 && onOpenAutoAssign && (
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  padding: '8px 12px',
-                  background: 'linear-gradient(135deg, rgba(16, 185, 129, 0.12), rgba(5, 150, 105, 0.12))',
-                  border: '1px solid rgba(16, 185, 129, 0.35)',
-                  borderRadius: 'var(--radius-sm)',
-                  marginBottom: 12,
-                  gap: 8
-                }}
-              >
-                <div style={{ fontSize: 11, color: 'var(--text-main)' }}>
-                  <b style={{ color: '#10B981' }}>{unassignedSections.length} Abschnitte offen</b>
-                  <div style={{ fontSize: 10, color: 'var(--text-muted)' }}>Schnell an Helfer vergeben</div>
-                </div>
-                <button
-                  type="button"
-                  onClick={onOpenAutoAssign}
-                  style={{
-                    display: 'flex',
-                    alignItems: 'center',
-                    gap: 5,
-                    padding: '5px 10px',
-                    borderRadius: 4,
-                    background: '#10B981',
-                    color: '#FFFFFF',
-                    border: 'none',
-                    fontSize: 11,
-                    fontWeight: 700,
-                    cursor: 'pointer'
-                  }}
-                >
-                  <Zap size={12} />
-                  ⚡ Auto-Zuweisen
-                </button>
-              </div>
+            {sections.length > 0 && (
+              <button type="button" onClick={() => setActiveTab('distribute')} style={{ width: '100%', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '9px 12px', background: 'rgba(16,185,129,.1)', border: '1px solid rgba(16,185,129,.34)', borderRadius: 'var(--radius-sm)', marginBottom: 12, color: 'var(--text-main)', cursor: 'pointer' }}>
+                <span style={{ fontSize: 11 }}><b style={{ color: '#34d399' }}>{unassignedSections.length} Abschnitte offen</b><br />Verteilung und Abschnittslänge sind getrennt organisiert.</span>
+                <span style={{ color: '#7dd3fc', fontSize: 11, fontWeight: 800 }}>Verteilen →</span>
+              </button>
             )}
 
             {/* Empty State */}
@@ -1035,37 +966,45 @@ export const Sidebar: React.FC<SidebarProps> = ({
           </div>
         )}
 
-        {/* TAB 2: HELFER VERWALTUNG */}
+        {/* VERTEILEN: bewusst getrennt von Karte und Helferstammdaten */}
+        {activeTab === 'distribute' && (
+          <div>
+            <div style={{ padding: '12px 14px', borderRadius: 'var(--radius-md)', background: 'linear-gradient(135deg, rgba(16,185,129,.16), rgba(56,189,248,.1))', border: '1px solid rgba(16,185,129,.35)', marginBottom: 14 }}>
+              <div style={{ fontWeight: 800, color: 'var(--text-main)', fontSize: 15 }}>Bereiche verteilen</div>
+              <div style={{ fontSize: 12, lineHeight: 1.4, color: 'var(--text-muted)', marginTop: 4 }}>Zuerst werden Bereiche an den Stationen berücksichtigt. Danach bleiben nur zusammenhängende Restabschnitte zur Verteilung.</div>
+            </div>
+
+            <div style={{ display: 'grid', gap: 10 }}>
+              <div style={{ padding: 13, borderRadius: 'var(--radius-md)', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)' }}>
+                <div style={{ fontWeight: 800, fontSize: 13, color: 'var(--text-main)' }}>1. Stationen zuerst zuordnen</div>
+                <p style={{ margin: '4px 0 10px', fontSize: 11, lineHeight: 1.4, color: 'var(--text-muted)' }}>Die Verteilung zeigt vorher an, wer welchen Bereich erhält. Bestehende Zuweisungen können dabei erhalten bleiben.</p>
+                <button type="button" disabled={!sections.length || !helpers.length} onClick={onOpenAutoAssign} style={{ width: '100%', border: 0, borderRadius: 6, padding: '8px 10px', background: '#10B981', color: '#fff', fontSize: 12, fontWeight: 800, cursor: !sections.length || !helpers.length ? 'not-allowed' : 'pointer', opacity: !sections.length || !helpers.length ? .55 : 1 }}>
+                  Verteilung mit Vorschau öffnen
+                </button>
+              </div>
+
+              <div style={{ padding: 13, borderRadius: 'var(--radius-md)', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)' }}>
+                <div style={{ fontWeight: 800, fontSize: 13, color: 'var(--text-main)' }}>2. Freie Restabschnitte besprechen</div>
+                <p style={{ margin: '4px 0 10px', fontSize: 11, lineHeight: 1.4, color: 'var(--text-muted)' }}>{unassignedSections.length ? `${unassignedSections.length} freie Abschnitte können direkt auf der Karte einzeln vergeben werden.` : 'Aktuell sind keine freien Abschnitte übrig.'}</p>
+                <button type="button" onClick={() => { setActiveTab('sections'); setFilterStatus('unassigned'); }} style={{ width: '100%', border: '1px solid rgba(56,189,248,.42)', borderRadius: 6, padding: '8px 10px', background: 'rgba(56,189,248,.1)', color: '#7dd3fc', fontSize: 12, fontWeight: 800, cursor: 'pointer' }}>
+                  Freie Abschnitte auf Karte zeigen
+                </button>
+              </div>
+
+              <div style={{ padding: 13, borderRadius: 'var(--radius-md)', background: 'var(--bg-card)', border: '1px solid var(--border-subtle)' }}>
+                <div style={{ fontWeight: 800, fontSize: 13, color: 'var(--text-main)' }}>3. Abschnittslänge anpassen</div>
+                <p style={{ margin: '4px 0 10px', fontSize: 11, lineHeight: 1.4, color: 'var(--text-muted)' }}>Für freie Straßen kannst du 40 m, 50 m oder 60 m festlegen. Bereits besprochene Zuweisungen bleiben sichtbar.</p>
+                <button type="button" disabled={!sections.length || !onOpenRedistributeModal} onClick={onOpenRedistributeModal} style={{ width: '100%', border: 0, borderRadius: 6, padding: '8px 10px', background: 'var(--accent-gold)', color: '#172033', fontSize: 12, fontWeight: 800, cursor: !sections.length || !onOpenRedistributeModal ? 'not-allowed' : 'pointer', opacity: !sections.length || !onOpenRedistributeModal ? .55 : 1 }}>
+                  Abschnittslänge einstellen
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* TAB: HELFER VERWALTUNG */}
         {activeTab === 'helpers' && (
           <div>
-            {/* 1-Click Auto Assign Banner */}
-            {onOpenAutoAssign && unassignedSections.length > 0 && (
-              <button
-                type="button"
-                onClick={onOpenAutoAssign}
-                style={{
-                  width: '100%',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  gap: 8,
-                  padding: '9px 12px',
-                  borderRadius: 'var(--radius-sm)',
-                  background: 'linear-gradient(135deg, #F59E0B, #D97706)',
-                  border: 'none',
-                  color: '#0F172A',
-                  fontWeight: 800,
-                  fontSize: 12,
-                  cursor: 'pointer',
-                  marginBottom: 12,
-                  boxShadow: '0 0 14px rgba(245, 158, 11, 0.3)'
-                }}
-              >
-                <Zap size={15} />
-                ⚡ 1-Klick Auto-Zuweisung ({unassignedSections.length} offene Abschnitte)
-              </button>
-            )}
-
             {/* Helfer Import & Verwaltung Toolbar */}
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6, marginBottom: 12 }}>
               {/* Row 1: Importieren / Überschreiben + Copy-Paste */}
@@ -1409,6 +1348,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* TAB 3: FAIRNESS & STATISTIK */}
         {activeTab === 'stats' && (
           <div>
+            <div style={{ padding: '11px 13px', borderRadius: 'var(--radius-md)', background: 'rgba(56,189,248,.09)', border: '1px solid rgba(56,189,248,.28)', marginBottom: 14 }}>
+              <div style={{ fontWeight: 800, color: 'var(--text-main)', fontSize: 14 }}>Prüfen & nachbessern</div>
+              <div style={{ marginTop: 3, color: 'var(--text-muted)', fontSize: 11, lineHeight: 1.4 }}>Klicke einen Helfer oder Abschnitt an, um ihn auf der Karte hervorzuheben. Offene und unfaire Bereiche werden hier zuerst sichtbar.</div>
+            </div>
             {/* Section Redistribution Action Card */}
             {onOpenRedistributeModal && sections.length > 0 && (
               <div

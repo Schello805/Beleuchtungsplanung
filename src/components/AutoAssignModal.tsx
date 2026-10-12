@@ -21,7 +21,6 @@ export const AutoAssignModal: React.FC<AutoAssignModalProps> = ({
   if (!isOpen) return null;
 
   const [mode, setMode] = useState<'unassigned_only' | 'all'>('unassigned_only');
-  const [strategy, setStrategy] = useState<'fair' | 'station_first'>('station_first');
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
   // Compute unassigned sections and free helpers
@@ -47,27 +46,25 @@ export const AutoAssignModal: React.FC<AutoAssignModalProps> = ({
   const previewAssignments = useMemo(() => {
     if (targetSections.length === 0 || targetHelpers.length === 0) return [];
 
-    if (strategy === 'station_first' || strategy === 'fair') {
-      const result = calculateStationFirstAssignment(
-        targetSections,
-        targetHelpers,
-        mode === 'unassigned_only' ? sections : [],
-        DEFAULT_FAIRNESS_RULES
-      );
-      const bySection = new Map(result.assignments.map(item => [item.sectionId, item]));
-      // A full reassignment must actively clear areas that cannot meet the
-      // configured limits. Otherwise an old 80 m assignment would remain.
-      return mode === 'all'
-        ? targetSections.map(section => bySection.get(section.id) || { sectionId: section.id, helperId: '', helperName: 'Offen – Fairnessgrenze' })
-        : result.assignments;
-    }
-
-    return [];
-  }, [targetSections, targetHelpers, strategy, mode, sections]);
+    const result = calculateStationFirstAssignment(
+      targetSections,
+      targetHelpers,
+      mode === 'unassigned_only' ? sections : [],
+      DEFAULT_FAIRNESS_RULES
+    );
+    const bySection = new Map(result.assignments.map(item => [item.sectionId, item]));
+    // A full reassignment must actively clear areas that cannot meet the
+    // configured limits. Otherwise an old 80 m assignment would remain.
+    return mode === 'all'
+      ? targetSections.map(section => bySection.get(section.id) || { sectionId: section.id, helperId: '', helperName: 'Offen – Fairnessgrenze' })
+      : result.assignments;
+  }, [targetSections, targetHelpers, mode, sections]);
 
   // Summary stats
   const totalMeters = targetSections.reduce((sum, s) => sum + (s.length_meters || s.lengthMeters || 0), 0);
-  const avgMetersPerHelper = targetHelpers.length > 0 ? Math.round(totalMeters / Math.min(targetSections.length, targetHelpers.length)) : 0;
+  const avgMetersPerHelper = targetHelpers.length > 0 && targetSections.length > 0
+    ? Math.round(totalMeters / Math.min(targetSections.length, targetHelpers.length))
+    : 0;
   const largestSectionMeters = Math.max(0, ...targetSections.map(s => s.length_meters || s.lengthMeters || 0));
   const needsFairRechunking = targetHelpers.length > 0 && largestSectionMeters > (totalMeters / targetHelpers.length) * 1.6;
   const allocatedPreviewCount = previewAssignments.filter(assignment => Boolean(assignment.helperId)).length;
@@ -143,10 +140,10 @@ export const AutoAssignModal: React.FC<AutoAssignModalProps> = ({
             </div>
             <div>
               <h3 style={{ fontSize: 17, fontWeight: 800, color: 'var(--text-main)', margin: 0 }}>
-                1-Klick Auto-Zuweisung
+                Verteilung planen
               </h3>
               <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: 0 }}>
-                Verteilt Straßenabschnitte in Sekundenschnelle an Helfer
+                Erst an Stationen orientieren, danach zusammenhängende Reste fair verteilen
               </p>
             </div>
           </div>
@@ -235,22 +232,6 @@ export const AutoAssignModal: React.FC<AutoAssignModalProps> = ({
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
               <button
                 type="button"
-                onClick={() => setStrategy('station_first')}
-                style={{
-                  padding: '10px 12px', borderRadius: 'var(--radius-sm)',
-                  border: strategy === 'station_first' ? '2px solid #10B981' : '1px solid var(--border-subtle)',
-                  background: strategy === 'station_first' ? 'rgba(16, 185, 129, 0.12)' : 'var(--bg-card)',
-                  color: strategy === 'station_first' ? '#10B981' : 'var(--text-main)', fontWeight: 700,
-                  fontSize: 12, textAlign: 'left', cursor: 'pointer'
-                }}
-              >
-                <div>📍 Stand zuerst</div>
-                <div style={{ fontSize: 11, fontWeight: 400, color: 'var(--text-muted)', marginTop: 2 }}>
-                  Erst vor dem eigenen Stand, anschließend den Rest fair verteilen
-                </div>
-              </button>
-              <button
-                type="button"
                 onClick={() => setMode('unassigned_only')}
                 style={{
                   padding: '10px 12px',
@@ -293,60 +274,20 @@ export const AutoAssignModal: React.FC<AutoAssignModalProps> = ({
             </div>
           </div>
 
-          {/* STRATEGY SELECTOR */}
-          <div style={{ marginBottom: 16 }}>
-            <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-main)', display: 'block', marginBottom: 8 }}>
-              Verteilungs-Logik:
-            </label>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
-              <button
-                type="button"
-                onClick={() => setStrategy('station_first')}
-                style={{
-                  padding: '10px 12px',
-                  borderRadius: 'var(--radius-sm)',
-                  border: strategy === 'station_first' ? '2px solid #38BDF8' : '1px solid var(--border-subtle)',
-                  background: strategy === 'station_first' ? 'rgba(56, 189, 248, 0.12)' : 'var(--bg-card)',
-                  color: strategy === 'station_first' ? '#38BDF8' : 'var(--text-main)',
-                  fontWeight: 700,
-                  fontSize: 12,
-                  textAlign: 'left',
-                  cursor: 'pointer'
-                }}
-              >
-                <div>🧭 Zusammenhängend + fair</div>
-                <div style={{ fontSize: 11, fontWeight: 400, color: 'var(--text-muted)', marginTop: 2 }}>
-                  Vergibt nur angrenzende Erweiterungen, niemals getrennte Bereiche
-                </div>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setStrategy('fair')}
-                style={{
-                  padding: '10px 12px',
-                  borderRadius: 'var(--radius-sm)',
-                  border: strategy === 'fair' ? '2px solid #38BDF8' : '1px solid var(--border-subtle)',
-                  background: strategy === 'fair' ? 'rgba(56, 189, 248, 0.12)' : 'var(--bg-card)',
-                  color: strategy === 'fair' ? '#38BDF8' : 'var(--text-main)',
-                  fontWeight: 700,
-                  fontSize: 12,
-                  textAlign: 'left',
-                  cursor: 'pointer'
-                }}
-              >
-                <div>⚖️ Faire Meter</div>
-                <div style={{ fontSize: 11, fontWeight: 400, color: 'var(--text-muted)', marginTop: 2 }}>
-                  Gleiche Verteilung innerhalb zusammenhängender Bereiche
-                </div>
-              </button>
+          {mode === 'unassigned_only' && unassignedSections.length === 0 && (
+            <div style={{ margin: '-4px 0 16px', padding: '9px 11px', borderRadius: 'var(--radius-sm)', background: 'rgba(16,185,129,.1)', border: '1px solid rgba(16,185,129,.28)', fontSize: 11, color: 'var(--text-muted)', lineHeight: 1.4 }}>
+              ✓ Alle Abschnitte sind bereits zugeordnet. Wähle <b style={{ color: '#34d399' }}>„Alles neu verteilen“</b> nur, wenn die gesamte Planung nochmals berechnet werden soll.
             </div>
+          )}
+
+          <div style={{ marginBottom: 16, padding: '10px 12px', borderRadius: 'var(--radius-sm)', background: 'rgba(56,189,248,.1)', border: '1px solid rgba(56,189,248,.3)', fontSize: 12, color: 'var(--text-muted)', lineHeight: 1.45 }}>
+            <b style={{ color: '#7dd3fc' }}>Feste Verteilungsregel:</b> Zuerst wird der Bereich direkt an der Station berücksichtigt. Danach werden nur angrenzende Erweiterungen vergeben – niemals getrennte Bereiche.
           </div>
 
           {/* LIVE PREVIEW LIST */}
           {needsFairRechunking && (
             <div style={{ marginBottom: 14, padding: '10px 12px', borderRadius: 'var(--radius-sm)', background: 'rgba(239, 68, 68, .12)', border: '1px solid rgba(239, 68, 68, .45)', color: 'var(--text-main)', fontSize: 12, lineHeight: 1.4 }}>
-              <b style={{ color: '#EF4444' }}>Noch nicht fair teilbar:</b> Der längste Abschnitt hat {largestSectionMeters} m, der Zielwert liegt bei etwa {Math.round(totalMeters / targetHelpers.length)} m. Teile die Strecken zuerst unter <b>Kontrolle → „Für faire ~40-m-Abschnitte neu zuschneiden“</b> auf.
+              <b style={{ color: '#EF4444' }}>Noch nicht fair teilbar:</b> Der längste Abschnitt hat {largestSectionMeters} m, der Zielwert liegt bei etwa {Math.round(totalMeters / targetHelpers.length)} m. Passe die Teilstücke zuerst unter <b>Verteilen → „Abschnittslänge einstellen“</b> an.
             </div>
           )}
           <div>
