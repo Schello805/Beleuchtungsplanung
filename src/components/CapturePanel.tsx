@@ -36,9 +36,10 @@ export const CapturePanel: React.FC<CapturePanelProps> = ({
   const [method, setMethod] = useState<'full_street' | 'batch' | 'segment' | 'point'>('full_street');
   const [isCollapsed, setIsCollapsed] = useState<boolean>(false);
 
-  // Parameters
-  const [chunkLength, setChunkLength] = useState<number>(100);
-  const [minLength, setMinLength] = useState<number>(50);
+  // Capture uses stable, coarse defaults. Fair length limits are deliberately
+  // configured later in the dedicated redistribution workflow.
+  const chunkLength = 100;
+  const minLength = 50;
 
   // Full street search
   const [streetQuery, setStreetQuery] = useState<string>('');
@@ -1146,52 +1147,6 @@ export const CapturePanel: React.FC<CapturePanelProps> = ({
             }}
           >
             📍 <b>Klicke auf die Karte</b>, um den Punkt an der gewünschten Stelle zu platzieren. Er wird nicht zerschnitten (0 m).
-          </div>
-        </div>
-      )}
-
-      {/* Fairness & Chunking Controls (for line methods) */}
-      {method !== 'point' && (
-        <div
-          style={{
-            background: 'var(--bg-secondary)',
-            padding: '10px 12px',
-            borderRadius: 'var(--radius-sm)',
-            border: '1px solid var(--border-subtle)',
-            marginBottom: 12
-          }}
-        >
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)' }}>Abschnittslänge:</span>
-            <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--accent-gold)' }}>{chunkLength} m</span>
-          </div>
-          <input
-            type="range"
-            min="30"
-            max="300"
-            step="10"
-            value={chunkLength}
-            onChange={e => setChunkLength(parseInt(e.target.value, 10))}
-            style={{ width: '100%', accentColor: 'var(--accent-gold)', marginBottom: 10 }}
-          />
-
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
-            <span style={{ fontSize: 12, fontWeight: 600, color: 'var(--text-muted)' }}>
-              Fairness: Minimale Restlänge:
-            </span>
-            <span style={{ fontSize: 12, fontWeight: 700, color: '#10B981' }}>{minLength} m</span>
-          </div>
-          <input
-            type="range"
-            min="15"
-            max="100"
-            step="5"
-            value={minLength}
-            onChange={e => setMinLength(parseInt(e.target.value, 10))}
-            style={{ width: '100%', accentColor: '#10B981' }}
-          />
-          <div style={{ fontSize: 10, color: 'var(--text-light)', marginTop: 4 }}>
-            Reststücke unter {minLength}m werden automatisch an den vorletzten Abschnitt angehängt.
           </div>
         </div>
       )}
