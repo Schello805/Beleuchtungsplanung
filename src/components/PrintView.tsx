@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Printer, ArrowLeft, FileText, Grid, Phone, Scissors, QrCode, Clock, MapPin, CheckSquare, Sparkles, Map as MapIcon } from 'lucide-react';
 import { type Section, type Helper } from '../utils/api';
+import { getSectionEndpoints } from '../utils/sectionEndpoints';
 
 interface PrintViewProps {
   sections: Section[];
@@ -62,6 +63,15 @@ const AssignmentOverviewMap: React.FC<{ sections: Section[]; helpers: Helper[] }
   </>;
 };
 
+const endpointCodes = (sections: Section[], section: Section) => {
+  const endpoints = getSectionEndpoints(section);
+  if (!endpoints || section.geojson.geometry.type === 'Point') return null;
+  const lineSections = sections.filter(candidate => candidate.geojson?.geometry?.type !== 'Point');
+  const index = lineSections.findIndex(candidate => candidate.id === section.id);
+  const suffix = lineSections.length > 1 ? String(index + 1) : '';
+  return { start: `A${suffix}`, end: `B${suffix}`, endpoints };
+};
+
 const HelperAreaMap: React.FC<{ sections: Section[]; color?: string; height: number }> = ({ sections, color = '#D97706', height }) => {
   const geometries = sections.flatMap(section => {
     const geometry = section.geojson?.geometry;
@@ -83,12 +93,28 @@ const HelperAreaMap: React.FC<{ sections: Section[]; color?: string; height: num
   const project = (coordinate: number[]) => { const [x, y] = toWorld(coordinate); return [width / 2 + x - centerX, height / 2 + y - centerY]; };
   const centerTileX = Math.floor(centerX / tileSize), centerTileY = Math.floor(centerY / tileSize);
   const tiles = [-2, -1, 0, 1, 2].flatMap(dx => [-1, 0, 1].map(dy => ({ x: centerTileX + dx, y: centerTileY + dy })));
+  const endpointMarkers = sections.flatMap(section => {
+    const codes = endpointCodes(sections, section);
+    if (!codes) return [];
+    return [
+      { coordinate: codes.endpoints.start, label: codes.start, kind: 'start' },
+      { coordinate: codes.endpoints.end, label: codes.end, kind: 'end' }
+    ];
+  });
   return <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Kartenausschnitt des zugewiesenen Bereichs" style={{ width: '100%', height: 'auto', aspectRatio: '2 / 1', display: 'block', borderRadius: 7, border: '1px solid #CBD5E1', background: '#F8FAFC' }}>
     {tiles.map(tile => <image key={`${tile.x}-${tile.y}`} href={`https://tile.openstreetmap.org/${zoom}/${tile.x}/${tile.y}.png`} x={width / 2 + tile.x * tileSize - centerX} y={height / 2 + tile.y * tileSize - centerY} width={tileSize} height={tileSize} />)}
     {geometries.filter(geometry => geometry.type !== 'Point').map((geometry, index) => <polyline key={`outline-${index}`} points={geometry.coordinates.map(project).map(point => point.join(',')).join(' ')} fill="none" stroke="#FFFFFF" strokeWidth="10" strokeLinecap="round" strokeLinejoin="round" opacity=".95" />)}
     {geometries.filter(geometry => geometry.type !== 'Point').map((geometry, index) => <polyline key={`line-${index}`} points={geometry.coordinates.map(project).map(point => point.join(',')).join(' ')} fill="none" stroke={color} strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" />)}
     {geometries.filter(geometry => geometry.type === 'Point').map((geometry, index) => { const [x, y] = project(geometry.coordinates[0]); return <circle key={`point-${index}`} cx={x} cy={y} r="8" fill={color} stroke="#FFFFFF" strokeWidth="3" />; })}
-    <rect x="8" y={height - 25} width="185" height="18" rx="3" fill="#FFFFFF" opacity=".9" /><text x="14" y={height - 12} fontSize="10" fill="#475569">Dein Bereich ist farbig markiert</text>
+    {endpointMarkers.map((marker, index) => {
+      const [x, y] = project(marker.coordinate);
+      const fill = marker.kind === 'start' ? '#15803D' : '#B91C1C';
+      return <g key={`${marker.label}-${index}`}>
+        <circle cx={x} cy={y} r="11" fill="#FFFFFF" stroke={fill} strokeWidth="3" />
+        <text x={x} y={y + 4} textAnchor="middle" fontSize="10" fontWeight="900" fill={fill}>{marker.label}</text>
+      </g>;
+    })}
+    <rect x="8" y={height - 25} width="250" height="18" rx="3" fill="#FFFFFF" opacity=".92" /><text x="14" y={height - 12} fontSize="10" fill="#475569">Farbige Linie: dein Bereich · A: Start · B: Ende</text>
   </svg>;
 };
 
@@ -632,6 +658,7 @@ export const PrintView: React.FC<PrintViewProps> = ({
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                             {group.sections.map(sec => {
                               const sLen = Math.round(sec.length_meters ?? (sec as any).lengthMeters ?? 0);
+                              const codes = endpointCodes(group.sections, sec);
                               return (
                                 <div
                                   key={sec.id}
@@ -647,6 +674,7 @@ export const PrintView: React.FC<PrintViewProps> = ({
                                   <div>
                                     <b>{sec.label}</b>
                                     <div style={{ fontSize: 9, color: '#64748B' }}>{sec.street_name}</div>
+                                    {codes && <div style={{ fontSize: 9, fontWeight: 800, color: '#475569', marginTop: 1 }}>Von {codes.start} bis {codes.end}</div>}
                                   </div>
                                   <div style={{ textAlign: 'right', fontWeight: 700, color: '#475569' }}>
                                     {sLen} m
@@ -759,6 +787,7 @@ export const PrintView: React.FC<PrintViewProps> = ({
                       <div>
                         <div style={{ fontSize: 12, fontWeight: 800, color: '#0F172A', marginBottom: 6 }}>Kartenausschnitt deines Bereichs</div>
                         <HelperAreaMap sections={group.sections} color={group.helper.color} height={320} />
+                        <div style={{ fontSize: 10, color: '#475569', marginTop: 5, lineHeight: 1.4 }}><b>A</b> markiert den Start und <b>B</b> das Ende. Folge der farbigen Linie genau von A nach B.</div>
                       </div>
                       <div style={{ border: '1px solid #CBD5E1', borderRadius: 7, padding: 8, textAlign: 'center', background: '#F8FAFC' }}>
                         <img src={qrUrl} alt="QR-Code zur Helfer-Information" style={{ width: 124, height: 124 }} />
@@ -775,6 +804,7 @@ export const PrintView: React.FC<PrintViewProps> = ({
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                         {group.sections.map((sec, sIdx) => {
                           const sLen = Math.round(sec.length_meters ?? (sec as any).lengthMeters ?? 0);
+                          const codes = endpointCodes(group.sections, sec);
                           return (
                             <div
                               key={sec.id}
@@ -791,6 +821,7 @@ export const PrintView: React.FC<PrintViewProps> = ({
                               <div>
                                 <span style={{ fontWeight: 800, fontSize: 13 }}>#{sIdx + 1} {sec.label}</span>
                                 <span style={{ color: '#64748B', fontSize: 12, marginLeft: 8 }}>({sec.street_name})</span>
+                                {codes && <div style={{ fontSize: 11, color: '#334155', fontWeight: 700, marginTop: 3 }}>Von Punkt {codes.start} bis Punkt {codes.end} entlang der farbigen Linie.</div>}
                                 {sec.notes && <div style={{ fontSize: 10, color: '#D97706' }}>Hinweis: {sec.notes}</div>}
                               </div>
                               <div style={{ textAlign: 'right' }}>
