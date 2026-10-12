@@ -1657,9 +1657,58 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       </div>
 
                       <div style={{ fontSize: 10, color: 'var(--text-light)', marginTop: 4 }}>
-                        {item.sectionsCount} {item.sectionsCount === 1 ? 'Abschnitt' : 'Abschnitte'}:{' '}
-                        {item.sections.map(s => s.street_name).filter((v, i, a) => a.indexOf(v) === i).join(', ')}
-                        {item.sectionsCount > 1 && <span style={{ color: 'var(--accent-gold)', fontWeight: 700 }}> · {isFocused ? `Abschnitt ${focusedHelperSectionIndex + 1}/${item.sectionsCount}` : 'Klicken zum Anzeigen'}</span>}
+                        {item.sectionsCount} {item.sectionsCount === 1 ? 'Abschnitt' : 'Abschnitte'} · Abschnitt anklicken = Karte anzeigen
+                      </div>
+
+                      <div style={{ display: 'grid', gap: 6, marginTop: 9 }} onClick={event => event.stopPropagation()}>
+                        {item.sections.map(section => {
+                          const isSelected = selectedSectionId === section.id;
+                          return (
+                            <div
+                              key={section.id}
+                              onClick={() => {
+                                setFocusedHelperId(item.helper.id);
+                                setFocusedHelperSectionIndex(item.sections.findIndex(candidate => candidate.id === section.id));
+                                onSelectSection(section.id);
+                              }}
+                              style={{ padding: '7px 8px', borderRadius: 6, background: isSelected ? 'rgba(245,158,11,.12)' : 'var(--bg-input)', border: isSelected ? '1px solid var(--accent-gold)' : '1px solid var(--border-subtle)', cursor: 'pointer' }}
+                            >
+                              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, alignItems: 'center' }}>
+                                <span style={{ color: 'var(--text-main)', fontSize: 11, fontWeight: 800 }}>{section.label}</span>
+                                <span style={{ color: 'var(--accent-gold)', fontSize: 11, fontWeight: 800 }}>{Math.round(section.length_meters ?? section.lengthMeters ?? 0)} m</span>
+                              </div>
+                              <div style={{ color: 'var(--text-muted)', fontSize: 10, marginTop: 2 }}>{section.street_name}</div>
+                              <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: 6, marginTop: 7 }}>
+                                <select
+                                  aria-label={`Helfer für ${section.label} ändern`}
+                                  value={section.assigned_helper_id || ''}
+                                  onClick={event => event.stopPropagation()}
+                                  onChange={event => {
+                                    event.stopPropagation();
+                                    const nextHelper = helpers.find(helper => helper.id === event.target.value);
+                                    onUpdateSectionHelper(section.id, nextHelper?.id || null, nextHelper?.name || null);
+                                  }}
+                                  style={{ minWidth: 0, padding: '5px 6px', borderRadius: 5, border: '1px solid var(--border-subtle)', background: 'var(--bg-secondary)', color: 'var(--text-main)', fontSize: 10 }}
+                                >
+                                  <option value="">— Nicht zugewiesen —</option>
+                                  {helpers.map(helper => <option key={helper.id} value={helper.id}>{helper.name}</option>)}
+                                </select>
+                                <button
+                                  type="button"
+                                  aria-label={`${section.label} löschen`}
+                                  title="Abschnitt löschen"
+                                  onClick={event => {
+                                    event.stopPropagation();
+                                    if (window.confirm(`Abschnitt „${section.label}“ wirklich löschen?`)) onDeleteSection(section.id);
+                                  }}
+                                  style={{ border: '1px solid rgba(239,68,68,.35)', borderRadius: 5, padding: '4px 7px', background: 'rgba(239,68,68,.1)', color: '#f87171', cursor: 'pointer' }}
+                                >
+                                  <Trash2 size={13} />
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
                     </div>
                   );
