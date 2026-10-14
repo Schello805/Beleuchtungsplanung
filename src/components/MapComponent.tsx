@@ -57,14 +57,29 @@ const lightingSideLabel = (side?: Section['lighting_side']) => side === 'left'
 // Road geometry always runs from A to B. We shift its display perpendicular to
 // that direction so "left" and "right" remain understandable on every map.
 function offsetLine(line: number[][], side: number): [number, number][] {
-  const distance = 0.000025 * side;
-  return line.map(([lon, lat], index) => {
-    const previous = line[Math.max(0, index - 1)];
-    const next = line[Math.min(line.length - 1, index + 1)];
+  // Taper to the original centre line at both ends. This prevents parallel
+  // markings from cutting across neighbouring roads at junctions.
+  const source = line.length === 2
+    ? [line[0], [line[0][0] * 0.82 + line[1][0] * 0.18, line[0][1] * 0.82 + line[1][1] * 0.18], [line[0][0] * 0.18 + line[1][0] * 0.82, line[0][1] * 0.18 + line[1][1] * 0.82], line[1]]
+    : line;
+  const distances = source.reduce<number[]>((all, point, index) => {
+    if (!index) return [0];
+    const previous = source[index - 1];
+    const longitudeMeters = (point[0] - previous[0]) * 111_320 * Math.cos(point[1] * Math.PI / 180);
+    const latitudeMeters = (point[1] - previous[1]) * 110_540;
+    all.push(all[index - 1] + Math.hypot(longitudeMeters, latitudeMeters));
+    return all;
+  }, []);
+  const totalDistance = distances[distances.length - 1] || 1;
+  const distance = 0.000014 * side;
+  return source.map(([lon, lat], index) => {
+    const previous = source[Math.max(0, index - 1)];
+    const next = source[Math.min(source.length - 1, index + 1)];
     const dx = (next[0] - previous[0]) * Math.cos(lat * Math.PI / 180);
     const dy = next[1] - previous[1];
     const length = Math.hypot(dx, dy) || 1;
-    return [lat + (dx / length) * distance, lon - (dy / length) * distance];
+    const taper = Math.min(1, distances[index] / 7, (totalDistance - distances[index]) / 7);
+    return [lat + (dx / length) * distance * taper, lon - (dy / length) * distance * taper];
   });
 }
 
