@@ -16,14 +16,55 @@ interface PrintViewProps {
   onClose: () => void;
 }
 
-const AssignmentOverviewMap: React.FC<{ sections: Section[]; helpers: Helper[] }> = ({ sections }) => {
-  const lines = sections.flatMap(section => {
-    const geometry = section.geojson?.geometry;
-    if (!geometry) return [] as Array<{ section: Section; coordinates: number[][] }>;
-    if (geometry.type === 'LineString') return [{ section, coordinates: geometry.coordinates as number[][] }];
-    if (geometry.type === 'MultiLineString') return (geometry.coordinates as number[][][]).map(coordinates => ({ section, coordinates }));
-    return [] as Array<{ section: Section; coordinates: number[][] }>;
-  });
+type MapLine = { section: Section; coordinates: number[][] };
+
+const getMapLines = (sections: Section[]): MapLine[] => sections.flatMap(section => {
+  const geometry = section.geojson?.geometry;
+  if (!geometry) return [] as MapLine[];
+  if (geometry.type === 'LineString') return [{ section, coordinates: geometry.coordinates as number[][] }];
+  if (geometry.type === 'MultiLineString') return (geometry.coordinates as number[][][]).map(coordinates => ({ section, coordinates }));
+  return [] as MapLine[];
+});
+
+const directDistanceMeters = (first: number[], second: number[]) => {
+  const earthRadius = 6371000;
+  const lat1 = first[1] * Math.PI / 180, lat2 = second[1] * Math.PI / 180;
+  const deltaLat = (second[1] - first[1]) * Math.PI / 180;
+  const deltaLon = (second[0] - first[0]) * Math.PI / 180;
+  const value = Math.sin(deltaLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(deltaLon / 2) ** 2;
+  return 2 * earthRadius * Math.atan2(Math.sqrt(value), Math.sqrt(1 - value));
+};
+
+const buildSuggestedRound = (lines: MapLine[]) => {
+  const pending = lines.filter(line => line.coordinates.length > 0).map(line => ({ ...line, coordinates: [...line.coordinates] }));
+  if (!pending.length) return { links: [] as Array<{ from: number[]; to: number[] }>, connectorMeters: 0, start: null as number[] | null };
+  pending.sort((a, b) => a.section.label.localeCompare(b.section.label, 'de'));
+  const first = pending.shift()!;
+  const start = first.coordinates[0];
+  let current = first.coordinates[first.coordinates.length - 1];
+  const links: Array<{ from: number[]; to: number[] }> = [];
+  let connectorMeters = 0;
+  while (pending.length) {
+    let bestIndex = 0, useReverse = false, bestDistance = Number.POSITIVE_INFINITY;
+    pending.forEach((candidate, index) => {
+      const toStart = directDistanceMeters(current, candidate.coordinates[0]);
+      const toEnd = directDistanceMeters(current, candidate.coordinates[candidate.coordinates.length - 1]);
+      if (toStart < bestDistance) { bestIndex = index; useReverse = false; bestDistance = toStart; }
+      if (toEnd < bestDistance) { bestIndex = index; useReverse = true; bestDistance = toEnd; }
+    });
+    const next = pending.splice(bestIndex, 1)[0];
+    const oriented = useReverse ? [...next.coordinates].reverse() : next.coordinates;
+    if (bestDistance > 3) links.push({ from: current, to: oriented[0] });
+    connectorMeters += bestDistance;
+    current = oriented[oriented.length - 1];
+  }
+  const returnDistance = directDistanceMeters(current, start);
+  if (returnDistance > 3) links.push({ from: current, to: start });
+  return { links, connectorMeters: connectorMeters + returnDistance, start };
+};
+
+const NeutralOverviewMap: React.FC<{ sections: Section[] }> = ({ sections }) => {
+  const lines = getMapLines(sections);
   const points = sections.filter(section => section.geojson?.geometry?.type === 'Point');
   const coordinates = [...lines.flatMap(line => line.coordinates), ...points.map(point => point.geojson.geometry.coordinates as number[])];
   if (!coordinates.length) return <p style={{ color: '#64748B', padding: 32 }}>Für die Gesamtkarte sind noch keine Abschnitte vorhanden.</p>;
@@ -49,17 +90,27 @@ const AssignmentOverviewMap: React.FC<{ sections: Section[]; helpers: Helper[] }
   const tiles = Array.from({ length: Math.ceil(maxX / tileSize) - Math.floor(minX / tileSize) + 1 }, (_, xIndex) =>
     Array.from({ length: Math.ceil(maxY / tileSize) - Math.floor(minY / tileSize) + 1 }, (_, yIndex) => ({ x: Math.floor(minX / tileSize) + xIndex, y: Math.floor(minY / tileSize) + yIndex }))
   ).flat();
+  const suggestedRound = buildSuggestedRound(lines);
+  const walkingMeters = Math.round(sections.reduce((sum, section) => sum + Number(section.length_meters ?? section.lengthMeters ?? 0), 0) + suggestedRound.connectorMeters);
+  const walkingMinutes = Math.max(1, Math.round(walkingMeters / 75));
 
   return <>
-    <svg viewBox="0 0 1100 650" role="img" aria-label="Gesamtkarte der zu beleuchtenden Straßen" style={{ width: '100%', height: 'auto', border: '1px solid #CBD5E1', borderRadius: 10, background: '#F8FAFC' }}>
+    <svg viewBox="0 0 1100 650" role="img" aria-label="Neutrale Beleuchtungsübersicht mit vorgeschlagenem Rundweg" style={{ width: '100%', height: 'auto', border: '1px solid #CBD5E1', borderRadius: 10, background: '#F8FAFC' }}>
+      <defs><marker id="round-arrow" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L8,3 z" fill="#D97706" /></marker></defs>
       <rect width="1100" height="650" fill="#F8FAFC" />
       {tiles.map(tile => <image key={`${tile.x}-${tile.y}`} href={`https://tile.openstreetmap.org/${zoom}/${tile.x}/${tile.y}.png`} x={((tile.x * tileSize - minX) / (maxX - minX)) * 1100} y={((tile.y * tileSize - minY) / (maxY - minY)) * 650} width={(tileSize / (maxX - minX)) * 1100} height={(tileSize / (maxY - minY)) * 650} preserveAspectRatio="none" />)}
       {lines.map(({ section, coordinates: lineCoordinates }, index) => <polyline key={`${section.id}-${index}`} points={lineCoordinates.map(project).map(point => point.join(',')).join(' ')} fill="none" stroke="#FFFFFF" strokeWidth="10" strokeLinecap="round" strokeLinejoin="round" opacity=".95" />)}
-      {lines.map(({ section, coordinates: lineCoordinates }, index) => <polyline key={`${section.id}-${index}-line`} points={lineCoordinates.map(project).map(point => point.join(',')).join(' ')} fill="none" stroke={section.color || '#F59E0B'} strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />)}
-      {points.map(point => { const [x, y] = project(point.geojson.geometry.coordinates as number[]); return <circle key={point.id} cx={x} cy={y} r="8" fill={point.color || '#F59E0B'} stroke="#FFFFFF" strokeWidth="3" />; })}
+      {lines.map(({ section, coordinates: lineCoordinates }, index) => <polyline key={`${section.id}-${index}-line`} points={lineCoordinates.map(project).map(point => point.join(',')).join(' ')} fill="none" stroke="#334155" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />)}
+      {suggestedRound.links.map((link, index) => <line key={`round-${index}`} x1={project(link.from)[0]} y1={project(link.from)[1]} x2={project(link.to)[0]} y2={project(link.to)[1]} stroke="#D97706" strokeWidth="3" strokeDasharray="8 7" opacity=".95" markerEnd="url(#round-arrow)" />)}
+      {suggestedRound.start && (() => { const [x, y] = project(suggestedRound.start!); return <g><circle cx={x} cy={y} r="12" fill="#15803D" stroke="#FFFFFF" strokeWidth="3" /><text x={x} y={y + 4} fontSize="10" fontWeight="900" fill="#FFFFFF" textAnchor="middle">S</text></g>; })()}
+      {points.map(point => { const [x, y] = project(point.geojson.geometry.coordinates as number[]); return <circle key={point.id} cx={x} cy={y} r="8" fill="#334155" stroke="#FFFFFF" strokeWidth="3" />; })}
       <rect x="12" y="614" width="210" height="24" rx="4" fill="#FFFFFF" opacity=".88" /><text x="22" y="631" fill="#475569" fontSize="12">© OpenStreetMap-Mitwirkende</text>
     </svg>
-    <p style={{ margin: '10px 0 0', color: '#475569', fontSize: 11 }}>Farbig markiert sind die Straßenabschnitte, die zur Lichternacht beleuchtet werden.</p>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12, margin: '10px 0 0', color: '#475569', fontSize: 11 }}>
+      <span><b style={{ color: '#334155' }}>Dunkle Linien:</b> Beleuchtungsbereiche · <b style={{ color: '#D97706' }}>gestrichelte Pfeile:</b> Rundweg · <b style={{ color: '#15803D' }}>S:</b> Start</span>
+      <span style={{ whiteSpace: 'nowrap', fontWeight: 800, color: '#0F172A' }}>ca. {walkingMeters.toLocaleString('de-DE')} m · {walkingMinutes} Min.</span>
+    </div>
+    <p style={{ margin: '5px 0 0', color: '#64748B', fontSize: 10 }}>Grobe Gehzeit bei etwa 4,5 km/h inklusive aller markierten Abschnitte. Der Rundweg ist ein Orientierungs-Vorschlag; Verbindungen zwischen Bereichen sind näherungsweise dargestellt.</p>
   </>;
 };
 
@@ -361,7 +412,7 @@ export const PrintView: React.FC<PrintViewProps> = ({
                 cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5
               }}
             >
-              <MapIcon size={14} /> Gesamtkarte
+              <MapIcon size={14} /> Beleuchtungsübersicht
             </button>
 
             <button
@@ -441,7 +492,7 @@ export const PrintView: React.FC<PrintViewProps> = ({
                 {printLayout === 'table'
                   ? 'Offizieller Strecken- & Helfer-Einsatzplan'
                   : printLayout === 'overview-map'
-                  ? 'Gesamtkarte der Helfer-Zuweisungen'
+                  ? 'Beleuchtungsübersicht mit Rundweg'
                   : printLayout === 'cards'
                   ? 'Kompakte Helfer-Informationen mit Karte & QR-Code'
                   : 'Persönliche Helfer-Informationen (A5)'}
@@ -498,10 +549,10 @@ export const PrintView: React.FC<PrintViewProps> = ({
         {printLayout === 'overview-map' && (
           <div className="overview-map-page" style={{ pageBreakAfter: 'always' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 }}>
-              <h2 style={{ fontSize: 16, fontWeight: 800, textTransform: 'uppercase', color: '#0F172A', letterSpacing: '0.04em' }}>Wer übernimmt welchen Abschnitt?</h2>
+              <h2 style={{ fontSize: 16, fontWeight: 800, textTransform: 'uppercase', color: '#0F172A', letterSpacing: '0.04em' }}>Welche Bereiche werden beleuchtet?</h2>
               <span style={{ fontSize: 11, color: '#64748B' }}>Für den Ausdruck idealerweise „Querformat“ wählen</span>
             </div>
-            <AssignmentOverviewMap sections={sections} helpers={helpers} />
+            <NeutralOverviewMap sections={sections} />
           </div>
         )}
 
