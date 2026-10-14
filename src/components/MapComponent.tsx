@@ -54,44 +54,16 @@ const lightingSideLabel = (side?: Section['lighting_side']) => side === 'left'
     ? 'Nur rechte Straßenseite (Richtung A → B)'
     : 'Beide Straßenseiten';
 
-// Road geometry always runs from A to B. We shift its display perpendicular to
-// that direction so "left" and "right" remain understandable on every map.
-function offsetLine(line: number[][], side: number): [number, number][] {
-  // Taper to the original centre line at both ends. This prevents parallel
-  // markings from cutting across neighbouring roads at junctions.
-  const source = line.length === 2
-    ? [line[0], [line[0][0] * 0.82 + line[1][0] * 0.18, line[0][1] * 0.82 + line[1][1] * 0.18], [line[0][0] * 0.18 + line[1][0] * 0.82, line[0][1] * 0.18 + line[1][1] * 0.82], line[1]]
-    : line;
-  const distances = source.reduce<number[]>((all, point, index) => {
-    if (!index) return [0];
-    const previous = source[index - 1];
-    const longitudeMeters = (point[0] - previous[0]) * 111_320 * Math.cos(point[1] * Math.PI / 180);
-    const latitudeMeters = (point[1] - previous[1]) * 110_540;
-    all.push(all[index - 1] + Math.hypot(longitudeMeters, latitudeMeters));
-    return all;
-  }, []);
-  const totalDistance = distances[distances.length - 1] || 1;
-  const distance = 0.000014 * side;
-  return source.map(([lon, lat], index) => {
-    const previous = source[Math.max(0, index - 1)];
-    const next = source[Math.min(source.length - 1, index + 1)];
-    const dx = (next[0] - previous[0]) * Math.cos(lat * Math.PI / 180);
-    const dy = next[1] - previous[1];
-    const length = Math.hypot(dx, dy) || 1;
-    const taper = Math.min(1, distances[index] / 7, (totalDistance - distances[index]) / 7);
-    return [lat + (dx / length) * distance * taper, lon - (dy / length) * distance * taper];
-  });
-}
-
 function toLightingDisplayLines(section: Section): L.LatLngExpression[][] {
   const geometry = section.geojson?.geometry;
   if (!geometry || !['LineString', 'MultiLineString'].includes(geometry.type)) return [];
   const sourceLines = geometry.type === 'MultiLineString'
     ? geometry.coordinates as number[][][]
     : [geometry.coordinates as number[][]];
-  const side = section.lighting_side || 'both';
-  const offsets = side === 'both' ? [1, -1] : side === 'left' ? [1] : [-1];
-  return offsets.flatMap(offset => sourceLines.map(line => offsetLine(line, offset)));
+  // Two physical sides are an instruction, not separate routes. Rendering a
+  // single centre line keeps crossings readable; the popup and print sheet
+  // state explicitly whether both, left or right must be decorated.
+  return sourceLines.map(line => line.map(([lon, lat]) => [lat, lon] as [number, number]));
 }
 
 export const MapComponent: React.FC<MapComponentProps> = ({
@@ -571,7 +543,7 @@ export const MapComponent: React.FC<MapComponentProps> = ({
 
         const polylines = displayLines.map(displayLine => L.polyline(displayLine, {
             color: lineColor,
-            weight: isSelected ? 8 : 6,
+            weight: isSelected ? 9 : (sec.lighting_side || 'both') === 'both' ? 7 : 6,
             opacity: 0.95,
             dashArray: isAssigned ? undefined : '8, 8', // Strichliert = unzugewiesen!
             lineCap: 'round',

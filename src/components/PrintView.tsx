@@ -33,22 +33,9 @@ const lightingSideText = (section: Section) => section.lighting_side === 'left'
     : 'beide Straßenseiten';
 
 const lightingSvgLines = (section: Section, coordinates: number[][], project: (coordinate: number[]) => number[]) => {
-  const offsets = section.lighting_side === 'left' ? [2.5] : section.lighting_side === 'right' ? [-2.5] : [2.5, -2.5];
-  // Mirror the map's end taper in print: markings meet their road centre line
-  // at junctions instead of visually crossing into the next street.
-  const source = coordinates.length === 2
-    ? [coordinates[0], [coordinates[0][0] * 0.82 + coordinates[1][0] * 0.18, coordinates[0][1] * 0.82 + coordinates[1][1] * 0.18], [coordinates[0][0] * 0.18 + coordinates[1][0] * 0.82, coordinates[0][1] * 0.18 + coordinates[1][1] * 0.82], coordinates[1]]
-    : coordinates;
-  const projected = source.map(project);
-  return offsets.map(offset => projected.map((point, index) => {
-    const previous = projected[Math.max(0, index - 1)];
-    const next = projected[Math.min(projected.length - 1, index + 1)];
-    const dx = next[0] - previous[0];
-    const dy = next[1] - previous[1];
-    const length = Math.hypot(dx, dy) || 1;
-    const taper = Math.min(1, index / 1.5, (projected.length - 1 - index) / 1.5);
-    return [point[0] - (dy / length) * offset * taper, point[1] + (dx / length) * offset * taper];
-  }));
+  // Side selection is stated in the legend and section detail. A centre-line
+  // marker is intentionally used here, so road junctions stay calm and clear.
+  return [coordinates.map(project)];
 };
 
 /** Separate operational map: colours remain available here to discuss who
