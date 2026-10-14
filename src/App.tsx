@@ -471,6 +471,16 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleUpdateSectionLightingSide = async (sectionId: string, lightingSide: 'both' | 'left' | 'right') => {
+    setSections(prev => prev.map(section => section.id === sectionId ? { ...section, lighting_side: lightingSide } : section));
+    try {
+      await api.updateSection(sectionId, { lighting_side: lightingSide });
+    } catch (err) {
+      console.error('Update section lighting side error:', err);
+      loadData();
+    }
+  };
+
   // Delete Section
   const handleDeleteSection = async (sectionId: string) => {
     try {
@@ -905,6 +915,7 @@ export const App: React.FC = () => {
             selectedSectionId={selectedSectionId}
             onSelectSection={setSelectedSectionId}
             onUpdateSectionHelper={handleUpdateSectionHelper}
+            onUpdateSectionLightingSide={handleUpdateSectionLightingSide}
             onDeleteSection={handleDeleteSection}
             extensionSectionId={extensionSectionId}
             onStartExtension={(sectionId) => { setSelectedSectionId(sectionId); setExtensionSectionId(sectionId); }}

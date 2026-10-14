@@ -11,6 +11,7 @@ interface MapComponentProps {
   selectedSectionId: string | null;
   onSelectSection: (id: string | null) => void;
   onUpdateSectionHelper: (sectionId: string, helperId: string | null, helperName: string | null) => void;
+  onUpdateSectionLightingSide: (sectionId: string, lightingSide: 'both' | 'left' | 'right') => void;
   onDeleteSection: (sectionId: string) => void;
   extensionSectionId?: string | null;
   onStartExtension?: (sectionId: string) => void;
@@ -47,6 +48,37 @@ function flattenLeafletLineCoordinates(coords: L.LatLngExpression[] | L.LatLngEx
   return Array.isArray(coords[0]) && Array.isArray((coords[0] as any)[0]) ? (coords as L.LatLngExpression[][]).flat() : coords as L.LatLngExpression[];
 }
 
+const lightingSideLabel = (side?: Section['lighting_side']) => side === 'left'
+  ? 'Nur linke Straßenseite (Richtung A → B)'
+  : side === 'right'
+    ? 'Nur rechte Straßenseite (Richtung A → B)'
+    : 'Beide Straßenseiten';
+
+// Road geometry always runs from A to B. We shift its display perpendicular to
+// that direction so "left" and "right" remain understandable on every map.
+function offsetLine(line: number[][], side: number): [number, number][] {
+  const distance = 0.000025 * side;
+  return line.map(([lon, lat], index) => {
+    const previous = line[Math.max(0, index - 1)];
+    const next = line[Math.min(line.length - 1, index + 1)];
+    const dx = (next[0] - previous[0]) * Math.cos(lat * Math.PI / 180);
+    const dy = next[1] - previous[1];
+    const length = Math.hypot(dx, dy) || 1;
+    return [lat + (dx / length) * distance, lon - (dy / length) * distance];
+  });
+}
+
+function toLightingDisplayLines(section: Section): L.LatLngExpression[][] {
+  const geometry = section.geojson?.geometry;
+  if (!geometry || !['LineString', 'MultiLineString'].includes(geometry.type)) return [];
+  const sourceLines = geometry.type === 'MultiLineString'
+    ? geometry.coordinates as number[][][]
+    : [geometry.coordinates as number[][]];
+  const side = section.lighting_side || 'both';
+  const offsets = side === 'both' ? [1, -1] : side === 'left' ? [1] : [-1];
+  return offsets.flatMap(offset => sourceLines.map(line => offsetLine(line, offset)));
+}
+
 export const MapComponent: React.FC<MapComponentProps> = ({
   sections,
   previewSections,
@@ -54,6 +86,7 @@ export const MapComponent: React.FC<MapComponentProps> = ({
   selectedSectionId,
   onSelectSection,
   onUpdateSectionHelper,
+  onUpdateSectionLightingSide,
   onDeleteSection,
   extensionSectionId,
   onStartExtension,
@@ -508,36 +541,39 @@ export const MapComponent: React.FC<MapComponentProps> = ({
 
       if (sec.type === 'line' && ['LineString', 'MultiLineString'].includes(sec.geojson?.geometry?.type)) {
         const coords = toLeafletLineCoordinates(sec.geojson);
+        const displayLines = toLightingDisplayLines(sec);
 
         const isFocusedHelperSection = Boolean(activeHelperId && sec.assigned_helper_id === activeHelperId);
         if (isSelected || isFocusedHelperSection) {
-          L.polyline(coords, {
-            color: isSelected ? '#FDE047' : '#FFFFFF',
-            weight: isSelected ? 15 : 11,
-            opacity: 0.92,
-            dashArray: isSelected ? '14 10' : undefined,
-            className: isSelected ? 'section-highlight-pulse' : undefined
-          }).addTo(group);
+          displayLines.forEach(displayLine => L.polyline(displayLine, {
+              color: isSelected ? '#FDE047' : '#FFFFFF',
+              weight: isSelected ? 15 : 11,
+              opacity: 0.92,
+              dashArray: isSelected ? '14 10' : undefined,
+              className: isSelected ? 'section-highlight-pulse' : undefined
+            }).addTo(group));
         }
 
-        const polyline = L.polyline(coords, {
-          color: lineColor,
-          weight: isSelected ? 8 : 6,
-          opacity: 0.95,
-          dashArray: isAssigned ? undefined : '8, 8', // Strichliert = unzugewiesen!
-          lineCap: 'round',
-          lineJoin: 'round'
-        }).addTo(group);
+        const polylines = displayLines.map(displayLine => L.polyline(displayLine, {
+            color: lineColor,
+            weight: isSelected ? 8 : 6,
+            opacity: 0.95,
+            dashArray: isAssigned ? undefined : '8, 8', // Strichliert = unzugewiesen!
+            lineCap: 'round',
+            lineJoin: 'round'
+          }).addTo(group));
+        const polyline = polylines[0] || L.polyline(coords).addTo(group);
 
-        polyline.on('click', (e) => {
+        polylines.forEach(line => line.on('click', (e) => {
           const stamped = handleSectionClick(e, polyline);
           if (stamped) return;
-        });
+        }));
 
         polyline.bindTooltip(
           `<div style="font-family: Outfit, sans-serif; font-size:12px;">
             <strong style="font-size:13px;">${sec.label}</strong><br/>
             <span>Strecke: <b>${sec.lengthMeters} m</b></span><br/>
+            <span>${lightingSideLabel(sec.lighting_side)}</span><br/>
             <div style="margin-top:3px;">
               ${isAssigned 
                 ? `<span style="background:#10B98122; color:#10B981; font-weight:700; padding:2px 6px; border-radius:4px; font-size:11px;">✓ ${helperName}</span>` 
@@ -562,6 +598,7 @@ export const MapComponent: React.FC<MapComponentProps> = ({
               <span style="background:${lineColor}22; color:${lineColor}; font-weight:700; padding:2px 8px; border-radius:12px; font-size:12px;">${sec.lengthMeters} m</span>
             </div>
             <div style="font-size:11px; color:#64748B; margin-top:2px;">Straße: ${sec.street_name}</div>
+            <div style="font-size:11px; color:#475569; margin-top:2px;">🕯 ${lightingSideLabel(sec.lighting_side)}</div>
             <div style="font-size:11px; margin-top:2px;">Status: ${isAssigned ? `<b style="color:#10B981;">✓ ${helperName}</b>` : `<b style="color:#D97706;">⚠️ Unzugewiesen</b>`}</div>
           </div>
 
@@ -586,6 +623,15 @@ export const MapComponent: React.FC<MapComponentProps> = ({
               <option value="">-- Nicht zugewiesen --</option>
               ${helpers.map(h => `<option value="${h.id}" ${h.id === sec.assigned_helper_id ? 'selected' : ''}>${h.name}</option>`).join('')}
             </select>
+          </div>
+          <div style="margin-bottom: 10px;">
+            <label style="font-size:11px; font-weight:600; color:#334155; display:block; margin-bottom:3px;">Beleuchtung:</label>
+            <select id="popup-lighting-side-${sec.id}" style="width:100%; padding:5px 8px; border-radius:6px; border:1px solid #CBD5E1; font-size:12px; background:#F8FAFC;">
+              <option value="both" ${(sec.lighting_side || 'both') === 'both' ? 'selected' : ''}>Beide Straßenseiten</option>
+              <option value="left" ${sec.lighting_side === 'left' ? 'selected' : ''}>Nur linke Seite (A → B)</option>
+              <option value="right" ${sec.lighting_side === 'right' ? 'selected' : ''}>Nur rechte Seite (A → B)</option>
+            </select>
+            <div style="font-size:10px; color:#64748B; margin-top:3px;">Links/rechts gilt in Richtung des Abschnitts von A nach B.</div>
           </div>
           ${sec.notes ? `<div style="font-size:11px; background:#F1F5F9; padding:5px; border-radius:4px; margin-bottom:8px;"><b>Notiz:</b> ${sec.notes}</div>` : ''}
           <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -633,6 +679,14 @@ export const MapComponent: React.FC<MapComponentProps> = ({
               const val = (e.target as HTMLSelectElement).value;
               const found = helpers.find(h => h.id === val);
               onUpdateSectionHelper(sec.id, val || null, found ? found.name : null);
+              map.closePopup();
+            };
+          }
+
+          const lightingSideSelect = document.getElementById(`popup-lighting-side-${sec.id}`) as HTMLSelectElement;
+          if (lightingSideSelect) {
+            lightingSideSelect.onchange = (e) => {
+              onUpdateSectionLightingSide(sec.id, (e.target as HTMLSelectElement).value as 'both' | 'left' | 'right');
               map.closePopup();
             };
           }

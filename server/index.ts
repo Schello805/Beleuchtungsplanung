@@ -307,13 +307,19 @@ app.get('/api/sections', (req, res) => {
 app.put('/api/sections/:id', (req, res) => {
   try {
     const { id } = req.params;
-    const { assigned_helper_id, assigned_helper_name, notes, geojson, length_meters } = req.body;
+    const { assigned_helper_id, assigned_helper_name, notes, geojson, length_meters, lighting_side } = req.body;
 
     if (assigned_helper_id !== undefined || assigned_helper_name !== undefined) {
       dbService.updateSectionHelper(id, assigned_helper_id, assigned_helper_name);
     }
     if (notes !== undefined) {
       dbService.updateSectionNotes(id, notes);
+    }
+    if (lighting_side !== undefined) {
+      if (!['both', 'left', 'right'].includes(lighting_side)) {
+        return res.status(400).json({ error: 'Straßenseite ungültig' });
+      }
+      dbService.updateSectionLightingSide(id, lighting_side);
     }
     if (geojson !== undefined || length_meters !== undefined) {
       if (!geojson || !Number.isFinite(Number(length_meters)) || Number(length_meters) <= 0) {

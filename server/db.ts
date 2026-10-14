@@ -73,6 +73,7 @@ db.exec(`
     length_meters REAL NOT NULL,
     color TEXT NOT NULL,
     type TEXT NOT NULL,
+    lighting_side TEXT NOT NULL DEFAULT 'both',
     geojson TEXT NOT NULL,
     assigned_helper_id TEXT REFERENCES helpers(id) ON DELETE SET NULL,
     assigned_helper_name TEXT,
@@ -134,6 +135,12 @@ addHelperColumn('latitude', 'REAL');
 addHelperColumn('longitude', 'REAL');
 addHelperColumn('public_token', 'TEXT');
 addHelperColumn('email', 'TEXT');
+const sectionColumns = db.prepare('PRAGMA table_info(sections)').all() as Array<{ name: string }>;
+if (!sectionColumns.some(column => column.name === 'lighting_side')) {
+  // Existing plans deliberately default to both sides, so no route disappears
+  // when a server receives this update.
+  db.exec("ALTER TABLE sections ADD COLUMN lighting_side TEXT NOT NULL DEFAULT 'both'");
+}
 db.exec('CREATE UNIQUE INDEX IF NOT EXISTS helpers_source_station_id_unique ON helpers(source_station_id) WHERE source_station_id IS NOT NULL');
 db.exec('CREATE UNIQUE INDEX IF NOT EXISTS helpers_public_token_unique ON helpers(public_token) WHERE public_token IS NOT NULL');
 const missingPublicTokens = db.prepare('SELECT id FROM helpers WHERE public_token IS NULL OR public_token = \'\'').all() as Array<{ id: string }>;
@@ -193,6 +200,7 @@ export interface SectionRecord {
   length_meters: number;
   color: string;
   type: 'line' | 'point';
+  lighting_side?: 'both' | 'left' | 'right';
   geojson: string; // JSON String
   assigned_helper_id?: string | null;
   assigned_helper_name?: string | null;
@@ -254,11 +262,11 @@ export const dbService = {
     return db.prepare('SELECT * FROM helpers ORDER BY name ASC').all() as unknown as HelperRecord[];
   },
 
-  getPublicHelper(token: string): { name: string; sections: Array<Pick<SectionRecord, 'id' | 'street_name' | 'label' | 'length_meters' | 'type' | 'geojson'>> } | undefined {
+  getPublicHelper(token: string): { name: string; sections: Array<Pick<SectionRecord, 'id' | 'street_name' | 'label' | 'length_meters' | 'type' | 'lighting_side' | 'geojson'>> } | undefined {
     const helper = db.prepare('SELECT id, name FROM helpers WHERE public_token = ?').get(token) as { id: string; name: string } | undefined;
     if (!helper) return undefined;
-    const sections = db.prepare(`SELECT id, street_name, label, length_meters, type, geojson FROM sections
-      WHERE assigned_helper_id = ? ORDER BY street_name ASC, section_index ASC`).all(helper.id) as Array<Pick<SectionRecord, 'id' | 'street_name' | 'label' | 'length_meters' | 'type' | 'geojson'>>;
+    const sections = db.prepare(`SELECT id, street_name, label, length_meters, type, lighting_side, geojson FROM sections
+      WHERE assigned_helper_id = ? ORDER BY street_name ASC, section_index ASC`).all(helper.id) as Array<Pick<SectionRecord, 'id' | 'street_name' | 'label' | 'length_meters' | 'type' | 'lighting_side' | 'geojson'>>;
     return { name: helper.name, sections };
   },
 
@@ -426,8 +434,8 @@ export const dbService = {
 
     // Save sections
     const insertSec = db.prepare(`
-      INSERT INTO sections (id, street_id, street_name, section_index, label, length_meters, color, type, geojson, assigned_helper_id, assigned_helper_name, notes, created_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      INSERT INTO sections (id, street_id, street_name, section_index, label, length_meters, color, type, lighting_side, geojson, assigned_helper_id, assigned_helper_name, notes, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
     for (const sec of sections) {
@@ -440,6 +448,7 @@ export const dbService = {
         sec.length_meters,
         sec.color,
         sec.type,
+        sec.lighting_side || 'both',
         typeof sec.geojson === 'string' ? sec.geojson : JSON.stringify(sec.geojson),
         sec.assigned_helper_id || null,
         sec.assigned_helper_name || null,
@@ -461,8 +470,8 @@ export const dbService = {
       `);
 
       const insertSec = db.prepare(`
-        INSERT INTO sections (id, street_id, street_name, section_index, label, length_meters, color, type, geojson, assigned_helper_id, assigned_helper_name, notes, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO sections (id, street_id, street_name, section_index, label, length_meters, color, type, lighting_side, geojson, assigned_helper_id, assigned_helper_name, notes, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
       for (const item of batch) {
@@ -486,6 +495,7 @@ export const dbService = {
             sec.length_meters,
             sec.color,
             sec.type,
+            sec.lighting_side || 'both',
             typeof sec.geojson === 'string' ? sec.geojson : JSON.stringify(sec.geojson),
             sec.assigned_helper_id || null,
             sec.assigned_helper_name || null,
@@ -510,8 +520,8 @@ export const dbService = {
     try {
       db.prepare('DELETE FROM sections').run();
       const insertSec = db.prepare(`
-        INSERT INTO sections (id, street_id, street_name, section_index, label, length_meters, color, type, geojson, assigned_helper_id, assigned_helper_name, notes, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO sections (id, street_id, street_name, section_index, label, length_meters, color, type, lighting_side, geojson, assigned_helper_id, assigned_helper_name, notes, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
       for (const sec of sections) {
@@ -524,6 +534,7 @@ export const dbService = {
           sec.length_meters,
           sec.color,
           sec.type,
+          sec.lighting_side || 'both',
           typeof sec.geojson === 'string' ? sec.geojson : JSON.stringify(sec.geojson),
           sec.assigned_helper_id || null,
           sec.assigned_helper_name || null,
@@ -556,6 +567,11 @@ export const dbService = {
 
   updateSectionNotes(sectionId: string, notes: string) {
     db.prepare('UPDATE sections SET notes = ? WHERE id = ?').run(notes, sectionId);
+    return true;
+  },
+
+  updateSectionLightingSide(sectionId: string, lightingSide: 'both' | 'left' | 'right') {
+    db.prepare('UPDATE sections SET lighting_side = ? WHERE id = ?').run(lightingSide, sectionId);
     return true;
   },
 
@@ -643,7 +659,7 @@ export const dbService = {
 
     if (data.sections && Array.isArray(data.sections)) {
       db.prepare('DELETE FROM sections').run();
-      const insertSec = db.prepare('INSERT INTO sections (id, street_id, street_name, section_index, label, length_meters, color, type, geojson, assigned_helper_id, assigned_helper_name, notes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
+      const insertSec = db.prepare('INSERT INTO sections (id, street_id, street_name, section_index, label, length_meters, color, type, lighting_side, geojson, assigned_helper_id, assigned_helper_name, notes, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)');
       for (const sec of data.sections) {
         insertSec.run(
           sec.id,
@@ -654,6 +670,7 @@ export const dbService = {
           sec.length_meters,
           sec.color,
           sec.type,
+          sec.lighting_side || 'both',
           typeof sec.geojson === 'string' ? sec.geojson : JSON.stringify(sec.geojson),
           sec.assigned_helper_id || null,
           sec.assigned_helper_name || null,
@@ -683,8 +700,8 @@ export const dbService = {
 
     if (data.sections && Array.isArray(data.sections)) {
       const insertSec = db.prepare(`
-        INSERT OR IGNORE INTO sections (id, street_id, street_name, section_index, label, length_meters, color, type, geojson, assigned_helper_id, assigned_helper_name, notes, created_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT OR IGNORE INTO sections (id, street_id, street_name, section_index, label, length_meters, color, type, lighting_side, geojson, assigned_helper_id, assigned_helper_name, notes, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
       for (const sec of data.sections) {
         insertSec.run(
@@ -696,6 +713,7 @@ export const dbService = {
           sec.length_meters,
           sec.color,
           sec.type,
+          sec.lighting_side || 'both',
           typeof sec.geojson === 'string' ? sec.geojson : JSON.stringify(sec.geojson),
           sec.assigned_helper_id || null,
           sec.assigned_helper_name || null,

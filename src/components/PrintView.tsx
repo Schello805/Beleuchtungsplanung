@@ -26,6 +26,25 @@ const getMapLines = (sections: Section[]): MapLine[] => sections.flatMap(section
   return [] as MapLine[];
 });
 
+const lightingSideText = (section: Section) => section.lighting_side === 'left'
+  ? 'nur linke Straßenseite (A → B)'
+  : section.lighting_side === 'right'
+    ? 'nur rechte Straßenseite (A → B)'
+    : 'beide Straßenseiten';
+
+const lightingSvgLines = (section: Section, coordinates: number[][], project: (coordinate: number[]) => number[]) => {
+  const offsets = section.lighting_side === 'left' ? [4] : section.lighting_side === 'right' ? [-4] : [4, -4];
+  const projected = coordinates.map(project);
+  return offsets.map(offset => projected.map((point, index) => {
+    const previous = projected[Math.max(0, index - 1)];
+    const next = projected[Math.min(projected.length - 1, index + 1)];
+    const dx = next[0] - previous[0];
+    const dy = next[1] - previous[1];
+    const length = Math.hypot(dx, dy) || 1;
+    return [point[0] - (dy / length) * offset, point[1] + (dx / length) * offset];
+  }));
+};
+
 /** Separate operational map: colours remain available here to discuss who
  * covers which parts. The neutral overview below deliberately has no colours. */
 const AssignmentOverviewMap: React.FC<{ sections: Section[] }> = ({ sections }) => {
@@ -54,8 +73,8 @@ const AssignmentOverviewMap: React.FC<{ sections: Section[] }> = ({ sections }) 
     <svg viewBox="0 0 1100 650" role="img" aria-label="Farbige Zuweisungskarte" style={{ width: '100%', height: 'auto', border: '1px solid #CBD5E1', borderRadius: 10, background: '#F8FAFC' }}>
       <rect width="1100" height="650" fill="#F8FAFC" />
       {tiles.map(tile => <image key={`${tile.x}-${tile.y}`} href={`https://tile.openstreetmap.org/${zoom}/${tile.x}/${tile.y}.png`} x={((tile.x * tileSize - minX) / (maxX - minX)) * 1100} y={((tile.y * tileSize - minY) / (maxY - minY)) * 650} width={(tileSize / (maxX - minX)) * 1100} height={(tileSize / (maxY - minY)) * 650} preserveAspectRatio="none" />)}
-      {lines.map(({ section, coordinates: lineCoordinates }, index) => <polyline key={`${section.id}-${index}-halo`} points={lineCoordinates.map(project).map(point => point.join(',')).join(' ')} fill="none" stroke="#FFFFFF" strokeWidth="10" strokeLinecap="round" strokeLinejoin="round" opacity=".95" />)}
-      {lines.map(({ section, coordinates: lineCoordinates }, index) => <polyline key={`${section.id}-${index}`} points={lineCoordinates.map(project).map(point => point.join(',')).join(' ')} fill="none" stroke={section.color || '#F59E0B'} strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />)}
+      {lines.flatMap(({ section, coordinates: lineCoordinates }, index) => lightingSvgLines(section, lineCoordinates, project).map((points, sideIndex) => <polyline key={`${section.id}-${index}-${sideIndex}-halo`} points={points.map(point => point.join(',')).join(' ')} fill="none" stroke="#FFFFFF" strokeWidth="10" strokeLinecap="round" strokeLinejoin="round" opacity=".95" />))}
+      {lines.flatMap(({ section, coordinates: lineCoordinates }, index) => lightingSvgLines(section, lineCoordinates, project).map((points, sideIndex) => <polyline key={`${section.id}-${index}-${sideIndex}`} points={points.map(point => point.join(',')).join(' ')} fill="none" stroke={section.color || '#F59E0B'} strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />))}
       {points.map(point => { const [x, y] = project(point.geojson.geometry.coordinates as number[]); return <circle key={point.id} cx={x} cy={y} r="8" fill={point.color || '#F59E0B'} stroke="#FFFFFF" strokeWidth="3" />; })}
       <rect x="12" y="614" width="210" height="24" rx="4" fill="#FFFFFF" opacity=".88" /><text x="22" y="631" fill="#475569" fontSize="12">© OpenStreetMap-Mitwirkende</text>
     </svg>
@@ -136,8 +155,8 @@ const NeutralOverviewMap: React.FC<{ sections: Section[] }> = ({ sections }) => 
       <defs><marker id="round-arrow" markerWidth="9" markerHeight="9" refX="7" refY="3" orient="auto" markerUnits="strokeWidth"><path d="M0,0 L0,6 L8,3 z" fill="#D97706" /></marker></defs>
       <rect width="1100" height="650" fill="#F8FAFC" />
       {tiles.map(tile => <image key={`${tile.x}-${tile.y}`} href={`https://tile.openstreetmap.org/${zoom}/${tile.x}/${tile.y}.png`} x={((tile.x * tileSize - minX) / (maxX - minX)) * 1100} y={((tile.y * tileSize - minY) / (maxY - minY)) * 650} width={(tileSize / (maxX - minX)) * 1100} height={(tileSize / (maxY - minY)) * 650} preserveAspectRatio="none" />)}
-      {lines.map(({ section, coordinates: lineCoordinates }, index) => <polyline key={`${section.id}-${index}`} points={lineCoordinates.map(project).map(point => point.join(',')).join(' ')} fill="none" stroke="#FFFFFF" strokeWidth="10" strokeLinecap="round" strokeLinejoin="round" opacity=".95" />)}
-      {lines.map(({ section, coordinates: lineCoordinates }, index) => <polyline key={`${section.id}-${index}-line`} points={lineCoordinates.map(project).map(point => point.join(',')).join(' ')} fill="none" stroke="#334155" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />)}
+      {lines.flatMap(({ section, coordinates: lineCoordinates }, index) => lightingSvgLines(section, lineCoordinates, project).map((points, sideIndex) => <polyline key={`${section.id}-${index}-${sideIndex}`} points={points.map(point => point.join(',')).join(' ')} fill="none" stroke="#FFFFFF" strokeWidth="10" strokeLinecap="round" strokeLinejoin="round" opacity=".95" />))}
+      {lines.flatMap(({ section, coordinates: lineCoordinates }, index) => lightingSvgLines(section, lineCoordinates, project).map((points, sideIndex) => <polyline key={`${section.id}-${index}-${sideIndex}-line`} points={points.map(point => point.join(',')).join(' ')} fill="none" stroke="#334155" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />))}
       {suggestedRound.links.map((link, index) => <line key={`round-${index}`} x1={project(link.from)[0]} y1={project(link.from)[1]} x2={project(link.to)[0]} y2={project(link.to)[1]} stroke="#D97706" strokeWidth="3" strokeDasharray="8 7" opacity=".95" markerEnd="url(#round-arrow)" />)}
       {suggestedRound.start && (() => { const [x, y] = project(suggestedRound.start!); return <g><circle cx={x} cy={y} r="12" fill="#15803D" stroke="#FFFFFF" strokeWidth="3" /><text x={x} y={y + 4} fontSize="10" fontWeight="900" fill="#FFFFFF" textAnchor="middle">S</text></g>; })()}
       {points.map(point => { const [x, y] = project(point.geojson.geometry.coordinates as number[]); return <circle key={point.id} cx={x} cy={y} r="8" fill="#334155" stroke="#FFFFFF" strokeWidth="3" />; })}
@@ -163,11 +182,11 @@ const endpointCodes = (sections: Section[], section: Section) => {
 const HelperAreaMap: React.FC<{ sections: Section[]; color?: string; height: number }> = ({ sections, color = '#D97706', height }) => {
   const geometries = sections.flatMap(section => {
     const geometry = section.geojson?.geometry;
-    if (!geometry) return [] as Array<{ type: string; coordinates: number[][] }>;
-    if (geometry.type === 'LineString') return [{ type: geometry.type, coordinates: geometry.coordinates as number[][] }];
-    if (geometry.type === 'MultiLineString') return (geometry.coordinates as number[][][]).map(coordinates => ({ type: geometry.type, coordinates }));
-    if (geometry.type === 'Point') return [{ type: geometry.type, coordinates: [geometry.coordinates as number[]] }];
-    return [] as Array<{ type: string; coordinates: number[][] }>;
+    if (!geometry) return [] as Array<{ section: Section; type: string; coordinates: number[][] }>;
+    if (geometry.type === 'LineString') return [{ section, type: geometry.type, coordinates: geometry.coordinates as number[][] }];
+    if (geometry.type === 'MultiLineString') return (geometry.coordinates as number[][][]).map(coordinates => ({ section, type: geometry.type, coordinates }));
+    if (geometry.type === 'Point') return [{ section, type: geometry.type, coordinates: [geometry.coordinates as number[]] }];
+    return [] as Array<{ section: Section; type: string; coordinates: number[][] }>;
   });
   const allCoordinates = geometries.flatMap(geometry => geometry.coordinates);
   if (!allCoordinates.length) return <div style={{ height, display: 'grid', placeItems: 'center', color: '#64748B', border: '1px solid #CBD5E1', borderRadius: 7 }}>Karte nicht verfügbar</div>;
@@ -191,8 +210,8 @@ const HelperAreaMap: React.FC<{ sections: Section[]; color?: string; height: num
   });
   return <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Kartenausschnitt des zugewiesenen Bereichs" style={{ width: '100%', height: 'auto', aspectRatio: '2 / 1', display: 'block', borderRadius: 7, border: '1px solid #CBD5E1', background: '#F8FAFC' }}>
     {tiles.map(tile => <image key={`${tile.x}-${tile.y}`} href={`https://tile.openstreetmap.org/${zoom}/${tile.x}/${tile.y}.png`} x={width / 2 + tile.x * tileSize - centerX} y={height / 2 + tile.y * tileSize - centerY} width={tileSize} height={tileSize} />)}
-    {geometries.filter(geometry => geometry.type !== 'Point').map((geometry, index) => <polyline key={`outline-${index}`} points={geometry.coordinates.map(project).map(point => point.join(',')).join(' ')} fill="none" stroke="#FFFFFF" strokeWidth="10" strokeLinecap="round" strokeLinejoin="round" opacity=".95" />)}
-    {geometries.filter(geometry => geometry.type !== 'Point').map((geometry, index) => <polyline key={`line-${index}`} points={geometry.coordinates.map(project).map(point => point.join(',')).join(' ')} fill="none" stroke={color} strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" />)}
+    {geometries.filter(geometry => geometry.type !== 'Point').flatMap((geometry, index) => lightingSvgLines(geometry.section, geometry.coordinates, project).map((points, sideIndex) => <polyline key={`outline-${index}-${sideIndex}`} points={points.map(point => point.join(',')).join(' ')} fill="none" stroke="#FFFFFF" strokeWidth="10" strokeLinecap="round" strokeLinejoin="round" opacity=".95" />))}
+    {geometries.filter(geometry => geometry.type !== 'Point').flatMap((geometry, index) => lightingSvgLines(geometry.section, geometry.coordinates, project).map((points, sideIndex) => <polyline key={`line-${index}-${sideIndex}`} points={points.map(point => point.join(',')).join(' ')} fill="none" stroke={color} strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" />))}
     {geometries.filter(geometry => geometry.type === 'Point').map((geometry, index) => { const [x, y] = project(geometry.coordinates[0]); return <circle key={`point-${index}`} cx={x} cy={y} r="8" fill={color} stroke="#FFFFFF" strokeWidth="3" />; })}
     {endpointMarkers.map((marker, index) => {
       const [x, y] = project(marker.coordinate);
@@ -202,7 +221,7 @@ const HelperAreaMap: React.FC<{ sections: Section[]; color?: string; height: num
         <text x={x} y={y + 4} textAnchor="middle" fontSize="10" fontWeight="900" fill={fill}>{marker.label}</text>
       </g>;
     })}
-    <rect x="8" y={height - 25} width="250" height="18" rx="3" fill="#FFFFFF" opacity=".92" /><text x="14" y={height - 12} fontSize="10" fill="#475569">Farbige Linie: dein Bereich · A: Start · B: Ende</text>
+    <rect x="8" y={height - 25} width="330" height="18" rx="3" fill="#FFFFFF" opacity=".92" /><text x="14" y={height - 12} fontSize="10" fill="#475569">Farbige Linie(n): dein Bereich · A: Start · B: Ende</text>
   </svg>;
 };
 
@@ -661,7 +680,7 @@ export const PrintView: React.FC<PrintViewProps> = ({
                       <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                         {group.sections.map(s => (
                           <div key={s.id} style={{ display: 'flex', justifyContent: 'space-between' }}>
-                            <span>● <b>{s.label}</b> ({s.street_name})</span>
+                            <span>● <b>{s.label}</b> ({s.street_name} · {lightingSideText(s)})</span>
                             <span style={{ color: '#64748B' }}>{Math.round(s.length_meters ?? (s as any).lengthMeters ?? 0)} m</span>
                           </div>
                         ))}
@@ -811,6 +830,7 @@ export const PrintView: React.FC<PrintViewProps> = ({
                                   <div>
                                     <b>{sec.label}</b>
                                     <div style={{ fontSize: 9, color: '#64748B' }}>{sec.street_name}</div>
+                                    <div style={{ fontSize: 9, color: '#475569', fontWeight: 700 }}>{lightingSideText(sec)}</div>
                                     {codes && <div style={{ fontSize: 9, fontWeight: 800, color: '#475569', marginTop: 1 }}>Von {codes.start} bis {codes.end}</div>}
                                   </div>
                                   <div style={{ textAlign: 'right', fontWeight: 700, color: '#475569' }}>
@@ -958,6 +978,7 @@ export const PrintView: React.FC<PrintViewProps> = ({
                               <div>
                                 <span style={{ fontWeight: 800, fontSize: 13 }}>#{sIdx + 1} {sec.label}</span>
                                 <span style={{ color: '#64748B', fontSize: 12, marginLeft: 8 }}>({sec.street_name})</span>
+                                <div style={{ fontSize: 11, color: '#475569', fontWeight: 700, marginTop: 2 }}>Beleuchtung: {lightingSideText(sec)}</div>
                                 {codes && <div style={{ fontSize: 11, color: '#334155', fontWeight: 700, marginTop: 3 }}>Von Punkt {codes.start} bis Punkt {codes.end} entlang der farbigen Linie.</div>}
                                 {sec.notes && <div style={{ fontSize: 10, color: '#D97706' }}>Hinweis: {sec.notes}</div>}
                               </div>

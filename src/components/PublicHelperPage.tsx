@@ -16,6 +16,12 @@ const firstCoordinate = (info: PublicHelperInfo): [number, number] | null => {
   return null;
 };
 
+const lightingSideText = (side?: 'both' | 'left' | 'right') => side === 'left'
+  ? 'Nur linke Straßenseite (Richtung A → B)'
+  : side === 'right'
+    ? 'Nur rechte Straßenseite (Richtung A → B)'
+    : 'Beide Straßenseiten';
+
 export const PublicHelperPage: React.FC<Props> = ({ info }) => {
   const meters = info.sections.reduce((sum, section) => sum + (section.length_meters || 0), 0);
   const coordinate = firstCoordinate(info);
@@ -36,6 +42,7 @@ export const PublicHelperPage: React.FC<Props> = ({ info }) => {
             const directionsUrl = endpoints ? getMapsDirectionsUrl(endpoints) : null;
             return <div key={section.id}>
               <MapPin size={16} /><span><strong>{section.label}</strong><small>{section.street_name} · {Math.round(section.length_meters)} m</small>
+                <small><b>Beleuchtung:</b> {lightingSideText(section.lighting_side)}</small>
                 {endpoints && <small><b>Start A{suffix}</b> → <b>Ende B{suffix}</b>{directionsUrl && <> · <a href={directionsUrl} target="_blank" rel="noreferrer">Route A→B öffnen</a></>}</small>}
               </span>
             </div>;

@@ -34,6 +34,7 @@ export interface Section {
   lengthMeters?: number;
   color: string;
   type: 'line' | 'point';
+  lighting_side?: 'both' | 'left' | 'right';
   geojson: GeoJSON.Feature<GeoJSON.LineString | GeoJSON.MultiLineString | GeoJSON.Point>;
   assigned_helper_id?: string | null;
   assigned_helper_name?: string | null;
@@ -51,7 +52,7 @@ export interface AuthUser {
 
 export interface PublicHelperInfo {
   name: string;
-  sections: Array<Pick<Section, 'id' | 'street_name' | 'label' | 'length_meters' | 'type' | 'geojson'>>;
+  sections: Array<Pick<Section, 'id' | 'street_name' | 'label' | 'length_meters' | 'type' | 'lighting_side' | 'geojson'>>;
 }
 
 const API_BASE = '/api';
@@ -327,7 +328,7 @@ export const api = {
     }));
   },
 
-  async updateSection(id: string, updates: { assigned_helper_id?: string | null; assigned_helper_name?: string | null; notes?: string; geojson?: GeoJSON.Feature<GeoJSON.LineString>; length_meters?: number }): Promise<void> {
+  async updateSection(id: string, updates: { assigned_helper_id?: string | null; assigned_helper_name?: string | null; notes?: string; geojson?: GeoJSON.Feature<GeoJSON.LineString>; length_meters?: number; lighting_side?: 'both' | 'left' | 'right' }): Promise<void> {
     const res = await fetch(`${API_BASE}/sections/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
