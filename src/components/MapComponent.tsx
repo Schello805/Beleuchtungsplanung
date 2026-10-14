@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
+import * as turf from '@turf/turf';
 import type { Section, Helper } from '../utils/api';
 import type { GeneratedSection } from '../utils/geo';
 import { Settings, ChevronLeft, ChevronRight, X, UserCheck } from 'lucide-react';
@@ -60,10 +61,18 @@ function toLightingDisplayLines(section: Section): L.LatLngExpression[][] {
   const sourceLines = geometry.type === 'MultiLineString'
     ? geometry.coordinates as number[][][]
     : [geometry.coordinates as number[][]];
-  // Two physical sides are an instruction, not separate routes. Rendering a
-  // single centre line keeps crossings readable; the popup and print sheet
-  // state explicitly whether both, left or right must be decorated.
-  return sourceLines.map(line => line.map(([lon, lat]) => [lat, lon] as [number, number]));
+  const side = section.lighting_side || 'both';
+  // Turf joins the offset segments geometrically at bends. This is much more
+  // stable than moving each vertex manually (which caused loops at junctions).
+  const offsets = side === 'both' ? [-1.8, 1.8] : side === 'left' ? [-1.8] : [1.8];
+  return offsets.flatMap(offset => sourceLines.map(line => {
+    try {
+      const shifted = turf.lineOffset(turf.lineString(line), offset, { units: 'meters' }).geometry.coordinates as number[][];
+      return shifted.map(([lon, lat]) => [lat, lon] as [number, number]);
+    } catch {
+      return line.map(([lon, lat]) => [lat, lon] as [number, number]);
+    }
+  }));
 }
 
 export const MapComponent: React.FC<MapComponentProps> = ({
@@ -543,7 +552,7 @@ export const MapComponent: React.FC<MapComponentProps> = ({
 
         const polylines = displayLines.map(displayLine => L.polyline(displayLine, {
             color: lineColor,
-            weight: isSelected ? 9 : (sec.lighting_side || 'both') === 'both' ? 7 : 6,
+            weight: isSelected ? 8 : 6,
             opacity: 0.95,
             dashArray: isAssigned ? undefined : '8, 8', // Strichliert = unzugewiesen!
             lineCap: 'round',

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import * as turf from '@turf/turf';
 import { Printer, ArrowLeft, FileText, Grid, Phone, Scissors, QrCode, Clock, MapPin, CheckSquare, Sparkles, Map as MapIcon } from 'lucide-react';
 import { type Section, type Helper } from '../utils/api';
 import { getSectionEndpoints } from '../utils/sectionEndpoints';
@@ -33,9 +34,15 @@ const lightingSideText = (section: Section) => section.lighting_side === 'left'
     : 'beide Straßenseiten';
 
 const lightingSvgLines = (section: Section, coordinates: number[][], project: (coordinate: number[]) => number[]) => {
-  // Side selection is stated in the legend and section detail. A centre-line
-  // marker is intentionally used here, so road junctions stay calm and clear.
-  return [coordinates.map(project)];
+  const side = section.lighting_side || 'both';
+  const offsets = side === 'both' ? [-1.8, 1.8] : side === 'left' ? [-1.8] : [1.8];
+  return offsets.map(offset => {
+    try {
+      return (turf.lineOffset(turf.lineString(coordinates), offset, { units: 'meters' }).geometry.coordinates as number[][]).map(project);
+    } catch {
+      return coordinates.map(project);
+    }
+  });
 };
 
 /** Separate operational map: colours remain available here to discuss who
