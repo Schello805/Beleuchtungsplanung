@@ -26,6 +26,43 @@ const getMapLines = (sections: Section[]): MapLine[] => sections.flatMap(section
   return [] as MapLine[];
 });
 
+/** Separate operational map: colours remain available here to discuss who
+ * covers which parts. The neutral overview below deliberately has no colours. */
+const AssignmentOverviewMap: React.FC<{ sections: Section[] }> = ({ sections }) => {
+  const lines = getMapLines(sections);
+  const points = sections.filter(section => section.geojson?.geometry?.type === 'Point');
+  const coordinates = [...lines.flatMap(line => line.coordinates), ...points.map(point => point.geojson.geometry.coordinates as number[])];
+  if (!coordinates.length) return <p style={{ color: '#64748B', padding: 32 }}>Für die Zuweisungskarte sind noch keine Abschnitte vorhanden.</p>;
+  const zoom = 14, tileSize = 256, worldSize = tileSize * (2 ** zoom);
+  const toWorld = ([lon, lat]: number[]) => [((lon + 180) / 360) * worldSize, ((1 - Math.asinh(Math.tan(lat * Math.PI / 180)) / Math.PI) / 2) * worldSize];
+  const worldCoordinates = coordinates.map(toWorld);
+  let minX = Math.min(...worldCoordinates.map(point => point[0])); let maxX = Math.max(...worldCoordinates.map(point => point[0]));
+  let minY = Math.min(...worldCoordinates.map(point => point[1])); let maxY = Math.max(...worldCoordinates.map(point => point[1]));
+  const pad = Math.max(maxX - minX, maxY - minY, 500) * 0.16;
+  minX -= pad; maxX += pad; minY -= pad; maxY += pad;
+  const targetRatio = 1100 / 650, currentRatio = (maxX - minX) / (maxY - minY);
+  if (currentRatio < targetRatio) { const extra = ((maxY - minY) * targetRatio - (maxX - minX)) / 2; minX -= extra; maxX += extra; }
+  else { const extra = ((maxX - minX) / targetRatio - (maxY - minY)) / 2; minY -= extra; maxY += extra; }
+  const printZoom = 1.35, centerX = (minX + maxX) / 2, centerY = (minY + maxY) / 2;
+  const halfWidth = (maxX - minX) / (2 * printZoom), halfHeight = (maxY - minY) / (2 * printZoom);
+  minX = centerX - halfWidth; maxX = centerX + halfWidth; minY = centerY - halfHeight; maxY = centerY + halfHeight;
+  const project = (coordinate: number[]) => { const [x, y] = toWorld(coordinate); return [((x - minX) / (maxX - minX)) * 1100, ((y - minY) / (maxY - minY)) * 650]; };
+  const tiles = Array.from({ length: Math.ceil(maxX / tileSize) - Math.floor(minX / tileSize) + 1 }, (_, xIndex) =>
+    Array.from({ length: Math.ceil(maxY / tileSize) - Math.floor(minY / tileSize) + 1 }, (_, yIndex) => ({ x: Math.floor(minX / tileSize) + xIndex, y: Math.floor(minY / tileSize) + yIndex }))
+  ).flat();
+  return <>
+    <svg viewBox="0 0 1100 650" role="img" aria-label="Farbige Zuweisungskarte" style={{ width: '100%', height: 'auto', border: '1px solid #CBD5E1', borderRadius: 10, background: '#F8FAFC' }}>
+      <rect width="1100" height="650" fill="#F8FAFC" />
+      {tiles.map(tile => <image key={`${tile.x}-${tile.y}`} href={`https://tile.openstreetmap.org/${zoom}/${tile.x}/${tile.y}.png`} x={((tile.x * tileSize - minX) / (maxX - minX)) * 1100} y={((tile.y * tileSize - minY) / (maxY - minY)) * 650} width={(tileSize / (maxX - minX)) * 1100} height={(tileSize / (maxY - minY)) * 650} preserveAspectRatio="none" />)}
+      {lines.map(({ section, coordinates: lineCoordinates }, index) => <polyline key={`${section.id}-${index}-halo`} points={lineCoordinates.map(project).map(point => point.join(',')).join(' ')} fill="none" stroke="#FFFFFF" strokeWidth="10" strokeLinecap="round" strokeLinejoin="round" opacity=".95" />)}
+      {lines.map(({ section, coordinates: lineCoordinates }, index) => <polyline key={`${section.id}-${index}`} points={lineCoordinates.map(project).map(point => point.join(',')).join(' ')} fill="none" stroke={section.color || '#F59E0B'} strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />)}
+      {points.map(point => { const [x, y] = project(point.geojson.geometry.coordinates as number[]); return <circle key={point.id} cx={x} cy={y} r="8" fill={point.color || '#F59E0B'} stroke="#FFFFFF" strokeWidth="3" />; })}
+      <rect x="12" y="614" width="210" height="24" rx="4" fill="#FFFFFF" opacity=".88" /><text x="22" y="631" fill="#475569" fontSize="12">© OpenStreetMap-Mitwirkende</text>
+    </svg>
+    <p style={{ margin: '10px 0 0', color: '#475569', fontSize: 11 }}>Farben zeigen die einzelnen zugewiesenen Abschnitte. Für die neutrale Außenkommunikation nutze die Beleuchtungsübersicht.</p>
+  </>;
+};
+
 const directDistanceMeters = (first: number[], second: number[]) => {
   const earthRadius = 6371000;
   const lat1 = first[1] * Math.PI / 180, lat2 = second[1] * Math.PI / 180;
@@ -181,7 +218,7 @@ export const PrintView: React.FC<PrintViewProps> = ({
   onSavePublicBaseUrl,
   onClose
 }) => {
-  const [printLayout, setPrintLayout] = useState<'table' | 'overview-map' | 'cards' | 'sheets'>('sheets');
+  const [printLayout, setPrintLayout] = useState<'table' | 'assignment-map' | 'overview-map' | 'cards' | 'sheets'>('sheets');
   const [publicUrlInput, setPublicUrlInput] = useState(publicBaseUrl);
   const [meetingTime, setMeetingTime] = useState<string>('17:30 Uhr Materialausgabe • 18:15 Uhr Entzünden');
 
@@ -404,6 +441,18 @@ export const PrintView: React.FC<PrintViewProps> = ({
             </button>
 
             <button
+              onClick={() => setPrintLayout('assignment-map')}
+              style={{
+                padding: '5px 12px', borderRadius: 4, border: 'none',
+                background: printLayout === 'assignment-map' ? '#F59E0B' : 'transparent',
+                color: printLayout === 'assignment-map' ? '#0F172A' : '#FFFFFF', fontWeight: 700, fontSize: 12,
+                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5
+              }}
+            >
+              <MapIcon size={14} /> Zuweisungskarte
+            </button>
+
+            <button
               onClick={() => setPrintLayout('overview-map')}
               style={{
                 padding: '5px 12px', borderRadius: 4, border: 'none',
@@ -491,6 +540,8 @@ export const PrintView: React.FC<PrintViewProps> = ({
               <div style={{ fontSize: 15, fontWeight: 700, color: '#D97706', marginTop: 4 }}>
                 {printLayout === 'table'
                   ? 'Offizieller Strecken- & Helfer-Einsatzplan'
+                  : printLayout === 'assignment-map'
+                  ? 'Gesamtkarte der Helfer-Zuweisungen'
                   : printLayout === 'overview-map'
                   ? 'Beleuchtungsübersicht mit Rundweg'
                   : printLayout === 'cards'
@@ -545,7 +596,18 @@ export const PrintView: React.FC<PrintViewProps> = ({
           </div>
         </div>
 
-        {/* LAYOUT: PRINTABLE ASSIGNMENT MAP */}
+        {/* LAYOUT: PRINTABLE COLOUR ASSIGNMENT MAP */}
+        {printLayout === 'assignment-map' && (
+          <div className="assignment-map-page" style={{ pageBreakAfter: 'always' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 }}>
+              <h2 style={{ fontSize: 16, fontWeight: 800, textTransform: 'uppercase', color: '#0F172A', letterSpacing: '0.04em' }}>Wer übernimmt welchen Abschnitt?</h2>
+              <span style={{ fontSize: 11, color: '#64748B' }}>Für den Ausdruck idealerweise „Querformat“ wählen</span>
+            </div>
+            <AssignmentOverviewMap sections={sections} />
+          </div>
+        )}
+
+        {/* LAYOUT: NEUTRAL PRINTABLE LIGHTING MAP */}
         {printLayout === 'overview-map' && (
           <div className="overview-map-page" style={{ pageBreakAfter: 'always' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 12 }}>
