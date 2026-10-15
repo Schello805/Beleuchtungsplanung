@@ -412,6 +412,80 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleExtendToNearestSection = async (sectionId: string) => {
+    const section = sections.find(item => item.id === sectionId);
+    if (!section || section.type !== 'line' || section.geojson.geometry.type !== 'LineString') {
+      alert('Diese automatische Verlängerung ist nur für durchgehende Linien verfügbar.');
+      return;
+    }
+    const coordinates = section.geojson.geometry.coordinates as [number, number][];
+    if (coordinates.length < 2) return;
+
+    const lineCandidates = sections.filter(candidate =>
+      candidate.id !== section.id &&
+      candidate.type === 'line' &&
+      candidate.geojson.geometry.type === 'LineString' &&
+      candidate.geojson.geometry.coordinates.length >= 2
+    );
+    // When available, stay on the same road/side. This avoids accidentally
+    // bridging to a nearby parallel road; only if none exists do we offer the
+    // nearest visible section as a deliberate fallback.
+    const sameStreetCandidates = lineCandidates.filter(candidate =>
+      ((section.street_id && candidate.street_id === section.street_id) || candidate.street_name === section.street_name) &&
+      (candidate.lighting_side || 'both') === (section.lighting_side || 'both')
+    );
+    const candidates = sameStreetCandidates.length ? sameStreetCandidates : lineCandidates;
+    const ownEndpoints = [coordinates[0], coordinates.at(-1)!] as [number, number][];
+    const connections = candidates.flatMap(candidate => {
+      const candidateCoordinates = candidate.geojson.geometry.type === 'LineString'
+        ? candidate.geojson.geometry.coordinates as [number, number][]
+        : [];
+      const candidateEndpoints = [candidateCoordinates[0], candidateCoordinates.at(-1)!] as [number, number][];
+      return ownEndpoints.flatMap((ownEndpoint, ownIndex) => candidateEndpoints.map(target => ({
+        candidate,
+        ownIndex,
+        ownEndpoint,
+        target,
+        directMeters: turf.distance(turf.point(ownEndpoint), turf.point(target), { units: 'kilometers' }) * 1000
+      })));
+    }).filter(connection => connection.directMeters >= 6).sort((left, right) => left.directMeters - right.directMeters);
+    const nearest = connections[0];
+    if (!nearest || nearest.directMeters > 160) {
+      alert('Kein sinnvoller nächster Abschnitt in der Nähe gefunden. Nutze bitte „Verlängern“, um das Ziel selbst zu wählen.');
+      return;
+    }
+
+    const sourceHint = sameStreetCandidates.length ? 'derselben Straße und Seite' : 'der Nähe';
+    if (!window.confirm(`Diesen Abschnitt bis kurz vor „${nearest.candidate.label}“ verlängern?\n\nDie Linien bleiben mit etwa 4 m Abstand getrennt (${Math.round(nearest.directMeters)} m Luftlinie, ${sourceHint}).`)) return;
+
+    try {
+      const route = await api.getFootRoute(nearest.ownEndpoint[0], nearest.ownEndpoint[1], nearest.target[0], nearest.target[1]);
+      const routeLine = turf.lineString(route.geometry.coordinates as [number, number][]);
+      const routeLengthKm = turf.length(routeLine, { units: 'kilometers' });
+      const safetyGapKm = 0.004;
+      if (routeLengthKm <= safetyGapKm + 0.002) {
+        alert('Die Abschnitte liegen bereits zu nah beieinander. Es bleibt kein sinnvoller Sicherheitsabstand zum Verlängern.');
+        return;
+      }
+      const shortenedRoute = turf.lineSliceAlong(routeLine, 0, routeLengthKm - safetyGapKm, { units: 'kilometers' }).geometry.coordinates as [number, number][];
+      if (shortenedRoute.length < 2) return;
+      const extendAtStart = nearest.ownIndex === 0;
+      const combinedCoordinates = extendAtStart
+        ? [...shortenedRoute.slice().reverse().slice(0, -1), ...coordinates]
+        : [...coordinates, ...shortenedRoute.slice(1)];
+      const geojson = turf.lineString(combinedCoordinates);
+      const lengthMeters = Math.max(1, Math.round(turf.length(geojson, { units: 'kilometers' }) * 1000));
+      await api.updateSection(section.id, { geojson, length_meters: lengthMeters });
+      setSections(current => current.map(item => item.id === section.id
+        ? { ...item, geojson, length_meters: lengthMeters, lengthMeters }
+        : item));
+      setSelectedSectionId(section.id);
+    } catch (error) {
+      console.error('Automatisches Verlängern fehlgeschlagen:', error);
+      alert('Der Abschnitt konnte nicht automatisch verlängert werden. Nutze bitte „Verlängern“, um das Ziel selbst zu wählen.');
+    }
+  };
+
   const handleSplitSectionAtPoint = async (targetLat: number, targetLon: number) => {
     const sectionId = splitSectionId;
     const section = sections.find(item => item.id === sectionId);
@@ -1118,6 +1192,7 @@ export const App: React.FC = () => {
             onDeleteSection={handleDeleteSection}
             extensionSectionId={extensionSectionId}
             onStartExtension={(sectionId) => { setSelectedSectionId(sectionId); setSplitSectionId(null); setExtensionSectionId(sectionId); }}
+            onExtendToNearestSection={handleExtendToNearestSection}
             onExtensionTarget={handleExtendSection}
             onCancelExtension={() => setExtensionSectionId(null)}
             splitSectionId={splitSectionId}

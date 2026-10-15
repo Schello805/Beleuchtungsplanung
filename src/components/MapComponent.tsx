@@ -19,6 +19,7 @@ interface MapComponentProps {
   onDeleteSection: (sectionId: string) => void;
   extensionSectionId?: string | null;
   onStartExtension?: (sectionId: string) => void;
+  onExtendToNearestSection?: (sectionId: string) => void;
   onExtensionTarget?: (lat: number, lon: number) => void;
   onCancelExtension?: () => void;
   splitSectionId?: string | null;
@@ -95,6 +96,7 @@ export const MapComponent: React.FC<MapComponentProps> = ({
   onDeleteSection,
   extensionSectionId,
   onStartExtension,
+  onExtendToNearestSection,
   onExtensionTarget,
   onCancelExtension,
   splitSectionId,
@@ -813,6 +815,7 @@ export const MapComponent: React.FC<MapComponentProps> = ({
             <div style="display:flex; gap:5px;">
               <button id="popup-split-btn-${sec.id}" style="background:#FEF3C7; color:#92400E; border:none; padding:4px 8px; border-radius:4px; font-size:11px; cursor:pointer; font-weight:700;">Hier teilen</button>
               <button id="popup-extend-btn-${sec.id}" style="background:#EDE9FE; color:#6D28D9; border:none; padding:4px 8px; border-radius:4px; font-size:11px; cursor:pointer; font-weight:700;">Verlängern</button>
+              <button id="popup-auto-extend-btn-${sec.id}" style="background:#DBEAFE; color:#1D4ED8; border:none; padding:4px 8px; border-radius:4px; font-size:11px; cursor:pointer; font-weight:700;">Bis zum nächsten</button>
               <button id="popup-delete-btn-${sec.id}" style="background:#FEE2E2; color:#DC2626; border:none; padding:4px 8px; border-radius:4px; font-size:11px; cursor:pointer; font-weight:600;">Abschnitt löschen</button>
             </div>
           </div>
@@ -907,6 +910,13 @@ export const MapComponent: React.FC<MapComponentProps> = ({
               map.closePopup();
             };
           }
+          const autoExtendBtn = document.getElementById(`popup-auto-extend-btn-${sec.id}`);
+          if (autoExtendBtn) {
+            autoExtendBtn.onclick = () => {
+              onExtendToNearestSection?.(sec.id);
+              map.closePopup();
+            };
+          }
         });
       } else if (sec.type === 'point' && sec.geojson?.geometry?.type === 'Point') {
         const [lon, lat] = sec.geojson.geometry.coordinates;
@@ -981,7 +991,7 @@ export const MapComponent: React.FC<MapComponentProps> = ({
         });
       }
     });
-  }, [sections, selectedSectionId, helpers, activeHelperId, onSelectSection, onUpdateSectionHelper, onDeleteSection, onStartExtension, onStartSplit]);
+  }, [sections, selectedSectionId, helpers, activeHelperId, onSelectSection, onUpdateSectionHelper, onDeleteSection, onStartExtension, onExtendToNearestSection, onStartSplit]);
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
