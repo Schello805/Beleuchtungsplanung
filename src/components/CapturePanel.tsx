@@ -599,9 +599,9 @@ export const CapturePanel: React.FC<CapturePanelProps> = ({
           <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-main)', marginBottom: 7 }}>Welche Straßenseite wird geschmückt?</div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 5 }}>
             {([
-              ['left', 'Seite A', 'links in Kartenrichtung'],
-              ['both', 'Beide Seiten', 'zwei getrennte Bereiche'],
-              ['right', 'Seite B', 'rechts in Kartenrichtung']
+              ['left', 'Seite A', 'in der Vorschau mit A markiert'],
+              ['both', 'Beide Seiten', 'zwei getrennte, beschriftete Linien'],
+              ['right', 'Seite B', 'in der Vorschau mit B markiert']
             ] as const).map(([value, title, description]) => (
               <button
                 type="button"
@@ -614,7 +614,7 @@ export const CapturePanel: React.FC<CapturePanelProps> = ({
               </button>
             ))}
           </div>
-          <div style={{ fontSize: 10, color: 'var(--text-muted)', lineHeight: 1.35, marginTop: 7 }}>Bei „Beide Seiten“ werden A und B sofort als getrennte, unabhängig zuweisbare Abschnitte angelegt.</div>
+          <div style={{ fontSize: 10, color: 'var(--text-muted)', lineHeight: 1.35, marginTop: 7 }}>Bei „Beide Seiten“ werden A und B sofort als getrennte, unabhängig zuweisbare Abschnitte angelegt. Auf der Karte liegt die Markierung direkt auf der jeweiligen Straßenseite.</div>
         </div>
       )}
 

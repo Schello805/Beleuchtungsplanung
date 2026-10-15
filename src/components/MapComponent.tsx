@@ -57,7 +57,7 @@ const lightingSideLabel = (side?: Section['lighting_side']) => side === 'left'
     ? 'Straßenseite B (rechts in Richtung A → B)'
     : 'Beide Straßenseiten (Altbestand)';
 
-function toLightingDisplayLines(section: Section): L.LatLngExpression[][] {
+function toLightingDisplayLines(section: Pick<Section, 'geojson' | 'lighting_side'>): L.LatLngExpression[][] {
   const geometry = section.geojson?.geometry;
   if (!geometry || !['LineString', 'MultiLineString'].includes(geometry.type)) return [];
   const sourceLines = geometry.type === 'MultiLineString'
@@ -406,28 +406,47 @@ export const MapComponent: React.FC<MapComponentProps> = ({
       if (sec.type === 'line' && sec.geojson.geometry.type === 'LineString') {
         const coords = sec.geojson.geometry.coordinates.map(c => [c[1], c[0]] as [number, number]);
         coords.forEach(pt => bounds.extend(pt));
+        const displayLines = toLightingDisplayLines(sec as Pick<Section, 'geojson' | 'lighting_side'>);
 
         // Highlight halo if focused
         if (isFocused) {
-          L.polyline(coords, {
+          displayLines.forEach(displayLine => L.polyline(displayLine, {
             color: '#FFFFFF',
             weight: 12,
             opacity: 0.9
+          }).addTo(group));
+        }
+
+        const polylines = displayLines.map(displayLine => L.polyline(displayLine, {
+            color: sec.color,
+            weight: isFocused ? 9 : 7,
+            opacity: 0.95,
+            dashArray: '8, 6',
+            lineCap: 'round',
+            lineJoin: 'round'
+          }).addTo(group));
+        const polyline = polylines[0];
+        if (!polyline) return;
+
+        // A / B labels sit on the offset line itself.  This makes the side
+        // choice unambiguous before the organiser saves the preview.
+        const sideLetter = sec.lighting_side === 'left' ? 'A' : sec.lighting_side === 'right' ? 'B' : null;
+        if (sideLetter) {
+          const center = polyline.getCenter();
+          L.marker(center, {
+            interactive: false,
+            icon: L.divIcon({
+              className: 'preview-side-label',
+              html: `<span style="display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:${sec.color};border:2px solid #FFFFFF;color:#FFFFFF;font:800 12px/1 Outfit,Arial,sans-serif;box-shadow:0 1px 5px rgba(15,23,42,.45);">${sideLetter}</span>`,
+              iconSize: [22, 22],
+              iconAnchor: [11, 11]
+            })
           }).addTo(group);
         }
 
-        const polyline = L.polyline(coords, {
-          color: sec.color,
-          weight: isFocused ? 9 : 7,
-          opacity: 0.95,
-          dashArray: '8, 6',
-          lineCap: 'round',
-          lineJoin: 'round'
-        }).addTo(group);
-
-        polyline.on('click', () => {
+        polylines.forEach(line => line.on('click', () => {
           onFocusPreviewSection?.(sec.id);
-        });
+        }));
 
         polyline.bindTooltip(
           `<strong>${sec.label}</strong> (Vorschau)<br/>Länge: <strong>${sec.lengthMeters} m</strong><br/><span style="color:#EF4444; font-size:10px;">Klicken zum Raus-xen</span>`,
