@@ -118,6 +118,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [isAutoAssigning, setIsAutoAssigning] = useState<boolean>(false);
   const [focusedHelperId, setFocusedHelperId] = useState<string | null>(null);
   const [focusedHelperSectionIndex, setFocusedHelperSectionIndex] = useState(0);
+  const [statsSort, setStatsSort] = useState<'meters' | 'sections'>('meters');
+  const [statsSortDirection, setStatsSortDirection] = useState<'asc' | 'desc'>('desc');
   const [showHelperDataActions, setShowHelperDataActions] = useState(false);
   const [showDataTools, setShowDataTools] = useState(false);
 
@@ -144,6 +146,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
     ? Math.round(totalMeters / activeHelperCount)
     : 0;
   const maxMeters = Math.max(...helperStats.map(h => h.meters), 1);
+  const sortedHelperStats = [...helperStats].sort((left, right) => {
+    const leftValue = statsSort === 'meters' ? left.meters : left.sectionsCount;
+    const rightValue = statsSort === 'meters' ? right.meters : right.sectionsCount;
+    const comparison = leftValue - rightValue || left.helper.name.localeCompare(right.helper.name, 'de');
+    return statsSortDirection === 'desc' ? -comparison : comparison;
+  });
+  const toggleStatsSort = (nextSort: 'meters' | 'sections') => {
+    if (nextSort === statsSort) {
+      setStatsSortDirection(direction => direction === 'desc' ? 'asc' : 'desc');
+    } else {
+      setStatsSort(nextSort);
+      setStatsSortDirection('desc');
+    }
+  };
 
   // Candle / Material calculations
   const totalCandlesBase = sections.reduce((sum, s) => {
@@ -1344,6 +1360,66 @@ export const Sidebar: React.FC<SidebarProps> = ({
             <div style={{ padding: '11px 13px', borderRadius: 'var(--radius-md)', background: 'rgba(56,189,248,.09)', border: '1px solid rgba(56,189,248,.28)', marginBottom: 14 }}>
               <div style={{ fontWeight: 800, color: 'var(--text-main)', fontSize: 14 }}>Prüfen & nachbessern</div>
               <div style={{ marginTop: 3, color: 'var(--text-muted)', fontSize: 11, lineHeight: 1.4 }}>Klicke einen Helfer oder Abschnitt an, um ihn auf der Karte hervorzuheben. Offene und unfaire Bereiche werden hier zuerst sichtbar.</div>
+            </div>
+
+            <div style={{ background: 'var(--bg-secondary)', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', marginBottom: 16, overflow: 'hidden' }}>
+              <div style={{ padding: '10px 12px 8px', display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 8 }}>
+                <div>
+                  <div style={{ fontWeight: 800, color: 'var(--text-main)', fontSize: 13 }}>Verteilungsübersicht</div>
+                  <div style={{ color: 'var(--text-muted)', fontSize: 10, marginTop: 2 }}>Nach den Spaltenüberschriften sortierbar · Klick auf eine Zeile zeigt den Bereich auf der Karte.</div>
+                </div>
+                <span style={{ color: 'var(--accent-gold)', fontSize: 11, fontWeight: 800, whiteSpace: 'nowrap' }}>Ø {avgMetersPerActiveHelper} m</span>
+              </div>
+              <div style={{ overflowX: 'auto' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, minWidth: 350 }}>
+                  <thead>
+                    <tr style={{ color: 'var(--text-muted)', background: 'var(--bg-input)', textAlign: 'left' }}>
+                      <th style={{ padding: '7px 8px', width: 28 }}>#</th>
+                      <th style={{ padding: '7px 8px' }}>Helfer</th>
+                      <th style={{ padding: '7px 8px', textAlign: 'right' }}>
+                        <button type="button" onClick={() => toggleStatsSort('meters')} title="Nach Metern sortieren" style={{ border: 0, background: 'transparent', color: statsSort === 'meters' ? 'var(--accent-gold)' : 'var(--text-muted)', padding: 0, cursor: 'pointer', fontSize: 11, fontWeight: 800 }}>
+                          Meter {statsSort === 'meters' ? (statsSortDirection === 'desc' ? '↓' : '↑') : '↕'}
+                        </button>
+                      </th>
+                      <th style={{ padding: '7px 8px', textAlign: 'right' }}>
+                        <button type="button" onClick={() => toggleStatsSort('sections')} title="Nach Abschnittsanzahl sortieren" style={{ border: 0, background: 'transparent', color: statsSort === 'sections' ? 'var(--accent-gold)' : 'var(--text-muted)', padding: 0, cursor: 'pointer', fontSize: 11, fontWeight: 800 }}>
+                          Abschnitte {statsSort === 'sections' ? (statsSortDirection === 'desc' ? '↓' : '↑') : '↕'}
+                        </button>
+                      </th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {sortedHelperStats.map((item, index) => {
+                      const difference = item.meters - avgMetersPerActiveHelper;
+                      const isFocused = focusedHelperId === item.helper.id;
+                      return (
+                        <tr
+                          key={item.helper.id}
+                          onClick={() => {
+                            if (!item.sections.length) return;
+                            setFocusedHelperId(item.helper.id);
+                            setFocusedHelperSectionIndex(0);
+                            onSelectSection(item.sections[0].id);
+                          }}
+                          title={item.sections.length ? `${item.helper.name} auf der Karte anzeigen` : 'Noch kein Bereich zugeteilt'}
+                          style={{ borderTop: '1px solid var(--border-subtle)', cursor: item.sections.length ? 'pointer' : 'default', background: isFocused ? 'rgba(245,158,11,.10)' : 'transparent' }}
+                        >
+                          <td style={{ padding: '8px', color: 'var(--text-muted)', fontWeight: 700 }}>{index + 1}</td>
+                          <td style={{ padding: '8px', minWidth: 130 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-main)', fontWeight: 700 }}>
+                              <span style={{ width: 8, height: 8, borderRadius: '50%', background: item.helper.color || 'var(--accent-gold)', flexShrink: 0 }} />
+                              <span>{item.helper.name}</span>
+                            </div>
+                            {item.sectionsCount > 0 && <div style={{ fontSize: 10, marginTop: 2, color: difference > 0 ? '#F59E0B' : difference < 0 ? '#60A5FA' : 'var(--text-muted)' }}>{difference === 0 ? 'genau im Durchschnitt' : `${difference > 0 ? '+' : ''}${difference} m zum Ø`}</div>}
+                          </td>
+                          <td style={{ padding: '8px', textAlign: 'right', color: 'var(--accent-gold)', fontWeight: 800, whiteSpace: 'nowrap' }}>{item.meters} m</td>
+                          <td style={{ padding: '8px', textAlign: 'right', color: 'var(--text-main)', fontWeight: 700 }}>{item.sectionsCount}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
             </div>
             {/* Section Redistribution Action Card */}
             {onOpenRedistributeModal && sections.length > 0 && (
