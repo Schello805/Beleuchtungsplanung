@@ -584,6 +584,16 @@ out body geom;`;
     } catch {}
   },
 
+  async setSmtpPassword(password: string): Promise<void> {
+    const res = await fetch(`${API_BASE}/settings/smtp-password`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password })
+    });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.error || 'SMTP-Passwort konnte nicht gespeichert werden');
+    }
+  },
+
   async sendTestMail(to: string): Promise<void> {
     const res = await fetch(`${API_BASE}/mail/test`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to }) });
     if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Test-E-Mail konnte nicht gesendet werden.');

@@ -14,6 +14,7 @@ const authRequired = process.env.AUTH_REQUIRED ?? (process.env.NODE_ENV === 'pro
 const AUTH_REQUIRED = authRequired.toLowerCase() !== 'false';
 const SESSION_COOKIE = 'lichternacht_session';
 const SESSION_DAYS = 14;
+let smtpPasswordOverride = process.env.SMTP_PASSWORD?.trim() || '';
 
 type SafeUser = Pick<UserRecord, 'id' | 'email' | 'display_name' | 'role'>;
 type AuthenticatedRequest = express.Request & { authUser?: SafeUser };
@@ -507,7 +508,7 @@ const getSmtpTransport = () => {
   const host = settings.smtp_host?.trim();
   const port = Number(settings.smtp_port || 587);
   const user = settings.smtp_user?.trim();
-  const password = process.env.SMTP_PASSWORD?.trim();
+  const password = smtpPasswordOverride || process.env.SMTP_PASSWORD?.trim();
   const from = settings.smtp_from?.trim();
   if (!host || !Number.isFinite(port) || !user || !password || !from) {
     throw new Error('SMTP ist noch nicht vollständig eingerichtet (Host, Port, Benutzer, Absender und SMTP_PASSWORD).');
@@ -585,6 +586,29 @@ app.put('/api/settings/:key', (req, res) => {
     res.json({ success: true });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// SMTP secrets deliberately do not enter SQLite, JSON exports or the browser.
+// The production service already reads this root-only EnvironmentFile at boot.
+app.post('/api/settings/smtp-password', (req, res) => {
+  const password = String(req.body?.password || '');
+  if (password.length < 1 || /[\r\n]/.test(password)) return res.status(400).json({ error: 'Bitte ein gültiges SMTP-Passwort eingeben.' });
+  const envFile = process.env.LICHTERNACHT_ENV_FILE || '/etc/lichternacht/lichternacht.env';
+  try {
+    const current = fs.existsSync(envFile) ? fs.readFileSync(envFile, 'utf8') : '';
+    const escaped = password.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    const line = `SMTP_PASSWORD="${escaped}"`;
+    const next = /^SMTP_PASSWORD=.*$/m.test(current)
+      ? current.replace(/^SMTP_PASSWORD=.*$/m, line)
+      : `${current.trimEnd()}${current.trimEnd() ? '\n' : ''}${line}\n`;
+    fs.writeFileSync(envFile, next, { mode: 0o600 });
+    fs.chmodSync(envFile, 0o600);
+    smtpPasswordOverride = password;
+    process.env.SMTP_PASSWORD = password;
+    res.json({ success: true });
+  } catch (err: any) {
+    res.status(500).json({ error: `SMTP-Passwort konnte nicht im Server-Environment gespeichert werden: ${err.message}` });
   }
 });
 

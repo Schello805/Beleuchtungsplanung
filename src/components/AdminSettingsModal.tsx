@@ -73,12 +73,14 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({ isOpen, 
   const [isSaving, setIsSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const [testRecipient, setTestRecipient] = useState('');
+  const [smtpPassword, setSmtpPassword] = useState('');
   const [mailStatus, setMailStatus] = useState<string | null>(null);
   const [mailLog, setMailLog] = useState<Array<{ id: string; helper_name?: string; recipient: string; subject: string; status: string; created_at: string }>>([]);
 
   useEffect(() => {
     if (!isOpen) return;
     api.getSettings().then(settings => setValues({ ...defaults, ...settings }));
+    setSmtpPassword('');
     api.getMailLog().then(setMailLog).catch(() => setMailLog([]));
   }, [isOpen]);
 
@@ -87,6 +89,7 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({ isOpen, 
   const change = (name: string, value: string) => setValues(current => ({ ...current, [name]: value }));
   const persistValues = async () => {
     await Promise.all(Object.entries(values).map(([key, value]) => api.setSetting(key, value.trim())));
+    if (smtpPassword) await api.setSmtpPassword(smtpPassword);
     await onSaved();
   };
   const save = async () => {
@@ -186,8 +189,17 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({ isOpen, 
             <Field name="smtp_port" values={values} onChange={change} type="number" />
             <Field name="smtp_user" values={values} onChange={change} placeholder="benutzer" />
             <Field name="smtp_from" values={values} onChange={change} placeholder="lichternacht@example.de" type="email" />
+            <label style={{ display: 'grid', gap: 5, fontSize: 12, fontWeight: 700, color: 'var(--text-main)' }}>SMTP-Passwort
+              <input type="password" autoComplete="new-password" value={smtpPassword} onChange={event => setSmtpPassword(event.target.value)} placeholder="Nur bei Änderung eingeben" style={{ width: '100%', minHeight: 40, border: '1px solid var(--border-subtle)', borderRadius: 7, padding: '8px 10px', background: 'var(--bg-input)', color: 'var(--text-main)' }} />
+            </label>
+            <label style={{ display: 'grid', gap: 5, fontSize: 12, fontWeight: 700, color: 'var(--text-main)' }}>Test-E-Mail-Adresse
+              <input type="email" value={testRecipient} onChange={event => setTestRecipient(event.target.value)} placeholder="test@example.de" style={{ width: '100%', minHeight: 40, border: '1px solid var(--border-subtle)', borderRadius: 7, padding: '8px 10px', background: 'var(--bg-input)', color: 'var(--text-main)' }} />
+            </label>
           </div>
-          <div className="admin-security-note"><Copy size={15} /> SMTP-Passwort nicht hier eintragen: Es bleibt als <code>SMTP_PASSWORD</code> ausschließlich in <code>/etc/lichternacht/lichternacht.env</code> auf dem Server.</div>
+          <div className="admin-security-note"><Copy size={15} /> Das Passwort wird nicht in der Datenbank, im Export oder im Browser gespeichert. Es landet nur als <code>SMTP_PASSWORD</code> in <code>/etc/lichternacht/lichternacht.env</code> auf dem Server.</div>
+          <div className="admin-mail-actions" style={{ gridTemplateColumns: 'auto 1fr', marginTop: 12 }}>
+            <button type="button" onClick={sendTest} disabled={!testRecipient}><Mail size={15} /> Testmail senden</button>
+          </div>
         </section>
 
         <section className="admin-settings-section">
@@ -196,8 +208,6 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({ isOpen, 
           <label className="admin-template-field">Betreff<input value={values.mail_subject || ''} onChange={event => change('mail_subject', event.target.value)} /></label>
           <label className="admin-template-field">Nachricht<textarea rows={7} value={values.mail_body || ''} onChange={event => change('mail_body', event.target.value)} /></label>
           <div className="admin-mail-actions">
-            <input type="email" value={testRecipient} onChange={event => setTestRecipient(event.target.value)} placeholder="test@example.de" />
-            <button type="button" onClick={sendTest} disabled={!testRecipient}><Mail size={15} /> Testmail senden</button>
             <button type="button" className="admin-send-all" onClick={sendAll}><Send size={15} /> Alle Helfer informieren</button>
           </div>
           {mailStatus && <p className="admin-mail-status">{mailStatus}</p>}
