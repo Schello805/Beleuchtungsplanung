@@ -389,7 +389,7 @@ export const api = {
   },
 
   // OVERPASS GEOMETRY (with ss/ß and str. tolerance)
-  async getStreetGeometry(streetName: string): Promise<{ streetName: string; features: GeoJSON.Feature<GeoJSON.LineString>[]; totalLengthMeters: number }> {
+  async getStreetGeometry(streetName: string): Promise<{ streetName: string; features: GeoJSON.Feature<GeoJSON.LineString>[]; totalLengthMeters: number; junctionPoints?: Array<[number, number]> }> {
     // 1. Try backend API first
     try {
       const res = await fetch(`${API_BASE}/overpass/street-geometry?name=${encodeURIComponent(streetName)}`);

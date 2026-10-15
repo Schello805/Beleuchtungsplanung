@@ -33,6 +33,107 @@ export interface GeneratedSection {
   color: string;
   type: 'line' | 'point';
   geojson: GeoJSON.Feature<GeoJSON.LineString | GeoJSON.Point>;
+  lighting_side?: 'left' | 'right' | 'both';
+}
+
+type LightingSideSelection = 'left' | 'right' | 'both';
+
+const sideLabel = (label: string, side: 'left' | 'right') =>
+  `${label.replace(/\s*·\s*Seite [AB]$/u, '')} · Seite ${side === 'left' ? 'A' : 'B'}`;
+
+/**
+ * Road sides are separate work items from the very first preview.  This is
+ * deliberately done before saving, so the organiser can exclude a side while
+ * recording the street instead of correcting a combined street afterwards.
+ */
+export function createSideSections(
+  sections: GeneratedSection[],
+  selection: LightingSideSelection
+): GeneratedSection[] {
+  if (selection === 'both') {
+    return sections.flatMap(section => section.type !== 'line'
+      ? [section]
+      : (['left', 'right'] as const).map(side => ({
+        ...section,
+        id: `${section.id}-${side}`,
+        label: sideLabel(section.label, side),
+        lighting_side: side,
+      }))
+    );
+  }
+
+  return sections.map(section => section.type !== 'line' ? section : ({
+    ...section,
+    id: `${section.id}-${selection}`,
+    label: sideLabel(section.label, selection),
+    lighting_side: selection,
+  }));
+}
+
+/**
+ * Splits around a target length, preferring supplied junction points near that
+ * target.  The fallback remains an exact distance split, so every road can be
+ * recorded even when OSM has no usable crossing node.
+ */
+export function chunkLinePreferringJunctions(
+  lineFeature: GeoJSON.Feature<GeoJSON.LineString>,
+  streetName: string,
+  chunkMeters: number,
+  minMeters: number,
+  junctionPoints: Array<[number, number]> = [],
+  colorOffset: number = 0
+): GeneratedSection[] {
+  const cleaned = turf.cleanCoords(lineFeature) as GeoJSON.Feature<GeoJSON.LineString>;
+  const totalKm = turf.length(cleaned, { units: 'kilometers' });
+  const totalMeters = Math.round(totalKm * 1000);
+  if (totalMeters <= chunkMeters || junctionPoints.length === 0) {
+    return chunkLineWithFairness(cleaned, streetName, chunkMeters, minMeters, colorOffset);
+  }
+
+  const candidates = junctionPoints
+    .map(point => Number(turf.nearestPointOnLine(cleaned, turf.point(point), { units: 'kilometers' }).properties.location))
+    .filter(location => Number.isFinite(location) && location * 1000 >= minMeters && (totalKm - location) * 1000 >= minMeters)
+    .sort((a, b) => a - b)
+    .filter((location, index, all) => index === 0 || Math.abs(location - all[index - 1]) > 0.003);
+
+  if (!candidates.length) return chunkLineWithFairness(cleaned, streetName, chunkMeters, minMeters, colorOffset);
+
+  const boundaries: number[] = [];
+  let startKm = 0;
+  const targetKm = chunkMeters / 1000;
+  const toleranceKm = Math.min(targetKm * 0.45, 0.04);
+  while ((totalKm - startKm) * 1000 > chunkMeters + minMeters) {
+    const ideal = startKm + targetKm;
+    const usable = candidates.filter(candidate =>
+      candidate > startKm + minMeters / 1000 &&
+      (totalKm - candidate) * 1000 >= minMeters &&
+      Math.abs(candidate - ideal) <= toleranceKm
+    );
+    const boundary = usable.sort((a, b) => Math.abs(a - ideal) - Math.abs(b - ideal))[0] || ideal;
+    boundaries.push(boundary);
+    startKm = boundary;
+  }
+
+  const distances = [0, ...boundaries, totalKm];
+  const pieces = distances.slice(0, -1).map((start, index) =>
+    turf.lineSliceAlong(cleaned, start, distances[index + 1], { units: 'kilometers' })
+  );
+  const last = pieces.at(-1);
+  if (pieces.length > 1 && last && turf.length(last, { units: 'kilometers' }) * 1000 < minMeters) {
+    const before = pieces[pieces.length - 2];
+    pieces.splice(-2, 2, turf.lineString([...before.geometry.coordinates, ...last.geometry.coordinates.slice(1)]));
+  }
+
+  return pieces.map((geojson, index) => ({
+    id: `sec-${Date.now()}-${colorOffset + index + 1}`,
+    streetName,
+    sectionIndex: index + 1,
+    label: `${streetName} – Abschnitt ${index + 1}`,
+    lengthMeters: Math.max(1, Math.round(turf.length(geojson, { units: 'kilometers' }) * 1000)),
+    color: SECTION_COLORS[(colorOffset + index) % SECTION_COLORS.length],
+    type: 'line' as const,
+    geojson,
+  }));
 }
 
 /**
@@ -378,37 +479,51 @@ export function rechunkSectionsByTargetLength(
 
     const lineSections = secs.filter(sec => sec.type === 'line');
     const otherSections = secs.filter(sec => sec.type !== 'line');
-    const mergedLines = stitchConnectedLineSections(lineSections);
+    // Never join the two physical sides of a street.  Their existing
+    // endpoints (which often originate from junction cuts) become preferred
+    // break points when the plan is re-partitioned later.
+    const linesBySide = new Map<string, any[]>();
+    for (const section of lineSections) {
+      const side = section.lighting_side || 'both';
+      linesBySide.set(side, [...(linesBySide.get(side) || []), section]);
+    }
 
-    for (const sec of mergedLines) {
-      const source = sec.source;
-      const rawGeo = sec.geojson;
-      const totalLen = Math.round(turf.length(rawGeo, { units: 'kilometers' }) * 1000);
-      if (totalLen <= chunkMeters) {
-        streetChunks.push({
-          ...source,
-          geojson: rawGeo,
-          length_meters: totalLen,
-          lengthMeters: totalLen,
-          assigned_helper_id: null,
-          assigned_helper_name: null
-        });
-      } else {
-        const subChunks = chunkLineWithFairness(rawGeo, stName, chunkMeters, minMeters, globalColorIdx);
-        for (const sub of subChunks) {
+    for (const sideSections of linesBySide.values()) {
+      const mergedLines = stitchConnectedLineSections(sideSections);
+      const preferredPoints = sideSections.flatMap(section => {
+        const coords = (typeof section.geojson === 'string' ? JSON.parse(section.geojson) : section.geojson).geometry.coordinates as [number, number][];
+        return coords.length > 1 ? [coords[0], coords[coords.length - 1]] : [];
+      });
+      for (const sec of mergedLines) {
+        const source = sec.source;
+        const rawGeo = sec.geojson;
+        const totalLen = Math.round(turf.length(rawGeo, { units: 'kilometers' }) * 1000);
+        if (totalLen <= chunkMeters) {
           streetChunks.push({
             ...source,
-            id: sub.id,
-            street_name: stName,
-            label: sub.label,
-            length_meters: sub.lengthMeters,
-            lengthMeters: sub.lengthMeters,
-            color: sub.color,
-            type: 'line',
-            geojson: sub.geojson,
+            geojson: rawGeo,
+            length_meters: totalLen,
+            lengthMeters: totalLen,
             assigned_helper_id: null,
             assigned_helper_name: null
           });
+        } else {
+          const subChunks = chunkLinePreferringJunctions(rawGeo, stName, chunkMeters, minMeters, preferredPoints, globalColorIdx);
+          for (const sub of subChunks) {
+            streetChunks.push({
+              ...source,
+              id: sub.id,
+              street_name: stName,
+              label: sub.label,
+              length_meters: sub.lengthMeters,
+              lengthMeters: sub.lengthMeters,
+              color: sub.color,
+              type: 'line',
+              geojson: sub.geojson,
+              assigned_helper_id: null,
+              assigned_helper_name: null
+            });
+          }
         }
       }
     }
@@ -424,11 +539,12 @@ export function rechunkSectionsByTargetLength(
       const isMulti = streetChunks.length > 1;
       const color = SECTION_COLORS[globalColorIdx % SECTION_COLORS.length];
       globalColorIdx++;
+      const sideSuffix = item.lighting_side === 'left' ? ' · Seite A' : item.lighting_side === 'right' ? ' · Seite B' : '';
       finalSections.push({
         ...item,
         street_name: stName,
         section_index: idx + 1,
-        label: isMulti ? `${stName} – Abschnitt ${idx + 1}` : `${stName} (Gesamt)`,
+        label: `${isMulti ? `${stName} – Abschnitt ${idx + 1}` : `${stName} (Gesamt)`}${sideSuffix}`,
         color
       });
     });

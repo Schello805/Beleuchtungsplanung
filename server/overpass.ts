@@ -273,6 +273,29 @@ function ptsClose(p1: [number, number], p2: [number, number], eps: number): bool
   return Math.abs(p1[0] - p2[0]) < eps && Math.abs(p1[1] - p2[1]) < eps;
 }
 
+const coordinateKey = (point: { lat: number; lon: number }) => `${point.lat.toFixed(6)},${point.lon.toFixed(6)}`;
+
+/** Finds nodes shared with a differently named street in the local OSM copy.
+ * These are genuine street junctions and are handed to the planner as preferred
+ * places to end a work section. */
+function getLocalJunctionPoints(targetWays: OsmWay[], targetName: string, allStreets: Record<string, OsmWay[]>): Array<[number, number]> {
+  const otherNodes = new Set<string>();
+  const targetNormalized = normalizeStreetName(targetName);
+  for (const [name, ways] of Object.entries(allStreets)) {
+    if (normalizeStreetName(name) === targetNormalized) continue;
+    for (const way of ways) for (const point of way.geometry || []) otherNodes.add(coordinateKey(point));
+  }
+
+  const junctions = new Map<string, [number, number]>();
+  for (const way of targetWays) {
+    for (const point of way.geometry || []) {
+      const key = coordinateKey(point);
+      if (otherNodes.has(key)) junctions.set(key, [point.lon, point.lat]);
+    }
+  }
+  return [...junctions.values()];
+}
+
 /**
  * Searches for a street by name with ultra-tolerant "ß" / "ss" / "str." matching.
  * Checks local Bechhofen database first for 0ms response, with live Overpass failover.
@@ -281,6 +304,7 @@ export async function getStreetGeometry(streetName: string): Promise<{
   streetName: string;
   features: GeoJSON.Feature<GeoJSON.LineString>[];
   totalLengthMeters: number;
+  junctionPoints: Array<[number, number]>;
 }> {
   const local = loadLocalStreets();
   const normalizedTarget = normalizeStreetName(streetName);
@@ -289,7 +313,7 @@ export async function getStreetGeometry(streetName: string): Promise<{
   if (local[streetName] && local[streetName].length > 0) {
     const features = stitchWaysToLines(local[streetName]);
     const totalLengthMeters = features.reduce((sum, f) => sum + Math.round(turf.length(f, { units: 'kilometers' }) * 1000), 0);
-    return { streetName, features, totalLengthMeters };
+    return { streetName, features, totalLengthMeters, junctionPoints: getLocalJunctionPoints(local[streetName], streetName, local) };
   }
 
   // 2. Try normalized match in local dataset
@@ -297,7 +321,7 @@ export async function getStreetGeometry(streetName: string): Promise<{
     if (normalizeStreetName(key) === normalizedTarget && ways.length > 0) {
       const features = stitchWaysToLines(ways);
       const totalLengthMeters = features.reduce((sum, f) => sum + Math.round(turf.length(f, { units: 'kilometers' }) * 1000), 0);
-      return { streetName: key, features, totalLengthMeters };
+      return { streetName: key, features, totalLengthMeters, junctionPoints: getLocalJunctionPoints(ways, key, local) };
     }
   }
 
@@ -334,6 +358,9 @@ out body geom;`;
   return {
     streetName: matchedName,
     features,
-    totalLengthMeters
+    totalLengthMeters,
+    // The live fallback only retrieves the requested road. It cannot reliably
+    // identify other road names, so regular length based cuts remain the safe fallback.
+    junctionPoints: []
   };
 }

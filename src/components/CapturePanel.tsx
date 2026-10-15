@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Scissors, MapPin, Search, Check, X, RefreshCw, AlertCircle, Compass, Layers, Users, Plus, Trash2, ListPlus, Route } from 'lucide-react';
 import { api } from '../utils/api';
-import { chunkLineWithFairness, createPointSection, type GeneratedSection } from '../utils/geo';
+import { chunkLineWithFairness, chunkLinePreferringJunctions, createPointSection, createSideSections, type GeneratedSection } from '../utils/geo';
 import * as turf from '@turf/turf';
 
 interface CapturePanelProps {
@@ -34,6 +34,7 @@ export const CapturePanel: React.FC<CapturePanelProps> = ({
   setSegmentPoints
 }) => {
   const [method, setMethod] = useState<'full_street' | 'batch' | 'segment' | 'custom_path' | 'point'>('full_street');
+  const [lightingSides, setLightingSides] = useState<'left' | 'right' | 'both'>('both');
   const [isCollapsed, setIsCollapsed] = useState<boolean>(false);
 
   // Capture uses stable, coarse defaults. Fair length limits are deliberately
@@ -178,7 +179,7 @@ export const CapturePanel: React.FC<CapturePanelProps> = ({
 
     try {
       // 1. Fetch geometry for all selected streets
-      const streetDataList: Array<{ name: string; features: GeoJSON.Feature<GeoJSON.LineString>[]; totalMeters: number }> = [];
+      const streetDataList: Array<{ name: string; features: GeoJSON.Feature<GeoJSON.LineString>[]; totalMeters: number; junctionPoints: Array<[number, number]> }> = [];
       const failedStreets: string[] = [];
 
       for (const stName of batchStreetList) {
@@ -188,7 +189,8 @@ export const CapturePanel: React.FC<CapturePanelProps> = ({
             streetDataList.push({
               name: res.streetName,
               features: res.features,
-              totalMeters: res.totalLengthMeters
+              totalMeters: res.totalLengthMeters,
+              junctionPoints: res.junctionPoints || []
             });
           } else {
             failedStreets.push(stName);
@@ -240,7 +242,7 @@ export const CapturePanel: React.FC<CapturePanelProps> = ({
           // Standard street chunking with tail fairness
           streetData.features.forEach((feat, branchIdx) => {
             const branchLabel = streetData.features.length > 1 ? `${streetData.name} (Teil ${branchIdx + 1})` : streetData.name;
-            const branchSections = chunkLineWithFairness(feat, branchLabel, effectiveChunk, effectiveMin, colorOffset);
+            const branchSections = chunkLinePreferringJunctions(feat, branchLabel, effectiveChunk, effectiveMin, streetData.junctionPoints, colorOffset);
 
             branchSections.forEach(s => {
               s.streetName = streetData.name;
@@ -264,7 +266,7 @@ export const CapturePanel: React.FC<CapturePanelProps> = ({
         `(${shortStreetsCount} kurze Straßen blieben kompakt als 1 eigener Abschnitt erhalten).`
       );
 
-      onPreviewGenerated(allGenerated, {
+      onPreviewGenerated(createSideSections(allGenerated, lightingSides), {
         name: `Paket (${batchStreetList.length} Straßen, ${participantCount} Helfer)`,
         method: 'batch',
         chunkLength: effectiveChunk,
@@ -303,7 +305,7 @@ export const CapturePanel: React.FC<CapturePanelProps> = ({
 
       data.features.forEach((feat, branchIdx) => {
         const branchLabel = data.features.length > 1 ? `${data.streetName} (Teil ${branchIdx + 1})` : data.streetName;
-        const branchSections = chunkLineWithFairness(feat, branchLabel, chunkLength, minLength, colorOffset);
+        const branchSections = chunkLinePreferringJunctions(feat, branchLabel, chunkLength, minLength, data.junctionPoints || [], colorOffset);
         
         // Check if fairness merge occurred
         const rawLen = Math.round(turf.length(feat, { units: 'kilometers' }) * 1000);
@@ -321,7 +323,7 @@ export const CapturePanel: React.FC<CapturePanelProps> = ({
       }
 
       const totalLen = allGenerated.reduce((sum, s) => sum + s.lengthMeters, 0);
-      onPreviewGenerated(allGenerated, {
+      onPreviewGenerated(createSideSections(allGenerated, lightingSides), {
         name: data.streetName,
         method: 'full_street',
         chunkLength,
@@ -589,6 +591,30 @@ export const CapturePanel: React.FC<CapturePanelProps> = ({
           Punkt
         </button>
       </div>
+
+      {(method === 'full_street' || method === 'batch') && (
+        <div style={{ marginBottom: 14, padding: '10px 12px', border: '1px solid var(--border-subtle)', borderRadius: 'var(--radius-sm)', background: 'var(--bg-secondary)' }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-main)', marginBottom: 7 }}>Welche Straßenseite wird geschmückt?</div>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 5 }}>
+            {([
+              ['left', 'Seite A', 'links in Kartenrichtung'],
+              ['both', 'Beide Seiten', 'zwei getrennte Bereiche'],
+              ['right', 'Seite B', 'rechts in Kartenrichtung']
+            ] as const).map(([value, title, description]) => (
+              <button
+                type="button"
+                key={value}
+                onClick={() => setLightingSides(value)}
+                style={{ padding: '7px 4px', borderRadius: 5, border: lightingSides === value ? '1px solid var(--accent-gold)' : '1px solid var(--border-subtle)', background: lightingSides === value ? 'var(--accent-gold-glow)' : 'var(--bg-input)', color: lightingSides === value ? 'var(--accent-gold)' : 'var(--text-main)', cursor: 'pointer', textAlign: 'center' }}
+              >
+                <span style={{ display: 'block', fontSize: 11, fontWeight: 800 }}>{title}</span>
+                <span style={{ display: 'block', marginTop: 2, fontSize: 9, color: 'var(--text-muted)' }}>{description}</span>
+              </button>
+            ))}
+          </div>
+          <div style={{ fontSize: 10, color: 'var(--text-muted)', lineHeight: 1.35, marginTop: 7 }}>Bei „Beide Seiten“ werden A und B sofort als getrennte, unabhängig zuweisbare Abschnitte angelegt.</div>
+        </div>
+      )}
 
       {/* METHOD 1: Ganze Straße */}
       {method === 'full_street' && (
