@@ -1012,8 +1012,17 @@ export const PrintView: React.FC<PrintViewProps> = ({
 
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 142px', gap: 14, marginBottom: 14, alignItems: 'start' }}>
                       <div>
-                        <div style={{ fontSize: 12, fontWeight: 800, color: '#0F172A', marginBottom: 6 }}>Kartenausschnitt deines Bereichs</div>
-                        <HelperAreaMap sections={group.sections} color={group.helper.color} height={320} />
+                        <div style={{ fontSize: 12, fontWeight: 800, color: '#0F172A', marginBottom: 6 }}>Kartenausschnitte deines Bereichs</div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+                          <div>
+                            <div style={{ fontSize: 9, fontWeight: 800, color: '#475569', marginBottom: 3 }}>🗺️ Karte</div>
+                            <HelperAreaMap sections={group.sections} color={group.helper.color} height={150} mapStyle="street" />
+                          </div>
+                          <div>
+                            <div style={{ fontSize: 9, fontWeight: 800, color: '#475569', marginBottom: 3 }}>🛰️ Satellit</div>
+                            <HelperAreaMap sections={group.sections} color={group.helper.color} height={150} mapStyle="satellite" />
+                          </div>
+                        </div>
                         <div style={{ fontSize: 10, color: '#475569', marginTop: 5, lineHeight: 1.4 }}><b>A</b> markiert den Start und <b>B</b> das Ende. Folge der farbigen Linie genau von A nach B.</div>
                       </div>
                       <div style={{ border: '1px solid #CBD5E1', borderRadius: 7, padding: 8, textAlign: 'center', background: '#F8FAFC' }}>
