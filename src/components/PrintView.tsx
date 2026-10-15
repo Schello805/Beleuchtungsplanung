@@ -440,9 +440,12 @@ export const PrintView: React.FC<PrintViewProps> = ({
             padding: 0 !important;
           }
           .helper-info-page {
-            display: grid !important;
-            grid-template-rows: repeat(2, 132mm) !important;
+            display: flex !important;
+            flex-direction: column !important;
             gap: 8mm !important;
+            height: 272mm !important;
+            break-inside: avoid !important;
+            page-break-inside: avoid !important;
             break-after: page !important;
             page-break-after: always !important;
           }
@@ -451,13 +454,12 @@ export const PrintView: React.FC<PrintViewProps> = ({
             page-break-after: auto !important;
           }
           .helper-info-sheet {
-            break-after: page !important;
-            page-break-after: always !important;
+            flex: 0 0 132mm !important;
             height: 132mm !important;
             min-height: 0 !important;
-          }
-          .helper-info-page .helper-info-sheet {
+            break-before: auto !important;
             break-after: auto !important;
+            page-break-before: auto !important;
             page-break-after: auto !important;
           }
         }
