@@ -10,7 +10,7 @@ const MapComponent = lazy(() => import('./components/MapComponent').then(module 
 const PrintView = lazy(() => import('./components/PrintView').then(module => ({ default: module.PrintView })));
 const ExcelImportModal = lazy(() => import('./components/ExcelImportModal').then(module => ({ default: module.ExcelImportModal })));
 import { api, type Section, type Helper, type Street, type AuthUser, type PublicHelperInfo } from './utils/api';
-import { splitSectionInHalf, type GeneratedSection } from './utils/geo';
+import { splitSectionAtPoint, splitSectionInHalf, type GeneratedSection } from './utils/geo';
 import { Check, X, UserRound, ChevronDown, Menu, Wrench } from 'lucide-react';
 import * as turf from '@turf/turf';
 
@@ -52,6 +52,7 @@ export const App: React.FC = () => {
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [focusedPreviewId, setFocusedPreviewId] = useState<string | null>(null);
   const [extensionSectionId, setExtensionSectionId] = useState<string | null>(null);
+  const [splitSectionId, setSplitSectionId] = useState<string | null>(null);
 
   // Theme & Map Layer (Synced directly with SQLite DB)
   const [theme, setTheme] = useState<'dark' | 'light'>('dark');
@@ -325,6 +326,28 @@ export const App: React.FC = () => {
     } catch (error) {
       console.error('Abschnitt verlängern fehlgeschlagen:', error);
       alert('Der Abschnitt konnte nicht verlängert werden. Bitte versuche es erneut.');
+    }
+  };
+
+  const handleSplitSectionAtPoint = async (targetLat: number, targetLon: number) => {
+    const sectionId = splitSectionId;
+    const section = sections.find(item => item.id === sectionId);
+    setSplitSectionId(null);
+    if (!sectionId || !section) return;
+
+    const parts = splitSectionAtPoint(section, [targetLon, targetLat], sections.length);
+    if (!parts) {
+      alert('Bitte klicke mindestens 5 m von Anfang und Ende des Abschnitts entfernt.');
+      return;
+    }
+
+    try {
+      await api.replaceAllSections(sections.flatMap(item => item.id === sectionId ? parts : [item]));
+      setSelectedSectionId(parts[0].id);
+      await loadData();
+    } catch (error) {
+      console.error('Abschnitt an Kartenpunkt teilen fehlgeschlagen:', error);
+      alert('Der Abschnitt konnte nicht geteilt werden. Bitte versuche es erneut.');
     }
   };
 
@@ -983,9 +1006,13 @@ export const App: React.FC = () => {
             onMergeSections={handleMergeSections}
             onDeleteSection={handleDeleteSection}
             extensionSectionId={extensionSectionId}
-            onStartExtension={(sectionId) => { setSelectedSectionId(sectionId); setExtensionSectionId(sectionId); }}
+            onStartExtension={(sectionId) => { setSelectedSectionId(sectionId); setSplitSectionId(null); setExtensionSectionId(sectionId); }}
             onExtensionTarget={handleExtendSection}
             onCancelExtension={() => setExtensionSectionId(null)}
+            splitSectionId={splitSectionId}
+            onStartSplit={(sectionId) => { setSelectedSectionId(sectionId); setExtensionSectionId(null); setSplitSectionId(sectionId); }}
+            onSplitTarget={handleSplitSectionAtPoint}
+            onCancelSplit={() => setSplitSectionId(null)}
             activeStampHelperId={activeStampHelperId}
             onSelectStampHelper={setActiveStampHelperId}
             autoAdvanceStamp={autoAdvanceStamp}

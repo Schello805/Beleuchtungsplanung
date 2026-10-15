@@ -186,6 +186,51 @@ export function splitSectionInHalf(section: any, colorOffset: number = 0): [any,
   return [part1, part2];
 }
 
+/** Splits a LineString at the point selected on the map. The selected point is
+ * snapped to the road geometry, so it is safe to click slightly beside it. */
+export function splitSectionAtPoint(
+  section: any,
+  target: [number, number],
+  colorOffset: number = 0
+): [any, any] | null {
+  if (section.type !== 'line') return null;
+  const rawGeo = typeof section.geojson === 'string' ? JSON.parse(section.geojson) : section.geojson;
+  if (rawGeo?.geometry?.type !== 'LineString') return null;
+
+  const totalKm = turf.length(rawGeo, { units: 'kilometers' });
+  const nearest = turf.nearestPointOnLine(rawGeo, turf.point(target), { units: 'kilometers' });
+  const splitKm = Number(nearest.properties.location);
+  const minPartKm = 0.005;
+  if (!Number.isFinite(splitKm) || totalKm < minPartKm * 2 || splitKm < minPartKm || totalKm - splitKm < minPartKm) return null;
+
+  const firstGeo = turf.lineSliceAlong(rawGeo, 0, splitKm, { units: 'kilometers' });
+  const secondGeo = turf.lineSliceAlong(rawGeo, splitKm, totalKm, { units: 'kilometers' });
+  const firstLength = Math.max(1, Math.round(turf.length(firstGeo, { units: 'kilometers' }) * 1000));
+  const secondLength = Math.max(1, Math.round(turf.length(secondGeo, { units: 'kilometers' }) * 1000));
+  const baseLabel = section.label.replace(/\s*\(Teil [12]\)$/u, '');
+
+  return [
+    {
+      ...section,
+      id: `sec-split-${Date.now()}-${Math.random().toString(36).slice(2, 7)}-1`,
+      label: `${baseLabel} (Teil 1)`,
+      length_meters: firstLength,
+      lengthMeters: firstLength,
+      color: section.color || SECTION_COLORS[colorOffset % SECTION_COLORS.length],
+      geojson: firstGeo,
+    },
+    {
+      ...section,
+      id: `sec-split-${Date.now()}-${Math.random().toString(36).slice(2, 7)}-2`,
+      label: `${baseLabel} (Teil 2)`,
+      length_meters: secondLength,
+      lengthMeters: secondLength,
+      color: section.color || SECTION_COLORS[(colorOffset + 1) % SECTION_COLORS.length],
+      geojson: secondGeo,
+    },
+  ];
+}
+
 /**
  * Fairly subdivides a collection of sections so that there are exactly (or at least) `targetCount` sections.
  * Uses Longest-Edge-Bisection: repeatedly splits the longest remaining section in half.

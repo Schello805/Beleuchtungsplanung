@@ -20,6 +20,10 @@ interface MapComponentProps {
   onStartExtension?: (sectionId: string) => void;
   onExtensionTarget?: (lat: number, lon: number) => void;
   onCancelExtension?: () => void;
+  splitSectionId?: string | null;
+  onStartSplit?: (sectionId: string) => void;
+  onSplitTarget?: (lat: number, lon: number) => void;
+  onCancelSplit?: () => void;
   // Stamp props (Direktes Zuweisen per Klick auf der Karte)
   activeStampHelperId?: string | null;
   onSelectStampHelper?: (id: string | null) => void;
@@ -88,6 +92,10 @@ export const MapComponent: React.FC<MapComponentProps> = ({
   onStartExtension,
   onExtensionTarget,
   onCancelExtension,
+  splitSectionId,
+  onStartSplit,
+  onSplitTarget,
+  onCancelSplit,
   activeStampHelperId,
   onSelectStampHelper,
   autoAdvanceStamp,
@@ -284,7 +292,9 @@ export const MapComponent: React.FC<MapComponentProps> = ({
     if (!map) return;
 
     const handleClick = (e: L.LeafletMouseEvent) => {
-      if (extensionSectionId) {
+      if (splitSectionId) {
+        onSplitTarget?.(e.latlng.lat, e.latlng.lng);
+      } else if (extensionSectionId) {
         onExtensionTarget?.(e.latlng.lat, e.latlng.lng);
       } else if (captureMode !== 'none') {
         onMapClick(e.latlng.lat, e.latlng.lng);
@@ -295,13 +305,13 @@ export const MapComponent: React.FC<MapComponentProps> = ({
     return () => {
       map.off('click', handleClick);
     };
-  }, [captureMode, extensionSectionId, onMapClick, onExtensionTarget]);
+  }, [captureMode, extensionSectionId, splitSectionId, onMapClick, onExtensionTarget, onSplitTarget]);
 
   // Cursor style
   useEffect(() => {
     if (!mapContainerRef.current) return;
-    mapContainerRef.current.style.cursor = captureMode !== 'none' || extensionSectionId ? 'crosshair' : 'grab';
-  }, [captureMode, extensionSectionId]);
+    mapContainerRef.current.style.cursor = captureMode !== 'none' || extensionSectionId || splitSectionId ? 'crosshair' : 'grab';
+  }, [captureMode, extensionSectionId, splitSectionId]);
 
   // Render Interactive Capture Points
   useEffect(() => {
@@ -659,6 +669,7 @@ export const MapComponent: React.FC<MapComponentProps> = ({
               </button>
             ` : '<span></span>'}
             <div style="display:flex; gap:5px;">
+              <button id="popup-split-btn-${sec.id}" style="background:#FEF3C7; color:#92400E; border:none; padding:4px 8px; border-radius:4px; font-size:11px; cursor:pointer; font-weight:700;">Hier teilen</button>
               <button id="popup-extend-btn-${sec.id}" style="background:#EDE9FE; color:#6D28D9; border:none; padding:4px 8px; border-radius:4px; font-size:11px; cursor:pointer; font-weight:700;">Verlängern</button>
               <button id="popup-delete-btn-${sec.id}" style="background:#FEE2E2; color:#DC2626; border:none; padding:4px 8px; border-radius:4px; font-size:11px; cursor:pointer; font-weight:600;">Abschnitt löschen</button>
             </div>
@@ -705,6 +716,14 @@ export const MapComponent: React.FC<MapComponentProps> = ({
           if (lightingSideSelect) {
             lightingSideSelect.onchange = (e) => {
               onUpdateSectionLightingSide(sec.id, (e.target as HTMLSelectElement).value as 'both' | 'left' | 'right');
+              map.closePopup();
+            };
+          }
+
+          const splitButton = document.getElementById(`popup-split-btn-${sec.id}`);
+          if (splitButton) {
+            splitButton.onclick = () => {
+              onStartSplit?.(sec.id);
               map.closePopup();
             };
           }
@@ -820,7 +839,7 @@ export const MapComponent: React.FC<MapComponentProps> = ({
         });
       }
     });
-  }, [sections, selectedSectionId, helpers, activeHelperId, onSelectSection, onUpdateSectionHelper, onDeleteSection, onStartExtension]);
+  }, [sections, selectedSectionId, helpers, activeHelperId, onSelectSection, onUpdateSectionHelper, onDeleteSection, onStartExtension, onStartSplit]);
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
@@ -1097,7 +1116,7 @@ export const MapComponent: React.FC<MapComponentProps> = ({
       )}
 
       {/* Crosshair instruction overlay */}
-      {(captureMode !== 'none' || extensionSectionId) && (
+      {(captureMode !== 'none' || extensionSectionId || splitSectionId) && (
         <div
           style={{
             position: 'absolute',
@@ -1136,6 +1155,12 @@ export const MapComponent: React.FC<MapComponentProps> = ({
             <>
               <span>Klicke auf die <b>nächste Station oder den Zielpunkt</b> – der Abschnitt wird dorthin verlängert.</span>
               <button type="button" onClick={onCancelExtension} style={{ border: '1px solid rgba(255,255,255,.35)', borderRadius: 14, padding: '3px 8px', background: 'transparent', color: '#fff', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>Abbrechen</button>
+            </>
+          )}
+          {splitSectionId && (
+            <>
+              <span>Klicke auf die <b>gewünschte Teilstelle</b> des Abschnitts – der Punkt wird exakt auf die Straßenlinie gesetzt.</span>
+              <button type="button" onClick={onCancelSplit} style={{ border: '1px solid rgba(255,255,255,.35)', borderRadius: 14, padding: '3px 8px', background: 'transparent', color: '#fff', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>Abbrechen</button>
             </>
           )}
         </div>
