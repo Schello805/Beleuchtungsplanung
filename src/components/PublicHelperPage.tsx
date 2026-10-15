@@ -39,22 +39,34 @@ const sectionLines = (section: PublicHelperInfo['sections'][number]) => {
   }));
 };
 
+const publicTileConfig = (style: 'street' | 'satellite') => style === 'satellite'
+  ? {
+      url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}',
+      attribution: '© Esri, Maxar, Earthstar Geographics',
+      maxZoom: 19
+    }
+  : {
+      url: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+      attribution: '© OpenStreetMap-Mitwirkende',
+      maxZoom: 19
+    };
+
 const PublicAreaMap: React.FC<{ info: PublicHelperInfo }> = ({ info }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
+  const tileLayerRef = useRef<L.TileLayer | null>(null);
   const locationLayerRef = useRef<L.LayerGroup | null>(null);
   const areaBoundsRef = useRef<L.LatLngBounds | null>(null);
   const [locationMessage, setLocationMessage] = useState('');
+  const [mapStyle, setMapStyle] = useState<'street' | 'satellite'>('street');
 
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
     const map = L.map(container, { zoomControl: true, attributionControl: true, scrollWheelZoom: true });
     mapRef.current = map;
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      maxZoom: 19,
-      attribution: '© OpenStreetMap-Mitwirkende'
-    }).addTo(map);
+    const tiles = publicTileConfig('street');
+    tileLayerRef.current = L.tileLayer(tiles.url, { maxZoom: tiles.maxZoom, attribution: tiles.attribution }).addTo(map);
     const group = L.featureGroup().addTo(map);
     const endpointCount = info.sections.filter(section => section.geojson?.geometry?.type !== 'Point').length;
 
@@ -91,10 +103,20 @@ const PublicAreaMap: React.FC<{ info: PublicHelperInfo }> = ({ info }) => {
     return () => {
       map.remove();
       mapRef.current = null;
+      tileLayerRef.current = null;
       locationLayerRef.current = null;
       areaBoundsRef.current = null;
     };
   }, [info]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map) return;
+    const tiles = publicTileConfig(mapStyle);
+    tileLayerRef.current?.removeFrom(map);
+    tileLayerRef.current = L.tileLayer(tiles.url, { maxZoom: tiles.maxZoom, attribution: tiles.attribution }).addTo(map);
+    tileLayerRef.current.bringToBack();
+  }, [mapStyle]);
 
   const locateMe = () => {
     if (!navigator.geolocation) {
@@ -131,6 +153,7 @@ const PublicAreaMap: React.FC<{ info: PublicHelperInfo }> = ({ info }) => {
 
   return <section className="public-helper-map-panel" aria-label="Interaktive Karte deines Bereichs">
     <div className="public-helper-map-heading"><div><b>Dein Bereich auf der Karte</b><small>Zoomen, verschieben und der orangefarbenen Linie von A nach B folgen.</small></div><div className="public-helper-map-actions"><button type="button" onClick={locateMe}><Crosshair size={17} /> Mein Standort</button><button type="button" onClick={focusArea}><Route size={17} /> Zum Bereich</button></div></div>
+    <div className="public-helper-map-style-switch" aria-label="Kartenansicht wählen"><button type="button" className={mapStyle === 'street' ? 'active' : ''} onClick={() => setMapStyle('street')}>🗺️ Karte</button><button type="button" className={mapStyle === 'satellite' ? 'active' : ''} onClick={() => setMapStyle('satellite')}>🛰️ Satellit</button><span>Gleicher Bereich · gleiche A/B-Punkte</span></div>
     <div ref={containerRef} className="public-helper-interactive-map" />
     <div className="public-helper-map-legend"><span><b className="legend-line" /> Dein Bereich</span><span><b className="legend-start">A</b> Start</span><span><b className="legend-end">B</b> Ende</span></div>
     {locationMessage && <p className="public-helper-location-status" role="status">{locationMessage}</p>}
