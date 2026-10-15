@@ -37,6 +37,7 @@ export const CapturePanel: React.FC<CapturePanelProps> = ({
 }) => {
   const [method, setMethod] = useState<'full_street' | 'batch' | 'segment' | 'custom_path' | 'point'>('full_street');
   const [lightingSides, setLightingSides] = useState<'left' | 'right' | 'both'>('both');
+  const [latestStreetPreview, setLatestStreetPreview] = useState<{ name: string; method: string; chunkLength: number; minLength: number; totalLength: number } | null>(null);
   const [isCollapsed, setIsCollapsed] = useState<boolean>(false);
 
   // Capture uses stable, coarse defaults. Fair length limits are deliberately
@@ -122,6 +123,7 @@ export const CapturePanel: React.FC<CapturePanelProps> = ({
     setErrorMessage(null);
     setFairnessNotice(null);
     onClearPreview();
+    setLatestStreetPreview(null);
 
     if (newMethod === 'segment') {
       setCaptureMode('segment');
@@ -136,6 +138,32 @@ export const CapturePanel: React.FC<CapturePanelProps> = ({
       setCaptureMode('none');
       setSegmentPoints([]);
     }
+  };
+
+  const showStreetPreview = (sections: GeneratedSection[], info: { name: string; method: string; chunkLength: number; minLength: number; totalLength: number }) => {
+    setLatestStreetPreview(info);
+    onPreviewGenerated(createSideSections(sections, lightingSides), info);
+  };
+
+  const handleLightingSideChange = (selection: 'left' | 'right' | 'both') => {
+    setLightingSides(selection);
+    if (!latestStreetPreview || previewSections.length === 0) return;
+
+    // The selector must also alter an already loaded preview. Normalize the
+    // existing A/B variants first, then recreate exactly the requested side(s).
+    const originals = new Map<string, GeneratedSection>();
+    previewSections.forEach(section => {
+      const originalId = section.id.replace(/-(left|right)$/u, '');
+      if (!originals.has(originalId)) {
+        originals.set(originalId, {
+          ...section,
+          id: originalId,
+          label: section.label.replace(/\s*·\s*Seite [AB]$/u, ''),
+          lighting_side: undefined
+        });
+      }
+    });
+    onPreviewGenerated(createSideSections([...originals.values()], selection), latestStreetPreview);
   };
 
   // Add street to batch list
@@ -268,7 +296,7 @@ export const CapturePanel: React.FC<CapturePanelProps> = ({
         `(${shortStreetsCount} kurze Straßen blieben kompakt als 1 eigener Abschnitt erhalten).`
       );
 
-      onPreviewGenerated(createSideSections(allGenerated, lightingSides), {
+      showStreetPreview(allGenerated, {
         name: `Paket (${batchStreetList.length} Straßen, ${participantCount} Helfer)`,
         method: 'batch',
         chunkLength: effectiveChunk,
@@ -325,7 +353,7 @@ export const CapturePanel: React.FC<CapturePanelProps> = ({
       }
 
       const totalLen = allGenerated.reduce((sum, s) => sum + s.lengthMeters, 0);
-      onPreviewGenerated(createSideSections(allGenerated, lightingSides), {
+      showStreetPreview(allGenerated, {
         name: data.streetName,
         method: 'full_street',
         chunkLength,
@@ -606,7 +634,7 @@ export const CapturePanel: React.FC<CapturePanelProps> = ({
               <button
                 type="button"
                 key={value}
-                onClick={() => setLightingSides(value)}
+                onClick={() => handleLightingSideChange(value)}
                 style={{ padding: '7px 4px', borderRadius: 5, border: lightingSides === value ? '1px solid var(--accent-gold)' : '1px solid var(--border-subtle)', background: lightingSides === value ? 'var(--accent-gold-glow)' : 'var(--bg-input)', color: lightingSides === value ? 'var(--accent-gold)' : 'var(--text-main)', cursor: 'pointer', textAlign: 'center' }}
               >
                 <span style={{ display: 'block', fontSize: 11, fontWeight: 800 }}>{title}</span>
