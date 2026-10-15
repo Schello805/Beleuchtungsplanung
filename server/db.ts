@@ -188,6 +188,55 @@ export interface SectionRecord {
   created_at: string;
 }
 
+const sectionSideLabel = (label: string, side: 'left' | 'right') =>
+  `${label.replace(/\s*·\s*Seite [AB]$/u, '')} · Seite ${side === 'left' ? 'A' : 'B'}`;
+
+/** A road side is an independently assignable piece of work.  Older data
+ * stored both sides in a single row; new and imported line sections are
+ * expanded here so every write path follows the same model. */
+const expandLineSectionsBySide = <T extends Omit<SectionRecord, 'created_at'>>(sections: T[]): T[] =>
+  sections.flatMap(section => {
+    if (section.type !== 'line' || (section.lighting_side && section.lighting_side !== 'both')) return [section];
+    const base = { ...section, lighting_side: 'left' as const, label: sectionSideLabel(section.label, 'left') } as T;
+    const opposite = {
+      ...section,
+      id: crypto.randomUUID(),
+      lighting_side: 'right' as const,
+      label: sectionSideLabel(section.label, 'right'),
+    } as T;
+    return [base, opposite];
+  });
+
+// Preserve the existing responsibility of older plans while turning every
+// previously combined road section into two independently assignable sides.
+// New assignments can then give A and B to different stations.
+const legacyCombinedSides = db.prepare(`SELECT * FROM sections
+  WHERE type = 'line' AND (lighting_side IS NULL OR lighting_side = 'both')`).all() as SectionRecord[];
+if (legacyCombinedSides.length) {
+  createBackup('before_split_street_sides');
+  db.exec('BEGIN TRANSACTION');
+  try {
+    const update = db.prepare('UPDATE sections SET lighting_side = ?, label = ? WHERE id = ?');
+    const insert = db.prepare(`INSERT INTO sections
+      (id, street_id, street_name, section_index, label, length_meters, color, type, lighting_side, geojson, assigned_helper_id, assigned_helper_name, notes, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`);
+    legacyCombinedSides.forEach(section => {
+      update.run('left', sectionSideLabel(section.label, 'left'), section.id);
+      insert.run(
+        crypto.randomUUID(), section.street_id || null, section.street_name, section.section_index,
+        sectionSideLabel(section.label, 'right'), section.length_meters, section.color, section.type,
+        'right', section.geojson, section.assigned_helper_id || null, section.assigned_helper_name || null,
+        section.notes || null, section.created_at
+      );
+    });
+    db.exec('COMMIT');
+    console.log(`[Migration] ${legacyCombinedSides.length} kombinierte Straßenabschnitte in Seite A und B aufgeteilt.`);
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
+}
+
 export type UserRole = 'admin' | 'planner' | 'viewer';
 export interface UserRecord {
   id: string;
@@ -410,7 +459,7 @@ export const dbService = {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `);
 
-    for (const sec of sections) {
+    for (const sec of expandLineSectionsBySide(sections)) {
       insertSec.run(
         sec.id,
         street.id,
@@ -457,7 +506,7 @@ export const dbService = {
           createdAt
         );
 
-        for (const sec of item.sections) {
+        for (const sec of expandLineSectionsBySide(item.sections)) {
           insertSec.run(
             sec.id,
             item.street.id,
@@ -496,7 +545,7 @@ export const dbService = {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
-      for (const sec of sections) {
+      for (const sec of expandLineSectionsBySide(sections)) {
         insertSec.run(
           sec.id,
           sec.street_id || null,

@@ -72,6 +72,48 @@ function lineFeatures(section: Section): GeoJSON.Feature<GeoJSON.LineString>[] {
   return [];
 }
 
+/** Returns the physical side on which a station lies, relative to the saved
+ * A → B direction of a road section.  This keeps two opposite sides of the
+ * same road independently assignable. */
+function stationSideOfSection(section: Section, helper: Helper): 'left' | 'right' | undefined {
+  const longitude = Number(helper.longitude);
+  const latitude = Number(helper.latitude);
+  if (!Number.isFinite(longitude) || !Number.isFinite(latitude)) return undefined;
+
+  let closest: { distanceSquared: number; cross: number } | undefined;
+  for (const feature of lineFeatures(section)) {
+    const coordinates = feature.geometry.coordinates;
+    for (let index = 0; index < coordinates.length - 1; index++) {
+      const [startLon, startLat] = coordinates[index];
+      const [endLon, endLat] = coordinates[index + 1];
+      const longitudeScale = Math.cos(((startLat + endLat + latitude) / 3) * Math.PI / 180);
+      const dx = (endLon - startLon) * longitudeScale;
+      const dy = endLat - startLat;
+      const px = (longitude - startLon) * longitudeScale;
+      const py = latitude - startLat;
+      const denominator = dx * dx + dy * dy;
+      if (denominator === 0) continue;
+      const position = Math.max(0, Math.min(1, (px * dx + py * dy) / denominator));
+      const nearestX = dx * position;
+      const nearestY = dy * position;
+      const distanceSquared = (px - nearestX) ** 2 + (py - nearestY) ** 2;
+      const cross = dx * py - dy * px;
+      if (!closest || distanceSquared < closest.distanceSquared) closest = { distanceSquared, cross };
+    }
+  }
+  if (!closest || Math.abs(closest.cross) < 1e-12) return undefined;
+  return closest.cross > 0 ? 'left' : 'right';
+}
+
+function stationMatchesSectionSide(section: Section, helper: Helper): boolean {
+  const side = section.lighting_side;
+  if (side !== 'left' && side !== 'right') return true;
+  const stationSide = stationSideOfSection(section, helper);
+  // A station exactly on the road remains eligible instead of leaving work
+  // open because the source coordinate is a few centimetres imprecise.
+  return !stationSide || stationSide === side;
+}
+
 /** True when two section geometries touch at an endpoint or road junction. */
 function sectionsConnect(first: Section, second: Section): boolean {
   const firstLines = lineFeatures(first);
@@ -367,7 +409,9 @@ export function calculateStationFirstAssignment(
   // Pair the closest station/section combinations first. A section can only
   // be reserved once, so two neighbouring stands never receive the same road.
   const nearbyPairs = locatedHelpers.filter(helper => totals.get(helper.id)!.count === 0).flatMap(helper =>
-    sectionsToAssign.map(section => ({ helper, section, distance: distanceToSection(section, helper) }))
+    sectionsToAssign
+      .filter(section => stationMatchesSectionSide(section, helper))
+      .map(section => ({ helper, section, distance: distanceToSection(section, helper) }))
   ).sort((a, b) => a.distance - b.distance);
 
   for (const { helper, section } of nearbyPairs) {

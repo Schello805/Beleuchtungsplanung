@@ -52,10 +52,10 @@ function flattenLeafletLineCoordinates(coords: L.LatLngExpression[] | L.LatLngEx
 }
 
 const lightingSideLabel = (side?: Section['lighting_side']) => side === 'left'
-  ? 'Nur linke Straßenseite (Richtung A → B)'
+  ? 'Straßenseite A (links in Richtung A → B)'
   : side === 'right'
-    ? 'Nur rechte Straßenseite (Richtung A → B)'
-    : 'Beide Straßenseiten';
+    ? 'Straßenseite B (rechts in Richtung A → B)'
+    : 'Beide Straßenseiten (Altbestand)';
 
 function toLightingDisplayLines(section: Section): L.LatLngExpression[][] {
   const geometry = section.geojson?.geometry;
@@ -589,7 +589,7 @@ export const MapComponent: React.FC<MapComponentProps> = ({
         const quickPills = (freeHelpers.length > 0 ? freeHelpers : helpers).slice(0, 4);
         const mergeCandidates = sec.geojson.geometry.type === 'LineString'
           ? sections.filter(candidate => {
-              if (candidate.id === sec.id || candidate.type !== 'line' || candidate.street_name !== sec.street_name || candidate.geojson.geometry.type !== 'LineString') return false;
+              if (candidate.id === sec.id || candidate.type !== 'line' || candidate.street_name !== sec.street_name || candidate.lighting_side !== sec.lighting_side || candidate.geojson.geometry.type !== 'LineString') return false;
               const firstEndpoints = [sec.geojson.geometry.coordinates[0], sec.geojson.geometry.coordinates.at(-1)!];
               const secondEndpoints = [candidate.geojson.geometry.coordinates[0], candidate.geojson.geometry.coordinates.at(-1)!];
               return Math.min(...firstEndpoints.flatMap(first => secondEndpoints.map(second => turf.distance(turf.point(first), turf.point(second), { units: 'meters' })))) <= 25;
@@ -649,11 +649,11 @@ export const MapComponent: React.FC<MapComponentProps> = ({
           <div style="margin-bottom: 10px;">
             <label style="font-size:11px; font-weight:600; color:#334155; display:block; margin-bottom:3px;">Beleuchtung:</label>
             <select id="popup-lighting-side-${sec.id}" style="width:100%; padding:5px 8px; border-radius:6px; border:1px solid #CBD5E1; font-size:12px; background:#F8FAFC;">
-              <option value="both" ${(sec.lighting_side || 'both') === 'both' ? 'selected' : ''}>Beide Straßenseiten</option>
-              <option value="left" ${sec.lighting_side === 'left' ? 'selected' : ''}>Nur linke Seite (A → B)</option>
-              <option value="right" ${sec.lighting_side === 'right' ? 'selected' : ''}>Nur rechte Seite (A → B)</option>
+              <option value="left" ${sec.lighting_side === 'left' ? 'selected' : ''}>Straßenseite A (links, A → B)</option>
+              <option value="right" ${sec.lighting_side === 'right' ? 'selected' : ''}>Straßenseite B (rechts, A → B)</option>
+              ${(sec.lighting_side || 'both') === 'both' ? '<option value="both" selected>Beide Straßenseiten (Altbestand)</option>' : ''}
             </select>
-            <div style="font-size:10px; color:#64748B; margin-top:3px;">Links/rechts gilt in Richtung des Abschnitts von A nach B.</div>
+            <div style="font-size:10px; color:#64748B; margin-top:3px;">Jede Seite ist ein eigener Abschnitt und kann einem anderen Helfer zugewiesen werden.</div>
           </div>
           ${sec.notes ? `<div style="font-size:11px; background:#F1F5F9; padding:5px; border-radius:4px; margin-bottom:8px;"><b>Notiz:</b> ${sec.notes}</div>` : ''}
           <div style="display:flex; justify-content:space-between; align-items:center;">

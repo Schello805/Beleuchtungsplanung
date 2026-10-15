@@ -17,10 +17,10 @@ const firstCoordinate = (info: PublicHelperInfo): [number, number] | null => {
 };
 
 const lightingSideText = (side?: 'both' | 'left' | 'right') => side === 'left'
-  ? 'Nur linke Straßenseite (Richtung A → B)'
+  ? 'Straßenseite A (links in Richtung A → B)'
   : side === 'right'
-    ? 'Nur rechte Straßenseite (Richtung A → B)'
-    : 'Beide Straßenseiten';
+    ? 'Straßenseite B (rechts in Richtung A → B)'
+    : 'Beide Straßenseiten (Altbestand)';
 
 export const PublicHelperPage: React.FC<Props> = ({ info }) => {
   const meters = info.sections.reduce((sum, section) => sum + (section.length_meters || 0), 0);

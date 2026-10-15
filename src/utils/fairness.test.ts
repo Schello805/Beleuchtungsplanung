@@ -33,4 +33,18 @@ describe('calculateStationFirstAssignment', () => {
 
     expect(result.assignments).toEqual([{ sectionId: 'next', helperId: 'A', helperName: 'A' }]);
   });
+
+  it('assigns opposite road sides to the stations on their respective side', () => {
+    const sideA = { ...section('street-side-a', 50), lighting_side: 'left' as const };
+    const sideB = { ...section('street-side-b', 50), lighting_side: 'right' as const };
+    const northStation = { ...helper('North'), latitude: 49.1502, longitude: 10.50025 };
+    const southStation = { ...helper('South'), latitude: 49.1498, longitude: 10.50025 };
+
+    const result = calculateStationFirstAssignment([sideA, sideB], [northStation, southStation]);
+
+    expect(result.assignments).toEqual(expect.arrayContaining([
+      { sectionId: 'street-side-a', helperId: 'North', helperName: 'North' },
+      { sectionId: 'street-side-b', helperId: 'South', helperName: 'South' },
+    ]));
+  });
 });

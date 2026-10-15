@@ -28,10 +28,10 @@ const getMapLines = (sections: Section[]): MapLine[] => sections.flatMap(section
 });
 
 const lightingSideText = (section: Section) => section.lighting_side === 'left'
-  ? 'nur linke Straßenseite (A → B)'
+  ? 'Straßenseite A (links in Richtung A → B)'
   : section.lighting_side === 'right'
-    ? 'nur rechte Straßenseite (A → B)'
-    : 'beide Straßenseiten';
+    ? 'Straßenseite B (rechts in Richtung A → B)'
+    : 'beide Straßenseiten (Altbestand)';
 
 const lightingSvgLines = (section: Section, coordinates: number[][], project: (coordinate: number[]) => number[]) => {
   const side = section.lighting_side || 'both';
