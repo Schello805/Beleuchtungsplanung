@@ -179,7 +179,7 @@ const endpointCodes = (sections: Section[], section: Section) => {
   return { start: `A${suffix}`, end: `B${suffix}`, endpoints };
 };
 
-const HelperAreaMap: React.FC<{ sections: Section[]; color?: string; height: number }> = ({ sections, color = '#D97706', height }) => {
+const HelperAreaMap: React.FC<{ sections: Section[]; color?: string; height: number; mapStyle?: 'street' | 'satellite' }> = ({ sections, color = '#D97706', height, mapStyle = 'street' }) => {
   const geometries = sections.flatMap(section => {
     const geometry = section.geojson?.geometry;
     if (!geometry) return [] as Array<{ section: Section; type: string; coordinates: number[][] }>;
@@ -190,16 +190,54 @@ const HelperAreaMap: React.FC<{ sections: Section[]; color?: string; height: num
   });
   const allCoordinates = geometries.flatMap(geometry => geometry.coordinates);
   if (!allCoordinates.length) return <div style={{ height, display: 'grid', placeItems: 'center', color: '#64748B', border: '1px solid #CBD5E1', borderRadius: 7 }}>Karte nicht verfügbar</div>;
-  // Compact 2:1 map format, but close enough that the coloured own section
-  // and its immediate neighbouring streets can be recognised at a glance.
-  const zoom = 18, tileSize = 256, worldSize = tileSize * (2 ** zoom), width = height * 2;
-  const toWorld = ([lon, lat]: number[]) => [((lon + 180) / 360) * worldSize, ((1 - Math.asinh(Math.tan(lat * Math.PI / 180)) / Math.PI) / 2) * worldSize];
+  // Fit the whole assigned route (including curves and multiple sections),
+  // rather than centring a fixed zoom on its average coordinate. This keeps
+  // long, vertical streets from being cropped on the tear-off cards.
+  const width = height * 2;
+  const tileSize = 256;
+  const maxZoom = 18;
+  const toWorldAtZoom = (zoom: number) => ([lon, lat]: number[]) => {
+    const worldSize = tileSize * (2 ** zoom);
+    return [((lon + 180) / 360) * worldSize, ((1 - Math.asinh(Math.tan(lat * Math.PI / 180)) / Math.PI) / 2) * worldSize];
+  };
+  const highZoomWorlds = allCoordinates.map(toWorldAtZoom(maxZoom));
+  const highZoomSpan = Math.max(
+    Math.max(...highZoomWorlds.map(point => point[0])) - Math.min(...highZoomWorlds.map(point => point[0])),
+    Math.max(...highZoomWorlds.map(point => point[1])) - Math.min(...highZoomWorlds.map(point => point[1])),
+    1
+  );
+  // A large helper area should not request dozens of print tiles. Reducing
+  // the source zoom preserves the complete route and still prints crisply.
+  const zoom = Math.max(14, maxZoom - Math.max(0, Math.ceil(Math.log2(highZoomSpan / 700))));
+  const toWorld = toWorldAtZoom(zoom);
   const worlds = allCoordinates.map(toWorld);
-  const centerX = worlds.reduce((sum, point) => sum + point[0], 0) / worlds.length;
-  const centerY = worlds.reduce((sum, point) => sum + point[1], 0) / worlds.length;
-  const project = (coordinate: number[]) => { const [x, y] = toWorld(coordinate); return [width / 2 + x - centerX, height / 2 + y - centerY]; };
-  const centerTileX = Math.floor(centerX / tileSize), centerTileY = Math.floor(centerY / tileSize);
-  const tiles = [-2, -1, 0, 1, 2].flatMap(dx => [-1, 0, 1].map(dy => ({ x: centerTileX + dx, y: centerTileY + dy })));
+  let minX = Math.min(...worlds.map(point => point[0]));
+  let maxX = Math.max(...worlds.map(point => point[0]));
+  let minY = Math.min(...worlds.map(point => point[1]));
+  let maxY = Math.max(...worlds.map(point => point[1]));
+  let boundsWidth = Math.max((maxX - minX) * 1.32, 110);
+  let boundsHeight = Math.max((maxY - minY) * 1.32, 80);
+  const targetRatio = width / height;
+  if (boundsWidth / boundsHeight < targetRatio) boundsWidth = boundsHeight * targetRatio;
+  else boundsHeight = boundsWidth / targetRatio;
+  const centerX = (minX + maxX) / 2;
+  const centerY = (minY + maxY) / 2;
+  minX = centerX - boundsWidth / 2;
+  maxX = centerX + boundsWidth / 2;
+  minY = centerY - boundsHeight / 2;
+  maxY = centerY + boundsHeight / 2;
+  const project = (coordinate: number[]) => {
+    const [x, y] = toWorld(coordinate);
+    return [((x - minX) / boundsWidth) * width, ((y - minY) / boundsHeight) * height];
+  };
+  const tiles = Array.from({ length: Math.ceil(maxX / tileSize) - Math.floor(minX / tileSize) + 1 }, (_, xIndex) =>
+    Array.from({ length: Math.ceil(maxY / tileSize) - Math.floor(minY / tileSize) + 1 }, (_, yIndex) => ({ x: Math.floor(minX / tileSize) + xIndex, y: Math.floor(minY / tileSize) + yIndex }))
+  ).flat();
+  const tileUrl = (tile: { x: number; y: number }) => mapStyle === 'satellite'
+    ? `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${zoom}/${tile.y}/${tile.x}`
+    : `https://tile.openstreetmap.org/${zoom}/${tile.x}/${tile.y}.png`;
+  const attribution = mapStyle === 'satellite' ? '© Esri, Maxar, Earthstar Geographics' : '© OpenStreetMap-Mitwirkende';
+  const legendWidth = Math.min(width - 16, mapStyle === 'satellite' ? 218 : 330);
   const endpointMarkers = sections.flatMap(section => {
     const codes = endpointCodes(sections, section);
     if (!codes) return [];
@@ -208,8 +246,8 @@ const HelperAreaMap: React.FC<{ sections: Section[]; color?: string; height: num
       { coordinate: codes.endpoints.end, label: codes.end, kind: 'end' }
     ];
   });
-  return <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Kartenausschnitt des zugewiesenen Bereichs" style={{ width: '100%', height: 'auto', aspectRatio: '2 / 1', display: 'block', borderRadius: 7, border: '1px solid #CBD5E1', background: '#F8FAFC' }}>
-    {tiles.map(tile => <image key={`${tile.x}-${tile.y}`} href={`https://tile.openstreetmap.org/${zoom}/${tile.x}/${tile.y}.png`} x={width / 2 + tile.x * tileSize - centerX} y={height / 2 + tile.y * tileSize - centerY} width={tileSize} height={tileSize} />)}
+  return <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${mapStyle === 'satellite' ? 'Satellitenbild' : 'Karte'} des zugewiesenen Bereichs`} style={{ width: '100%', height: 'auto', aspectRatio: '2 / 1', display: 'block', borderRadius: 7, border: '1px solid #CBD5E1', background: '#F8FAFC' }}>
+    {tiles.map(tile => <image key={`${tile.x}-${tile.y}`} href={tileUrl(tile)} x={((tile.x * tileSize - minX) / boundsWidth) * width} y={((tile.y * tileSize - minY) / boundsHeight) * height} width={(tileSize / boundsWidth) * width} height={(tileSize / boundsHeight) * height} preserveAspectRatio="none" />)}
     {geometries.filter(geometry => geometry.type !== 'Point').flatMap((geometry, index) => lightingSvgLines(geometry.section, geometry.coordinates, project).map((points, sideIndex) => <polyline key={`outline-${index}-${sideIndex}`} points={points.map(point => point.join(',')).join(' ')} fill="none" stroke="#FFFFFF" strokeWidth="10" strokeLinecap="round" strokeLinejoin="round" opacity=".95" />))}
     {geometries.filter(geometry => geometry.type !== 'Point').flatMap((geometry, index) => lightingSvgLines(geometry.section, geometry.coordinates, project).map((points, sideIndex) => <polyline key={`line-${index}-${sideIndex}`} points={points.map(point => point.join(',')).join(' ')} fill="none" stroke={color} strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" />))}
     {geometries.filter(geometry => geometry.type === 'Point').map((geometry, index) => { const [x, y] = project(geometry.coordinates[0]); return <circle key={`point-${index}`} cx={x} cy={y} r="8" fill={color} stroke="#FFFFFF" strokeWidth="3" />; })}
@@ -221,7 +259,7 @@ const HelperAreaMap: React.FC<{ sections: Section[]; color?: string; height: num
         <text x={x} y={y + 4} textAnchor="middle" fontSize="10" fontWeight="900" fill={fill}>{marker.label}</text>
       </g>;
     })}
-    <rect x="8" y={height - 25} width="330" height="18" rx="3" fill="#FFFFFF" opacity=".92" /><text x="14" y={height - 12} fontSize="10" fill="#475569">Farbige Linie(n): dein Bereich · A: Start · B: Ende</text>
+    <rect x="8" y={height - 25} width={legendWidth} height="18" rx="3" fill="#FFFFFF" opacity=".92" /><text x="14" y={height - 12} fontSize="10" fill="#475569">Farbige Linie(n): dein Bereich · {attribution}</text>
   </svg>;
 };
 
@@ -821,8 +859,20 @@ export const PrintView: React.FC<PrintViewProps> = ({
                         </div>
                       </div>
 
-                      {/* Map, section and QR information */}
-                      <div style={{ marginBottom: 8 }}><HelperAreaMap sections={group.sections} color={group.helper.color} height={170} /></div>
+                      {/* Both views use identical fitted bounds: the complete
+                          assigned route is visible in the street map and in
+                          the satellite image without asking the helper to
+                          guess where the cropped continuation is. */}
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 7, marginBottom: 8 }}>
+                        <div>
+                          <div style={{ fontSize: 9, fontWeight: 800, color: '#334155', marginBottom: 2 }}>🗺️ Karte – gesamter Bereich</div>
+                          <HelperAreaMap sections={group.sections} color={group.helper.color} height={118} mapStyle="street" />
+                        </div>
+                        <div>
+                          <div style={{ fontSize: 9, fontWeight: 800, color: '#334155', marginBottom: 2 }}>🛰️ Satellit – gleicher Ausschnitt</div>
+                          <HelperAreaMap sections={group.sections} color={group.helper.color} height={118} mapStyle="satellite" />
+                        </div>
+                      </div>
                       <div style={{ display: 'flex', gap: 10, marginBottom: 8 }}>
                         {/* Sections List */}
                         <div style={{ flex: 1, fontSize: 11 }}>
