@@ -47,7 +47,7 @@ export const App: React.FC = () => {
     totalLength: number;
   } | null>(null);
 
-  const [captureMode, setCaptureMode] = useState<'none' | 'segment' | 'custom_path' | 'point'>('none');
+  const [captureMode, setCaptureMode] = useState<'none' | 'segment' | 'custom_path' | 'point' | 'assign_area'>('none');
   const [segmentPoints, setSegmentPoints] = useState<[number, number][]>([]);
   const [isSaving, setIsSaving] = useState<boolean>(false);
   const [focusedPreviewId, setFocusedPreviewId] = useState<string | null>(null);
@@ -286,7 +286,7 @@ export const App: React.FC = () => {
       } else if (segmentPoints.length === 1) {
         setSegmentPoints([segmentPoints[0], [lat, lon]]);
       }
-    } else if (captureMode === 'custom_path') {
+    } else if (captureMode === 'custom_path' || captureMode === 'assign_area') {
       // Sonderwege werden bewusst frei auf der Karte gezeichnet. Damit können
       // auch Wege, Brücken oder Platzränder ohne OSM-Straßenname erfasst werden.
       setSegmentPoints(points => [...points, [lat, lon]]);
@@ -294,6 +294,74 @@ export const App: React.FC = () => {
       if (typeof (window as any).__onPointMapClick === 'function') {
         (window as any).__onPointMapClick(lat, lon);
       }
+    }
+  };
+
+  const handleStartAreaAssignment = () => {
+    if (!activeStampHelperId) {
+      alert('Bitte wähle zuerst eine Station bzw. einen Helfer aus.');
+      return;
+    }
+    setExtensionSectionId(null);
+    setSplitSectionId(null);
+    setSegmentPoints([]);
+    setCaptureMode('assign_area');
+  };
+
+  const handleCompleteAreaAssignment = async (side: 'left' | 'right' | 'both') => {
+    const helper = helpers.find(item => item.id === activeStampHelperId);
+    if (!helper || segmentPoints.length < 2) {
+      alert('Bitte wähle einen Helfer und zeichne mindestens zwei Punkte auf der Karte.');
+      return;
+    }
+
+    const trace = turf.lineString(segmentPoints.map(([lat, lon]) => [lon, lat]));
+    const isPaintedSection = (section: Section) => {
+      const geometry = section.geojson?.geometry;
+      if (!geometry || !['LineString', 'MultiLineString'].includes(geometry.type)) return false;
+      const sectionSide = section.lighting_side || 'both';
+      if (side !== 'both' && sectionSide !== side && sectionSide !== 'both') return false;
+
+      // A mere road crossing must not accidentally be reassigned. A section is
+      // selected only when the drawn stroke follows most of its vertices.
+      const lines = geometry.type === 'LineString'
+        ? [geometry.coordinates as number[][]]
+        : geometry.coordinates as number[][][];
+      const points = lines.flat();
+      if (points.length === 0) return false;
+      const closePoints = points.filter(coordinate => {
+        const nearest = turf.nearestPointOnLine(trace, turf.point(coordinate));
+        return turf.distance(turf.point(coordinate), nearest, { units: 'kilometers' }) <= 0.014;
+      });
+      return closePoints.length / points.length >= 0.55;
+    };
+
+    const affected = sections.filter(isPaintedSection);
+    if (affected.length === 0) {
+      alert('Die Zeichnung trifft keinen bestehenden Abschnitt ausreichend genau. Bitte zeichne den Verlauf direkt über den gewünschten Straßenabschnitten nach.');
+      return;
+    }
+
+    const sideLabel = side === 'left' ? 'Seite A' : side === 'right' ? 'Seite B' : 'beide Straßenseiten';
+    const alreadyElsewhere = affected.filter(section => section.assigned_helper_id && section.assigned_helper_id !== helper.id).length;
+    const question = `${affected.length} Abschnitt${affected.length === 1 ? '' : 'e'} (${sideLabel}) fest ${helper.name} zuordnen?${alreadyElsewhere ? `\n\n${alreadyElsewhere} bestehende Zuweisung${alreadyElsewhere === 1 ? '' : 'en'} wird/werden dabei ersetzt.` : ''}`;
+    if (!window.confirm(question)) return;
+
+    setLastAutomaticAssignments(null);
+    const assignments = affected.map(section => ({ sectionId: section.id, helperId: helper.id, helperName: helper.name }));
+    setSections(previous => previous.map(section => {
+      const assignment = assignments.find(item => item.sectionId === section.id);
+      return assignment ? { ...section, assigned_helper_id: helper.id, assigned_helper_name: helper.name } : section;
+    }));
+    try {
+      await api.batchAssignHelpers(assignments);
+      setSelectedSectionId(affected[0].id);
+      setSegmentPoints([]);
+      setCaptureMode('none');
+    } catch (error) {
+      console.error('Fixed area assignment error:', error);
+      alert('Die feste Zuweisung konnte nicht gespeichert werden.');
+      await loadData();
     }
   };
 
@@ -1023,6 +1091,9 @@ export const App: React.FC = () => {
             onCancelSplit={() => setSplitSectionId(null)}
             activeStampHelperId={activeStampHelperId}
             onSelectStampHelper={setActiveStampHelperId}
+            onStartAreaAssignment={handleStartAreaAssignment}
+            onCompleteAreaAssignment={handleCompleteAreaAssignment}
+            onCancelAreaAssignment={() => { setSegmentPoints([]); setCaptureMode('none'); }}
             autoAdvanceStamp={autoAdvanceStamp}
             onToggleAutoAdvanceStamp={setAutoAdvanceStamp}
             onOpenAutoAssign={() => setIsAutoAssignOpen(true)}

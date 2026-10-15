@@ -14,8 +14,8 @@ interface CapturePanelProps {
   onFocusPreviewSection?: (id: string | null) => void;
   onSavePreview: () => Promise<void>;
   isSaving: boolean;
-  captureMode: 'none' | 'segment' | 'custom_path' | 'point';
-  setCaptureMode: (mode: 'none' | 'segment' | 'custom_path' | 'point') => void;
+  captureMode: 'none' | 'segment' | 'custom_path' | 'point' | 'assign_area';
+  setCaptureMode: (mode: 'none' | 'segment' | 'custom_path' | 'point' | 'assign_area') => void;
   segmentPoints: [number, number][];
   setSegmentPoints: (points: [number, number][]) => void;
 }

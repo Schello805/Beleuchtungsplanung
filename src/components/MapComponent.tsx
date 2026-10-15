@@ -27,6 +27,9 @@ interface MapComponentProps {
   // Stamp props (Direktes Zuweisen per Klick auf der Karte)
   activeStampHelperId?: string | null;
   onSelectStampHelper?: (id: string | null) => void;
+  onStartAreaAssignment?: () => void;
+  onCompleteAreaAssignment?: (side: 'left' | 'right' | 'both') => void;
+  onCancelAreaAssignment?: () => void;
   autoAdvanceStamp?: boolean;
   onToggleAutoAdvanceStamp?: (val: boolean) => void;
   onOpenAutoAssign?: () => void;
@@ -35,7 +38,7 @@ interface MapComponentProps {
   focusedPreviewId?: string | null;
   onFocusPreviewSection?: (id: string | null) => void;
   // Interactive capture props
-  captureMode: 'none' | 'segment' | 'custom_path' | 'point';
+  captureMode: 'none' | 'segment' | 'custom_path' | 'point' | 'assign_area';
   segmentPoints: [number, number][];
   onMapClick: (lat: number, lon: number) => void;
   mapTileTheme: string;
@@ -98,6 +101,9 @@ export const MapComponent: React.FC<MapComponentProps> = ({
   onCancelSplit,
   activeStampHelperId,
   onSelectStampHelper,
+  onStartAreaAssignment,
+  onCompleteAreaAssignment,
+  onCancelAreaAssignment,
   autoAdvanceStamp,
   onToggleAutoAdvanceStamp,
   onOpenAutoAssign,
@@ -123,6 +129,7 @@ export const MapComponent: React.FC<MapComponentProps> = ({
   // The selected helper is a map focus, not an assignment tool.
   const [internalStampHelperId, setInternalStampHelperId] = useState<string | null>(null);
   const [showLayerMenu, setShowLayerMenu] = useState<boolean>(false);
+  const [areaAssignmentSide, setAreaAssignmentSide] = useState<'left' | 'right' | 'both'>('both');
 
   const activeHelperId = activeStampHelperId !== undefined ? activeStampHelperId : internalStampHelperId;
 
@@ -319,9 +326,11 @@ export const MapComponent: React.FC<MapComponentProps> = ({
     if (!group) return;
     group.clearLayers();
 
-    if (captureMode === 'custom_path' && segmentPoints.length > 1) {
+    const isTraceCapture = captureMode === 'custom_path' || captureMode === 'assign_area';
+    const traceColor = captureMode === 'assign_area' ? '#10B981' : '#A855F7';
+    if (isTraceCapture && segmentPoints.length > 1) {
       L.polyline(segmentPoints, {
-        color: '#A855F7',
+        color: traceColor,
         weight: 5,
         opacity: 0.9,
         dashArray: '8, 6',
@@ -339,16 +348,16 @@ export const MapComponent: React.FC<MapComponentProps> = ({
         iconAnchor: [13, 13]
       });
       L.marker([start[0], start[1]], { icon: startIcon })
-        .bindTooltip(captureMode === 'custom_path' ? 'Punkt 1' : 'Startpunkt (A)', { permanent: true, direction: 'top', offset: [0, -10] })
+        .bindTooltip(isTraceCapture ? 'Punkt 1' : 'Startpunkt (A)', { permanent: true, direction: 'top', offset: [0, -10] })
         .addTo(group);
     }
 
-    if (captureMode === 'custom_path') {
+    if (isTraceCapture) {
       segmentPoints.slice(1).forEach((point, index) => {
         const number = index + 2;
         const icon = L.divIcon({
           className: 'custom-step-marker',
-          html: `<div style="background:#A855F7; width:24px; height:24px; border-radius:50%; display:flex; align-items:center; justify-content:center; color:white; font-weight:bold; box-shadow:0 0 10px #A855F7; border:2px solid white; font-size:11px;">${number}</div>`,
+          html: `<div style="background:${traceColor}; width:24px; height:24px; border-radius:50%; display:flex; align-items:center; justify-content:center; color:white; font-weight:bold; box-shadow:0 0 10px ${traceColor}; border:2px solid white; font-size:11px;">${number}</div>`,
           iconSize: [24, 24],
           iconAnchor: [12, 12]
         });
@@ -1055,6 +1064,25 @@ export const MapComponent: React.FC<MapComponentProps> = ({
 
               <button
                 type="button"
+                onClick={onStartAreaAssignment}
+                title="Bereich auf der Karte nachzeichnen und fest zuordnen"
+                style={{
+                  border: '1px solid rgba(16, 185, 129, 0.7)',
+                  borderRadius: 16,
+                  padding: '5px 9px',
+                  background: 'rgba(16, 185, 129, 0.16)',
+                  color: '#6EE7B7',
+                  fontSize: 11,
+                  fontWeight: 800,
+                  cursor: 'pointer',
+                  whiteSpace: 'nowrap'
+                }}
+              >
+                Bereich zeichnen
+              </button>
+
+              <button
+                type="button"
                 onClick={handleNextHelper}
                 title="Nächster Helfer"
                 style={{
@@ -1161,6 +1189,41 @@ export const MapComponent: React.FC<MapComponentProps> = ({
           )}
           {captureMode === 'custom_path' && (
             <span>Klicke nacheinander auf den <b>Verlauf des Sonderwegs</b> · {segmentPoints.length} Punkt{segmentPoints.length === 1 ? '' : 'e'} gesetzt</span>
+          )}
+          {captureMode === 'assign_area' && (
+            <>
+              <span>Zeichne den <b>festen Bereich</b> entlang der Straße nach · {segmentPoints.length} Punkt{segmentPoints.length === 1 ? '' : 'e'} gesetzt</span>
+              <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+                {([
+                  ['left', 'Seite A'],
+                  ['both', 'beide'],
+                  ['right', 'Seite B']
+                ] as const).map(([side, label]) => (
+                  <button
+                    key={side}
+                    type="button"
+                    onClick={() => setAreaAssignmentSide(side)}
+                    style={{
+                      border: areaAssignmentSide === side ? '1px solid #FBBF24' : '1px solid rgba(255,255,255,.3)',
+                      borderRadius: 12,
+                      padding: '3px 7px',
+                      background: areaAssignmentSide === side ? 'rgba(245,158,11,.22)' : 'transparent',
+                      color: '#fff',
+                      fontSize: 10,
+                      fontWeight: 700,
+                      cursor: 'pointer'
+                    }}
+                  >{label}</button>
+                ))}
+              </div>
+              <button
+                type="button"
+                disabled={segmentPoints.length < 2}
+                onClick={() => onCompleteAreaAssignment?.(areaAssignmentSide)}
+                style={{ border: 'none', borderRadius: 14, padding: '4px 9px', background: segmentPoints.length < 2 ? '#475569' : '#10B981', color: '#fff', fontSize: 11, fontWeight: 800, cursor: segmentPoints.length < 2 ? 'not-allowed' : 'pointer' }}
+              >Fest zuordnen</button>
+              <button type="button" onClick={onCancelAreaAssignment} style={{ border: '1px solid rgba(255,255,255,.35)', borderRadius: 14, padding: '3px 8px', background: 'transparent', color: '#fff', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}>Abbrechen</button>
+            </>
           )}
           {captureMode === 'point' && (
             <span>Klicke auf die Karte, um den <b>Einzelpunkt (z.B. Brunnen)</b> zu platzieren</span>
