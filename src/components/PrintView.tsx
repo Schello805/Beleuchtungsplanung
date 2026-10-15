@@ -399,8 +399,18 @@ export const PrintView: React.FC<PrintViewProps> = ({
             height: auto !important;
             min-height: 0 !important;
             overflow: visible !important;
+            background: #FFFFFF !important;
+          }
+          .planner-shell {
+            display: block !important;
+          }
+          /* The print preview must contain only the paper document. Otherwise
+             the dark planning shell can remain behind the static print view. */
+          .planner-shell > :not(.print-view-root) {
+            display: none !important;
           }
           .print-view-root {
+            display: block !important;
             position: static !important;
             inset: auto !important;
             width: auto !important;
@@ -408,6 +418,8 @@ export const PrintView: React.FC<PrintViewProps> = ({
             min-height: 0 !important;
             max-height: none !important;
             overflow: visible !important;
+            background: #FFFFFF !important;
+            color: #0F172A !important;
           }
           .no-print {
             display: none !important;
