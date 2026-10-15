@@ -136,8 +136,8 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({ isOpen, 
         <p className="auth-kicker">ADMINISTRATION</p>
         <h2><Settings size={20} /> Grundeinstellungen & Startanleitung</h2>
 
-        <section className="admin-setup-guide">
-          <strong>Kurzer Ablauf für die erste Nutzung</strong>
+        <details className="admin-setup-guide">
+          <summary>Kurzer Ablauf für die erste Nutzung</summary>
           <ol>
             <li><b>Grundeinstellungen:</b> öffentliche HTTPS-Adresse, Orga-Kontakt und Materialwerte speichern.</li>
             <li><b>Zugänge:</b> unter „Benutzer verwalten“ Planung und Leserechte vergeben.</li>
@@ -146,7 +146,7 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({ isOpen, 
             <li><b>Verteilen:</b> Stationsbereiche zuerst prüfen, übrige offene Abschnitte in der Besprechung vergeben.</li>
             <li><b>Ausgeben:</b> Helfer-Informationen prüfen, PDF drucken oder später per E-Mail versenden.</li>
           </ol>
-        </section>
+        </details>
 
         <section className="admin-settings-section">
           <h3>Veranstaltung & öffentliche Helfer-Links</h3>
