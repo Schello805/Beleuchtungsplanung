@@ -1392,6 +1392,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                           Abschnitte {statsSort === 'sections' ? (statsSortDirection === 'desc' ? '↓' : '↑') : '↕'}
                         </button>
                       </th>
+                      <th style={{ padding: '7px 8px', width: 30 }} aria-label="Auf Karte anzeigen" />
                     </tr>
                   </thead>
                   <tbody>
@@ -1421,6 +1422,23 @@ export const Sidebar: React.FC<SidebarProps> = ({
                           </td>
                           <td style={{ padding: '8px', textAlign: 'right', color: 'var(--accent-gold)', fontWeight: 800, whiteSpace: 'nowrap' }}>{item.meters} m</td>
                           <td style={{ padding: '8px', textAlign: 'right', color: 'var(--text-main)', fontWeight: 700 }}>{item.sectionsCount}</td>
+                          <td style={{ padding: '6px 8px' }}>
+                            {item.sectionsCount > 0 && (
+                              <button
+                                type="button"
+                                onClick={event => {
+                                  event.stopPropagation();
+                                  setFocusedHelperId(item.helper.id);
+                                  setFocusedHelperSectionIndex(0);
+                                  selectAndFocusSection(item.sections[0].id);
+                                }}
+                                title={`${item.helper.name} auf der Karte anzeigen`}
+                                style={{ display: 'inline-flex', alignItems: 'center', gap: 3, border: '1px solid rgba(245,158,11,.45)', borderRadius: 5, padding: '4px 5px', background: 'rgba(245,158,11,.10)', color: 'var(--accent-gold)', cursor: 'pointer', fontSize: 10, fontWeight: 800 }}
+                              >
+                                <MapPin size={12} /> Karte
+                              </button>
+                            )}
+                          </td>
                         </tr>
                       );
                     })}
@@ -1699,9 +1717,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       }}
                     >
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 4 }}>
-                        <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-main)' }}>
-                          {item.helper.name}
-                        </span>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                          <span style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-main)' }}>{item.helper.name}</span>
+                          <span style={{ color: 'var(--accent-gold)', fontSize: 10, fontWeight: 800 }}>↗ Karte</span>
+                        </div>
                         <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                           {isHigh && (
                             <span style={{ fontSize: 9, background: 'rgba(239, 68, 68, 0.2)', color: '#F87171', padding: '1px 5px', borderRadius: 4, fontWeight: 700 }}>
