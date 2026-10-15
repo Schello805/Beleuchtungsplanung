@@ -510,11 +510,21 @@ const getSmtpTransport = () => {
   const user = settings.smtp_user?.trim();
   const password = smtpPasswordOverride || process.env.SMTP_PASSWORD?.trim();
   const from = settings.smtp_from?.trim();
+  const configuredSecurity = settings.smtp_security?.trim();
+  const security = configuredSecurity === 'ssl' || configuredSecurity === 'starttls' || configuredSecurity === 'none'
+    ? configuredSecurity
+    : port === 465 ? 'ssl' : 'starttls';
   if (!host || !Number.isFinite(port) || !user || !password || !from) {
     throw new Error('SMTP ist noch nicht vollständig eingerichtet (Host, Port, Benutzer, Absender und SMTP_PASSWORD).');
   }
   return {
-    transport: nodemailer.createTransport({ host, port, secure: port === 465, auth: { user, pass: password } }),
+    transport: nodemailer.createTransport({
+      host, port,
+      secure: security === 'ssl',
+      requireTLS: security === 'starttls',
+      ignoreTLS: security === 'none',
+      auth: { user, pass: password }
+    }),
     from,
     settings
   };

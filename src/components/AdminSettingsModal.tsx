@@ -28,6 +28,7 @@ const defaults: SettingValues = {
   mapbox_token: '',
   smtp_host: '',
   smtp_port: '587',
+  smtp_security: '',
   smtp_user: '',
   smtp_from: '',
   mail_subject: '{{event}}: Dein Beleuchtungsbereich',
@@ -51,6 +52,7 @@ const fieldLabels: Record<string, string> = {
   mapbox_token: 'Mapbox Public Token',
   smtp_host: 'SMTP-Host',
   smtp_port: 'SMTP-Port',
+  smtp_security: 'Verschlüsselung',
   smtp_user: 'SMTP-Benutzer',
   smtp_from: 'Absender-Adresse'
 };
@@ -187,6 +189,13 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({ isOpen, 
           <div className="admin-settings-grid">
             <Field name="smtp_host" values={values} onChange={change} placeholder="mail.example.de" />
             <Field name="smtp_port" values={values} onChange={change} type="number" />
+            <label style={{ display: 'grid', gap: 5, fontSize: 12, fontWeight: 700, color: 'var(--text-main)' }}>Verschlüsselung
+              <select value={values.smtp_security || (values.smtp_port === '465' ? 'ssl' : 'starttls')} onChange={event => change('smtp_security', event.target.value)} style={{ width: '100%', minHeight: 40, border: '1px solid var(--border-subtle)', borderRadius: 7, padding: '8px 10px', background: 'var(--bg-input)', color: 'var(--text-main)' }}>
+                <option value="ssl">SSL/TLS direkt · meist Port 465</option>
+                <option value="starttls">TLS/STARTTLS · meist Port 587</option>
+                <option value="none">Keine Verschlüsselung · nur bei vertrauenswürdigem lokalen Server</option>
+              </select>
+            </label>
             <Field name="smtp_user" values={values} onChange={change} placeholder="benutzer" />
             <Field name="smtp_from" values={values} onChange={change} placeholder="lichternacht@example.de" type="email" />
             <label style={{ display: 'grid', gap: 5, fontSize: 12, fontWeight: 700, color: 'var(--text-main)' }}>SMTP-Passwort
