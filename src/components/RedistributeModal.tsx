@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { X, Users, Scissors, Sparkles, Check } from 'lucide-react';
 import { type Section, type Helper } from '../utils/api';
 import { createFairWorkPackages, redistributeSectionsToTargetCount, rechunkSectionsByTargetLength } from '../utils/geo';
@@ -10,6 +10,7 @@ interface RedistributeModalProps {
   sections: Section[];
   helpers: Helper[];
   onApply: (newSections: Section[]) => Promise<void>;
+  defaults?: { targetChunkLength: number; minWorkMeters: number; maxWorkMeters: number; maxDifferenceMeters: number };
 }
 
 export const RedistributeModal: React.FC<RedistributeModalProps> = ({
@@ -17,7 +18,8 @@ export const RedistributeModal: React.FC<RedistributeModalProps> = ({
   onClose,
   sections,
   helpers,
-  onApply
+  onApply,
+  defaults = { targetChunkLength: 40, minWorkMeters: 35, maxWorkMeters: 50, maxDifferenceMeters: 15 }
 }) => {
   const totalMeters = useMemo(() => {
     if (!isOpen) return 0;
@@ -30,14 +32,22 @@ export const RedistributeModal: React.FC<RedistributeModalProps> = ({
   // during the meeting.  The "by count" option is kept as an alternative, but
   // must not be the default because it hides the resulting street lengths.
   const [mode, setMode] = useState<'by_count' | 'by_length'>('by_length');
-  const [targetChunkLength, setTargetChunkLength] = useState<number>(40);
-  const [minWorkMeters, setMinWorkMeters] = useState<number>(35);
-  const [maxWorkMeters, setMaxWorkMeters] = useState<number>(50);
-  const [maxDifferenceMeters, setMaxDifferenceMeters] = useState<number>(15);
+  const [targetChunkLength, setTargetChunkLength] = useState<number>(defaults.targetChunkLength);
+  const [minWorkMeters, setMinWorkMeters] = useState<number>(defaults.minWorkMeters);
+  const [maxWorkMeters, setMaxWorkMeters] = useState<number>(defaults.maxWorkMeters);
+  const [maxDifferenceMeters, setMaxDifferenceMeters] = useState<number>(defaults.maxDifferenceMeters);
   // Repartitioning must be safe: it creates open, discussable street sections
   // unless the organiser explicitly opts into an automatic assignment.
   const [autoAssign, setAutoAssign] = useState<boolean>(false);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    setTargetChunkLength(defaults.targetChunkLength);
+    setMinWorkMeters(defaults.minWorkMeters);
+    setMaxWorkMeters(defaults.maxWorkMeters);
+    setMaxDifferenceMeters(defaults.maxDifferenceMeters);
+  }, [isOpen, defaults.targetChunkLength, defaults.minWorkMeters, defaults.maxWorkMeters, defaults.maxDifferenceMeters]);
 
   // Live calculation preview
   const previewResult = useMemo(() => {

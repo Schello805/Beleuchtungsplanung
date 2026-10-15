@@ -71,6 +71,7 @@ export const App: React.FC = () => {
   // Candle & Material Planning state
   const [candleSpacing, setCandleSpacing] = useState<number>(2.0);
   const [candleBuffer, setCandleBuffer] = useState<number>(10);
+  const [distributionDefaults, setDistributionDefaults] = useState({ targetChunkLength: 40, minWorkMeters: 35, maxWorkMeters: 50, maxDifferenceMeters: 15, assignmentMode: 'station_first' as 'station_first' | 'meters_only' });
 
   // Helfer-Finder: zeigt auf der Karte die zugehörigen Abschnitte an.
   const [activeStampHelperId, setActiveStampHelperId] = useState<string | null>(null);
@@ -177,6 +178,13 @@ export const App: React.FC = () => {
       if (settings.candle_buffer) {
         setCandleBuffer(parseInt(settings.candle_buffer, 10) || 10);
       }
+      setDistributionDefaults({
+        targetChunkLength: parseInt(settings.distribution_default_chunk_length, 10) || 40,
+        minWorkMeters: parseInt(settings.distribution_min_work_meters, 10) || 35,
+        maxWorkMeters: parseInt(settings.distribution_max_work_meters, 10) || 50,
+        maxDifferenceMeters: parseInt(settings.distribution_max_difference_meters, 10) || 15,
+        assignmentMode: settings.distribution_assignment_mode === 'meters_only' ? 'meters_only' : 'station_first'
+      });
     } catch (err) {
       console.error('Failed to load data from database:', err);
     }
@@ -478,6 +486,61 @@ export const App: React.FC = () => {
     } catch (err) {
       console.error('Update section lighting side error:', err);
       loadData();
+    }
+  };
+
+  const handleUpdateSectionNotes = async (sectionId: string, notes: string) => {
+    setSections(prev => prev.map(section => section.id === sectionId ? { ...section, notes } : section));
+    try {
+      await api.updateSection(sectionId, { notes });
+    } catch (err) {
+      console.error('Update section notes error:', err);
+      loadData();
+    }
+  };
+
+  const handleMergeSections = async (firstId: string, secondId: string) => {
+    const first = sections.find(section => section.id === firstId);
+    const second = sections.find(section => section.id === secondId);
+    if (!first || !second || first.type !== 'line' || second.type !== 'line' || first.geojson.geometry.type !== 'LineString' || second.geojson.geometry.type !== 'LineString') return;
+    const firstCoordinates = first.geojson.geometry.coordinates;
+    const secondCoordinates = second.geojson.geometry.coordinates;
+    const variants = [
+      [firstCoordinates, secondCoordinates],
+      [firstCoordinates, [...secondCoordinates].reverse()],
+      [[...firstCoordinates].reverse(), secondCoordinates],
+      [[...firstCoordinates].reverse(), [...secondCoordinates].reverse()]
+    ];
+    const best = variants.sort((left, right) => turf.distance(turf.point(left[0].at(-1)!), turf.point(left[1][0]), { units: 'meters' }) - turf.distance(turf.point(right[0].at(-1)!), turf.point(right[1][0]), { units: 'meters' }))[0];
+    const gap = turf.distance(turf.point(best[0].at(-1)!), turf.point(best[1][0]), { units: 'meters' });
+    if (gap > 25) {
+      alert('Zusammenführen ist nur für direkt angrenzende Abschnitte möglich.');
+      return;
+    }
+    const coordinates = [...best[0], ...best[1].slice(1)];
+    const geojson = turf.lineString(coordinates);
+    const lengthMeters = Math.max(1, Math.round(turf.length(geojson, { units: 'kilometers' }) * 1000));
+    const sameAssignment = first.assigned_helper_id === second.assigned_helper_id;
+    const inherited = sameAssignment || !second.assigned_helper_id ? first : !first.assigned_helper_id ? second : null;
+    const merged: Section = {
+      ...first,
+      section_index: Math.min(first.section_index, second.section_index),
+      label: `${first.street_name} – Abschnitte ${Math.min(first.section_index, second.section_index)}–${Math.max(first.section_index, second.section_index)}`,
+      geojson,
+      length_meters: lengthMeters,
+      lengthMeters,
+      assigned_helper_id: inherited?.assigned_helper_id || null,
+      assigned_helper_name: inherited?.assigned_helper_name || null,
+      lighting_side: first.lighting_side === second.lighting_side ? first.lighting_side : 'both',
+      notes: [first.notes, second.notes].filter(Boolean).join(' · ') || null
+    };
+    try {
+      await api.replaceAllSections(sections.filter(section => section.id !== firstId && section.id !== secondId).concat(merged));
+      setSelectedSectionId(merged.id);
+      await loadData();
+    } catch (err) {
+      console.error('Merge sections error:', err);
+      alert('Die Abschnitte konnten nicht zusammengeführt werden.');
     }
   };
 
@@ -916,6 +979,8 @@ export const App: React.FC = () => {
             onSelectSection={setSelectedSectionId}
             onUpdateSectionHelper={handleUpdateSectionHelper}
             onUpdateSectionLightingSide={handleUpdateSectionLightingSide}
+            onUpdateSectionNotes={handleUpdateSectionNotes}
+            onMergeSections={handleMergeSections}
             onDeleteSection={handleDeleteSection}
             extensionSectionId={extensionSectionId}
             onStartExtension={(sectionId) => { setSelectedSectionId(sectionId); setExtensionSectionId(sectionId); }}
@@ -964,6 +1029,7 @@ export const App: React.FC = () => {
         sections={sections}
         helpers={helpers}
         onApply={handleApplyRedistribute}
+        defaults={distributionDefaults}
       />
 
       {/* 1-CLICK AUTO-ASSIGN MODAL */}
@@ -973,6 +1039,7 @@ export const App: React.FC = () => {
         sections={sections}
         helpers={helpers}
         onApply={handleAutomaticAssign}
+        defaults={distributionDefaults}
       />
 
       {/* UNIVERSAL EXCEL IMPORT MODAL */}

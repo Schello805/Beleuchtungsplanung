@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { X, Zap, Users, Check, ArrowRight, Sparkles, RefreshCw, Layers } from 'lucide-react';
 import type { Section, Helper } from '../utils/api';
-import { calculateStationFirstAssignment, DEFAULT_FAIRNESS_RULES } from '../utils/fairness';
+import { calculateMeterOnlyAssignment, calculateStationFirstAssignment } from '../utils/fairness';
 
 interface AutoAssignModalProps {
   isOpen: boolean;
@@ -9,6 +9,7 @@ interface AutoAssignModalProps {
   sections: Section[];
   helpers: Helper[];
   onApply: (assignments: Array<{ sectionId: string; helperId: string; helperName: string }>) => Promise<void>;
+  defaults?: { maxWorkMeters: number; maxDifferenceMeters: number; assignmentMode: 'station_first' | 'meters_only' };
 }
 
 export const AutoAssignModal: React.FC<AutoAssignModalProps> = ({
@@ -16,11 +17,13 @@ export const AutoAssignModal: React.FC<AutoAssignModalProps> = ({
   onClose,
   sections,
   helpers,
-  onApply
+  onApply,
+  defaults = { maxWorkMeters: 50, maxDifferenceMeters: 15, assignmentMode: 'station_first' as const }
 }) => {
   if (!isOpen) return null;
 
   const [mode, setMode] = useState<'unassigned_only' | 'all'>('unassigned_only');
+  const [assignmentMode, setAssignmentMode] = useState<'station_first' | 'meters_only'>(defaults.assignmentMode);
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
 
   // Compute unassigned sections and free helpers
@@ -46,19 +49,17 @@ export const AutoAssignModal: React.FC<AutoAssignModalProps> = ({
   const previewAssignments = useMemo(() => {
     if (targetSections.length === 0 || targetHelpers.length === 0) return [];
 
-    const result = calculateStationFirstAssignment(
-      targetSections,
-      targetHelpers,
-      mode === 'unassigned_only' ? sections : [],
-      DEFAULT_FAIRNESS_RULES
-    );
+    const rules = { maxMeters: defaults.maxWorkMeters, maxDifferenceMeters: defaults.maxDifferenceMeters };
+    const result = assignmentMode === 'meters_only'
+      ? calculateMeterOnlyAssignment(targetSections, targetHelpers, mode === 'unassigned_only' ? sections : [], rules)
+      : calculateStationFirstAssignment(targetSections, targetHelpers, mode === 'unassigned_only' ? sections : [], rules);
     const bySection = new Map(result.assignments.map(item => [item.sectionId, item]));
     // A full reassignment must actively clear areas that cannot meet the
     // configured limits. Otherwise an old 80 m assignment would remain.
     return mode === 'all'
       ? targetSections.map(section => bySection.get(section.id) || { sectionId: section.id, helperId: '', helperName: 'Offen – Fairnessgrenze' })
       : result.assignments;
-  }, [targetSections, targetHelpers, mode, sections]);
+  }, [targetSections, targetHelpers, mode, sections, assignmentMode, defaults.maxWorkMeters, defaults.maxDifferenceMeters]);
 
   // Summary stats
   const totalMeters = targetSections.reduce((sum, s) => sum + (s.length_meters || s.lengthMeters || 0), 0);
@@ -270,6 +271,20 @@ export const AutoAssignModal: React.FC<AutoAssignModalProps> = ({
                 <div style={{ fontSize: 11, fontWeight: 400, color: 'var(--text-muted)', marginTop: 2 }}>
                   Alle Abschnitte komplett neu und lückenlos verteilen
                 </div>
+              </button>
+            </div>
+          </div>
+
+          <div style={{ marginBottom: 16 }}>
+            <label style={{ fontSize: 12, fontWeight: 700, color: 'var(--text-main)', display: 'block', marginBottom: 8 }}>Verteilungslogik:</label>
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
+              <button type="button" onClick={() => setAssignmentMode('station_first')} style={{ padding: '9px 10px', borderRadius: 'var(--radius-sm)', border: assignmentMode === 'station_first' ? '2px solid var(--accent-gold)' : '1px solid var(--border-subtle)', background: assignmentMode === 'station_first' ? 'rgba(245, 158, 11, .12)' : 'var(--bg-card)', color: 'var(--text-main)', textAlign: 'left', fontWeight: 700, cursor: 'pointer', fontSize: 12 }}>
+                Stationen zuerst
+                <small style={{ display: 'block', marginTop: 3, fontWeight: 400, color: 'var(--text-muted)' }}>Nähe und zusammenhängende Bereiche bevorzugen</small>
+              </button>
+              <button type="button" onClick={() => setAssignmentMode('meters_only')} style={{ padding: '9px 10px', borderRadius: 'var(--radius-sm)', border: assignmentMode === 'meters_only' ? '2px solid var(--accent-gold)' : '1px solid var(--border-subtle)', background: assignmentMode === 'meters_only' ? 'rgba(245, 158, 11, .12)' : 'var(--bg-card)', color: 'var(--text-main)', textAlign: 'left', fontWeight: 700, cursor: 'pointer', fontSize: 12 }}>
+                Nur nach Metern
+                <small style={{ display: 'block', marginTop: 3, fontWeight: 400, color: 'var(--text-muted)' }}>Gleicht ausschließlich die Arbeitslänge aus</small>
               </button>
             </div>
           </div>

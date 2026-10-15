@@ -270,6 +270,15 @@ export const PrintView: React.FC<PrintViewProps> = ({
     return sum + (len > 0 ? Math.max(1, Math.round(len / candleSpacing)) : 0);
   }, 0);
   const totalCandlesWithBuffer = Math.round(totalCandlesBase * (1 + candleBuffer / 100));
+  const helperMeters = helperGroups.map(group => group.meters);
+  const printChecks = [
+    { ok: sections.length > 0, text: sections.length > 0 ? `${sections.length} Abschnitte vorhanden` : 'Noch keine Abschnitte vorhanden' },
+    { ok: unassignedSections.length === 0, text: unassignedSections.length === 0 ? 'Alle Abschnitte sind zugewiesen' : `${unassignedSections.length} Abschnitte sind noch offen` },
+    { ok: helperGroups.length > 0, text: helperGroups.length > 0 ? `${helperGroups.length} Helfer mit Bereich` : 'Noch kein Helfer hat einen Bereich' },
+    { ok: Boolean(publicBaseUrl.trim() || window.location.origin), text: publicBaseUrl.trim() ? 'Öffentliche Helfer-URL ist hinterlegt' : 'Links verwenden die aktuelle Server-Adresse' },
+    { ok: helperMeters.length < 2 || Math.max(...helperMeters) - Math.min(...helperMeters) <= 25, text: helperMeters.length < 2 || Math.max(...helperMeters) - Math.min(...helperMeters) <= 25 ? 'Helfer-Meter liegen nah beieinander' : `Meter-Spanne beträgt ${Math.max(...helperMeters) - Math.min(...helperMeters)} m` }
+  ];
+  const printReady = printChecks.every(check => check.ok);
 
   const currentDate = new Date().toLocaleDateString('de-DE', {
     day: '2-digit',
@@ -613,6 +622,15 @@ export const PrintView: React.FC<PrintViewProps> = ({
               </div>
             </div>
           </div>
+          <section className="no-print" style={{ marginTop: 12, padding: '10px 12px', borderRadius: 8, border: `1px solid ${printReady ? '#86EFAC' : '#FCA5A5'}`, background: printReady ? '#F0FDF4' : '#FEF2F2' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'center', marginBottom: 6 }}>
+              <strong style={{ color: printReady ? '#166534' : '#991B1B', fontSize: 13 }}>{printReady ? '✓ Bereit zum Drucken / Versenden' : '⚠ Vor dem Druck noch prüfen'}</strong>
+              <span style={{ fontSize: 11, color: '#475569' }}>{printChecks.filter(check => check.ok).length}/{printChecks.length} Prüfungen erfüllt</span>
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {printChecks.map(check => <span key={check.text} style={{ fontSize: 11, padding: '3px 7px', borderRadius: 999, background: check.ok ? '#DCFCE7' : '#FEE2E2', color: check.ok ? '#166534' : '#991B1B', fontWeight: 650 }}>{check.ok ? '✓' : '!' } {check.text}</span>)}
+            </div>
+          </section>
         </div>
 
         {/* LAYOUT: PRINTABLE COLOUR ASSIGNMENT MAP */}

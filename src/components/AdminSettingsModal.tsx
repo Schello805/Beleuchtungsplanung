@@ -20,6 +20,11 @@ const defaults: SettingValues = {
   currency: 'EUR',
   candle_spacing: '2',
   candle_buffer: '10',
+  distribution_default_chunk_length: '40',
+  distribution_min_work_meters: '35',
+  distribution_max_work_meters: '50',
+  distribution_max_difference_meters: '15',
+  distribution_assignment_mode: 'station_first',
   mapbox_token: '',
   smtp_host: '',
   smtp_port: '587',
@@ -39,6 +44,10 @@ const fieldLabels: Record<string, string> = {
   currency: 'Währung',
   candle_spacing: 'Kerzenabstand in Metern',
   candle_buffer: 'Materialreserve in Prozent',
+  distribution_default_chunk_length: 'Standard-Abschnittslänge in Metern',
+  distribution_min_work_meters: 'Minimale Meter pro Helfer',
+  distribution_max_work_meters: 'Maximale Meter pro Helfer',
+  distribution_max_difference_meters: 'Maximale Differenz in Metern',
   mapbox_token: 'Mapbox Public Token',
   smtp_host: 'SMTP-Host',
   smtp_port: 'SMTP-Port',
@@ -140,6 +149,23 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({ isOpen, 
             <Field name="organizer_phone" values={values} onChange={change} placeholder="09855 / 12345" type="tel" />
             <Field name="candle_spacing" values={values} onChange={change} type="number" />
             <Field name="candle_buffer" values={values} onChange={change} type="number" />
+          </div>
+        </section>
+
+        <section className="admin-settings-section">
+          <h3>Standardwerte für die Verteilung</h3>
+          <p>Diese Werte werden beim Öffnen von „Abschnittslänge einstellen“ und „Verteilung planen“ vorausgefüllt. Sie können dort je Besprechung noch angepasst werden.</p>
+          <div className="admin-settings-grid">
+            <Field name="distribution_default_chunk_length" values={values} onChange={change} type="number" />
+            <Field name="distribution_min_work_meters" values={values} onChange={change} type="number" />
+            <Field name="distribution_max_work_meters" values={values} onChange={change} type="number" />
+            <Field name="distribution_max_difference_meters" values={values} onChange={change} type="number" />
+            <label style={{ display: 'grid', gap: 5, fontSize: 12, fontWeight: 700, color: 'var(--text-main)' }}>Standard-Verteilungsmodus
+              <select value={values.distribution_assignment_mode || 'station_first'} onChange={event => change('distribution_assignment_mode', event.target.value)}>
+                <option value="station_first">Stationen zuerst, dann zusammenhängend</option>
+                <option value="meters_only">Nur nach Metern ausgleichen</option>
+              </select>
+            </label>
           </div>
         </section>
 

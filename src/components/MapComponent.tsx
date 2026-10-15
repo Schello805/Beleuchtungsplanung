@@ -13,6 +13,8 @@ interface MapComponentProps {
   onSelectSection: (id: string | null) => void;
   onUpdateSectionHelper: (sectionId: string, helperId: string | null, helperName: string | null) => void;
   onUpdateSectionLightingSide: (sectionId: string, lightingSide: 'both' | 'left' | 'right') => void;
+  onUpdateSectionNotes: (sectionId: string, notes: string) => void;
+  onMergeSections: (firstId: string, secondId: string) => void;
   onDeleteSection: (sectionId: string) => void;
   extensionSectionId?: string | null;
   onStartExtension?: (sectionId: string) => void;
@@ -83,6 +85,8 @@ export const MapComponent: React.FC<MapComponentProps> = ({
   onSelectSection,
   onUpdateSectionHelper,
   onUpdateSectionLightingSide,
+  onUpdateSectionNotes,
+  onMergeSections,
   onDeleteSection,
   extensionSectionId,
   onStartExtension,
@@ -583,6 +587,14 @@ export const MapComponent: React.FC<MapComponentProps> = ({
         // Find available helpers without assignments for quick 1-click pills
         const freeHelpers = helpers.filter(h => !sections.some(s => s.assigned_helper_id === h.id));
         const quickPills = (freeHelpers.length > 0 ? freeHelpers : helpers).slice(0, 4);
+        const mergeCandidates = sec.geojson.geometry.type === 'LineString'
+          ? sections.filter(candidate => {
+              if (candidate.id === sec.id || candidate.type !== 'line' || candidate.street_name !== sec.street_name || candidate.geojson.geometry.type !== 'LineString') return false;
+              const firstEndpoints = [sec.geojson.geometry.coordinates[0], sec.geojson.geometry.coordinates.at(-1)!];
+              const secondEndpoints = [candidate.geojson.geometry.coordinates[0], candidate.geojson.geometry.coordinates.at(-1)!];
+              return Math.min(...firstEndpoints.flatMap(first => secondEndpoints.map(second => turf.distance(turf.point(first), turf.point(second), { units: 'meters' })))) <= 25;
+            })
+          : [];
 
         const popupDiv = document.createElement('div');
         popupDiv.style.fontFamily = 'Outfit, sans-serif';
@@ -620,6 +632,20 @@ export const MapComponent: React.FC<MapComponentProps> = ({
               ${helpers.map(h => `<option value="${h.id}" ${h.id === sec.assigned_helper_id ? 'selected' : ''}>${h.name}</option>`).join('')}
             </select>
           </div>
+          <div style="margin-bottom: 10px;">
+            <label style="font-size:11px; font-weight:600; color:#334155; display:block; margin-bottom:3px;">Notiz für Orga / Helfer:</label>
+            <textarea id="popup-notes-${sec.id}" rows="2" style="width:100%; box-sizing:border-box; padding:5px 8px; border-radius:6px; border:1px solid #CBD5E1; font-size:12px; resize:vertical;">${sec.notes || ''}</textarea>
+            <button id="popup-save-notes-${sec.id}" style="margin-top:4px; width:100%; background:#E0F2FE; color:#0369A1; border:none; padding:5px 8px; border-radius:4px; font-size:11px; cursor:pointer; font-weight:700;">Notiz speichern</button>
+          </div>
+          ${mergeCandidates.length ? `
+          <div style="margin-bottom: 10px; padding:6px; background:#FFF7ED; border:1px solid #FED7AA; border-radius:6px;">
+            <label style="font-size:11px; font-weight:700; color:#9A3412; display:block; margin-bottom:3px;">Angrenzenden Abschnitt zusammenführen:</label>
+            <select id="popup-merge-select-${sec.id}" style="width:100%; padding:5px 8px; border-radius:6px; border:1px solid #FDBA74; font-size:12px; background:#FFFFFF;">
+              <option value="">-- Abschnitt wählen --</option>
+              ${mergeCandidates.map(candidate => `<option value="${candidate.id}">${candidate.label} · ${candidate.lengthMeters} m</option>`).join('')}
+            </select>
+            <button id="popup-merge-btn-${sec.id}" style="margin-top:4px; width:100%; background:#F97316; color:#FFFFFF; border:none; padding:5px 8px; border-radius:4px; font-size:11px; cursor:pointer; font-weight:700;">Zusammenführen</button>
+          </div>` : ''}
           <div style="margin-bottom: 10px;">
             <label style="font-size:11px; font-weight:600; color:#334155; display:block; margin-bottom:3px;">Beleuchtung:</label>
             <select id="popup-lighting-side-${sec.id}" style="width:100%; padding:5px 8px; border-radius:6px; border:1px solid #CBD5E1; font-size:12px; background:#F8FAFC;">
@@ -684,6 +710,27 @@ export const MapComponent: React.FC<MapComponentProps> = ({
             lightingSideSelect.onchange = (e) => {
               onUpdateSectionLightingSide(sec.id, (e.target as HTMLSelectElement).value as 'both' | 'left' | 'right');
               map.closePopup();
+            };
+          }
+
+          const notesButton = document.getElementById(`popup-save-notes-${sec.id}`);
+          const notesInput = document.getElementById(`popup-notes-${sec.id}`) as HTMLTextAreaElement;
+          if (notesButton && notesInput) {
+            notesButton.onclick = () => {
+              onUpdateSectionNotes(sec.id, notesInput.value.trim());
+              map.closePopup();
+            };
+          }
+
+          const mergeButton = document.getElementById(`popup-merge-btn-${sec.id}`);
+          const mergeSelect = document.getElementById(`popup-merge-select-${sec.id}`) as HTMLSelectElement;
+          if (mergeButton && mergeSelect) {
+            mergeButton.onclick = () => {
+              if (!mergeSelect.value) return;
+              if (confirm('Die beiden angrenzenden Abschnitte zusammenführen? Bei unterschiedlichen Helfern wird die Zuweisung zur Sicherheit geöffnet.')) {
+                onMergeSections(sec.id, mergeSelect.value);
+                map.closePopup();
+              }
             };
           }
 

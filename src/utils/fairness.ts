@@ -29,6 +29,42 @@ export const DEFAULT_FAIRNESS_RULES: Required<FairnessRules> = {
   maxDifferenceMeters: 15
 };
 
+/** Distributes solely by workload. Unlike station-first allocation it ignores
+ * location and continuity, which is useful for a live planning meeting. */
+export function calculateMeterOnlyAssignment(
+  sectionsToAssign: Section[],
+  helpers: Helper[],
+  preservedSections: Section[] = [],
+  rules: FairnessRules = {}
+): AutoAssignmentResult {
+  const maxMeters = rules.maxMeters ?? Number.POSITIVE_INFINITY;
+  const totals = new Map(helpers.map(helper => [helper.id, preservedSections
+    .filter(section => section.assigned_helper_id === helper.id)
+    .reduce((sum, section) => sum + (section.lengthMeters || section.length_meters || 0), 0)]));
+  const assignments: AutoAssignmentResult['assignments'] = [];
+  [...sectionsToAssign]
+    .sort((first, second) => (second.lengthMeters || second.length_meters || 0) - (first.lengthMeters || first.length_meters || 0))
+    .forEach(section => {
+      const meters = section.lengthMeters || section.length_meters || 0;
+      const ordered = [...helpers].sort((first, second) => (totals.get(first.id) || 0) - (totals.get(second.id) || 0));
+      const helper = ordered.find(candidate => (totals.get(candidate.id) || 0) + meters <= maxMeters) || ordered[0];
+      if (!helper) return;
+      totals.set(helper.id, (totals.get(helper.id) || 0) + meters);
+      assignments.push({ sectionId: section.id, helperId: helper.id, helperName: helper.name });
+    });
+  const values = [...totals.values()];
+  return {
+    assignments,
+    summary: {
+      totalMeters: sectionsToAssign.reduce((sum, section) => sum + (section.lengthMeters || section.length_meters || 0), 0),
+      helpersUsed: assignments.length ? new Set(assignments.map(assignment => assignment.helperId)).size : 0,
+      avgMeters: values.length ? Math.round(values.reduce((sum, value) => sum + value, 0) / values.length) : 0,
+      minMeters: values.length ? Math.round(Math.min(...values)) : 0,
+      maxMeters: values.length ? Math.round(Math.max(...values)) : 0
+    }
+  };
+}
+
 function lineFeatures(section: Section): GeoJSON.Feature<GeoJSON.LineString>[] {
   const geometry = section.geojson?.geometry;
   if (geometry?.type === 'LineString') return [section.geojson as GeoJSON.Feature<GeoJSON.LineString>];
