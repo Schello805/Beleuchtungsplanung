@@ -40,6 +40,7 @@ interface SidebarProps {
   streets: Street[];
   selectedSectionId: string | null;
   onSelectSection: (id: string | null) => void;
+  onFocusSection?: (id: string) => void;
   onUpdateSectionHelper: (sectionId: string, helperId: string | null, helperName: string | null) => void;
   onDeleteSection: (sectionId: string) => void;
   onAddHelper: (name: string, color?: string, phone?: string, email?: string) => Promise<void>;
@@ -74,6 +75,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   streets,
   selectedSectionId,
   onSelectSection,
+  onFocusSection,
   onUpdateSectionHelper,
   onDeleteSection,
   onAddHelper,
@@ -122,6 +124,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [statsSortDirection, setStatsSortDirection] = useState<'asc' | 'desc'>('desc');
   const [showHelperDataActions, setShowHelperDataActions] = useState(false);
   const [showDataTools, setShowDataTools] = useState(false);
+  const selectAndFocusSection = (sectionId: string) => {
+    onSelectSection(sectionId);
+    onFocusSection?.(sectionId);
+  };
 
   // Calculations
   const totalMeters = sections.reduce((sum, s) => sum + s.lengthMeters, 0);
@@ -750,7 +756,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                             return (
                               <div
                                 key={sec.id}
-                                onClick={() => onSelectSection(sec.id)}
+                                onClick={() => selectAndFocusSection(sec.id)}
                                 style={{
                                   padding: '8px 10px',
                                   borderRadius: 4,
@@ -848,7 +854,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   return (
                     <div
                       key={sec.id}
-                      onClick={() => onSelectSection(sec.id)}
+                      onClick={() => selectAndFocusSection(sec.id)}
                       style={{
                         padding: '10px 12px',
                         borderRadius: 'var(--radius-sm)',
@@ -1399,7 +1405,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                             if (!item.sections.length) return;
                             setFocusedHelperId(item.helper.id);
                             setFocusedHelperSectionIndex(0);
-                            onSelectSection(item.sections[0].id);
+                            selectAndFocusSection(item.sections[0].id);
                           }}
                           title={item.sections.length ? `${item.helper.name} auf der Karte anzeigen` : 'Noch kein Bereich zugeteilt'}
                           style={{ borderTop: '1px solid var(--border-subtle)', cursor: item.sections.length ? 'pointer' : 'default', background: isFocused ? 'rgba(245,158,11,.10)' : 'transparent' }}
@@ -1409,6 +1415,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                             <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-main)', fontWeight: 700 }}>
                               <span style={{ width: 8, height: 8, borderRadius: '50%', background: item.helper.color || 'var(--accent-gold)', flexShrink: 0 }} />
                               <span>{item.helper.name}</span>
+                              {item.sectionsCount > 0 && <MapPin size={12} color="var(--accent-gold)" aria-label="Auf Karte anzeigen" />}
                             </div>
                             {item.sectionsCount > 0 && <div style={{ fontSize: 10, marginTop: 2, color: difference > 0 ? '#F59E0B' : difference < 0 ? '#60A5FA' : 'var(--text-muted)' }}>{difference === 0 ? 'genau im Durchschnitt' : `${difference > 0 ? '+' : ''}${difference} m zum Ø`}</div>}
                           </td>
@@ -1679,7 +1686,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         const nextIndex = isFocused ? (focusedHelperSectionIndex + 1) % item.sections.length : 0;
                         setFocusedHelperId(item.helper.id);
                         setFocusedHelperSectionIndex(nextIndex);
-                        onSelectSection(item.sections[nextIndex].id);
+                        selectAndFocusSection(item.sections[nextIndex].id);
                       }}
                       title="Klicken: Abschnitt auf der Karte anzeigen; bei mehreren Abschnitten erneut klicken"
                       style={{
@@ -1738,7 +1745,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                               onClick={() => {
                                 setFocusedHelperId(item.helper.id);
                                 setFocusedHelperSectionIndex(item.sections.findIndex(candidate => candidate.id === section.id));
-                                onSelectSection(section.id);
+                                selectAndFocusSection(section.id);
                               }}
                               style={{ padding: '7px 8px', borderRadius: 6, background: isSelected ? 'rgba(245,158,11,.12)' : 'var(--bg-input)', border: isSelected ? '1px solid var(--accent-gold)' : '1px solid var(--border-subtle)', cursor: 'pointer' }}
                             >

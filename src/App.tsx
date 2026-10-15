@@ -36,6 +36,7 @@ export const App: React.FC = () => {
   const [helpers, setHelpers] = useState<Helper[]>([]);
   const [streets, setStreets] = useState<Street[]>([]);
   const [selectedSectionId, setSelectedSectionId] = useState<string | null>(null);
+  const [focusSectionRequest, setFocusSectionRequest] = useState<{ id: string; nonce: number } | null>(null);
 
   // Preview & Capture state
   const [previewSections, setPreviewSections] = useState<GeneratedSection[]>([]);
@@ -299,6 +300,11 @@ export const App: React.FC = () => {
         (window as any).__onPointMapClick(lat, lon);
       }
     }
+  };
+
+  const handleFocusSection = (sectionId: string) => {
+    setSelectedSectionId(sectionId);
+    setFocusSectionRequest({ id: sectionId, nonce: Date.now() });
   };
 
   const handleStartAreaAssignment = () => {
@@ -900,6 +906,7 @@ export const App: React.FC = () => {
         streets={streets}
         selectedSectionId={selectedSectionId}
         onSelectSection={setSelectedSectionId}
+        onFocusSection={handleFocusSection}
         onUpdateSectionHelper={handleUpdateSectionHelper}
         onDeleteSection={handleDeleteSection}
         onAddHelper={handleAddHelper}
@@ -1103,6 +1110,7 @@ export const App: React.FC = () => {
             helpers={helpers}
             selectedSectionId={selectedSectionId}
             onSelectSection={setSelectedSectionId}
+            focusSectionRequest={focusSectionRequest}
             onUpdateSectionHelper={handleUpdateSectionHelper}
             onUpdateSectionLightingSide={handleUpdateSectionLightingSide}
             onUpdateSectionNotes={handleUpdateSectionNotes}

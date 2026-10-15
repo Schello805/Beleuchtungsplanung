@@ -11,6 +11,7 @@ interface MapComponentProps {
   helpers: Helper[];
   selectedSectionId: string | null;
   onSelectSection: (id: string | null) => void;
+  focusSectionRequest?: { id: string; nonce: number } | null;
   onUpdateSectionHelper: (sectionId: string, helperId: string | null, helperName: string | null) => void;
   onUpdateSectionLightingSide: (sectionId: string, lightingSide: 'both' | 'left' | 'right') => void;
   onUpdateSectionNotes: (sectionId: string, notes: string) => void;
@@ -86,6 +87,7 @@ export const MapComponent: React.FC<MapComponentProps> = ({
   helpers,
   selectedSectionId,
   onSelectSection,
+  focusSectionRequest,
   onUpdateSectionHelper,
   onUpdateSectionLightingSide,
   onUpdateSectionNotes,
@@ -548,6 +550,26 @@ export const MapComponent: React.FC<MapComponentProps> = ({
       mapRef.current.setView([lat, lon], 17);
     }
   }, [focusedPreviewId, previewSections]);
+
+  // Sidebar drilldowns deliberately move the map. Regular clicks directly on
+  // the map do not set this request, so editing never unexpectedly re-centres.
+  useEffect(() => {
+    if (!focusSectionRequest || !mapRef.current) return;
+    const section = sections.find(item => item.id === focusSectionRequest.id);
+    if (!section?.geojson?.geometry) return;
+    const geometry = section.geojson.geometry;
+    if (geometry.type === 'Point') {
+      const [lon, lat] = geometry.coordinates;
+      mapRef.current.setView([lat, lon], 18, { animate: true });
+      return;
+    }
+    if (geometry.type !== 'LineString' && geometry.type !== 'MultiLineString') return;
+    const lines = geometry.type === 'LineString' ? [geometry.coordinates] : geometry.coordinates;
+    const coordinates = lines.flat().map(([lon, lat]) => [lat, lon] as [number, number]);
+    if (coordinates.length === 0) return;
+    const bounds = L.latLngBounds(coordinates);
+    if (bounds.isValid()) mapRef.current.fitBounds(bounds, { padding: [90, 90], maxZoom: 18, animate: true });
+  }, [focusSectionRequest, sections]);
 
   // Render Saved Sections
   useEffect(() => {
