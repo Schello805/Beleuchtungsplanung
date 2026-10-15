@@ -4,6 +4,9 @@ import path from 'node:path';
 
 // Bechhofen (PLZ 91572) Bounding Box: [minLat, minLon, maxLat, maxLon]
 const BECHHOFEN_BBOX = '49.1241,10.4857,49.2170,10.6304';
+const DEFAULT_SEARCH_AREA = { city: 'Bechhofen', postalCode: '91572' };
+type SearchArea = { city?: string; postalCode?: string };
+const searchBboxCache = new Map<string, string>();
 
 // Multiple Overpass endpoints for 100% high availability & failover
 const OVERPASS_ENDPOINTS = [
@@ -153,17 +156,48 @@ async function queryOverpass(query: string): Promise<any> {
   throw new Error(`Overpass query failed on all endpoints: ${lastError?.message || 'Network error'}`);
 }
 
+function isDefaultSearchArea(area?: SearchArea) {
+  const city = (area?.city || DEFAULT_SEARCH_AREA.city).trim().toLowerCase();
+  const postalCode = (area?.postalCode || DEFAULT_SEARCH_AREA.postalCode).trim();
+  return city === DEFAULT_SEARCH_AREA.city.toLowerCase() && postalCode === DEFAULT_SEARCH_AREA.postalCode;
+}
+
+/** Resolves precisely the configured city and postal code to an OSM bounding
+ * box.  We intentionally never fall back to a Germany-wide search. */
+async function resolveSearchBbox(area?: SearchArea): Promise<string> {
+  if (isDefaultSearchArea(area)) return BECHHOFEN_BBOX;
+  const city = area?.city?.trim();
+  const postalCode = area?.postalCode?.trim();
+  if (!city || !postalCode) throw new Error('Bitte in den Einstellungen Ort und Postleitzahl für die Straßensuche angeben.');
+  const key = `${postalCode}|${city.toLowerCase()}`;
+  const cached = searchBboxCache.get(key);
+  if (cached) return cached;
+
+  const params = new URLSearchParams({ q: `${postalCode} ${city}, Deutschland`, format: 'jsonv2', limit: '1', addressdetails: '1' });
+  const response = await fetch(`https://nominatim.openstreetmap.org/search?${params}`, {
+    headers: { 'User-Agent': 'LichternachtStreckenplaner/1.0' }
+  });
+  if (!response.ok) throw new Error('Der Karten-Ort konnte nicht aufgelöst werden. Bitte Ort und PLZ prüfen.');
+  const results = await response.json() as Array<{ boundingbox?: [string, string, string, string] }>;
+  const box = results[0]?.boundingbox;
+  if (!box) throw new Error(`Kein Ort für ${postalCode} ${city} gefunden. Bitte Ort und PLZ prüfen.`);
+  const bbox = `${box[0]},${box[2]},${box[1]},${box[3]}`;
+  searchBboxCache.set(key, bbox);
+  return bbox;
+}
+
 /**
  * Returns a list of all known street names in Bechhofen (PLZ 91572).
  */
-export async function getBechhofenStreets(): Promise<string[]> {
+export async function getBechhofenStreets(searchArea?: SearchArea): Promise<string[]> {
   const local = loadLocalStreets();
   const localKeys = Object.keys(local);
-  if (localKeys.length > 0) {
+  if (isDefaultSearchArea(searchArea) && localKeys.length > 0) {
     return localKeys.sort((a, b) => a.localeCompare(b, 'de'));
   }
 
-  const query = `[out:json][timeout:25][bbox:${BECHHOFEN_BBOX}];way["highway"]["name"];out tags;`;
+  const bbox = await resolveSearchBbox(searchArea);
+  const query = `[out:json][timeout:25][bbox:${bbox}];way["highway"]["name"];out tags;`;
 
   try {
     const data = await queryOverpass(query);
@@ -300,7 +334,7 @@ function getLocalJunctionPoints(targetWays: OsmWay[], targetName: string, allStr
  * Searches for a street by name with ultra-tolerant "ß" / "ss" / "str." matching.
  * Checks local Bechhofen database first for 0ms response, with live Overpass failover.
  */
-export async function getStreetGeometry(streetName: string): Promise<{
+export async function getStreetGeometry(streetName: string, searchArea?: SearchArea): Promise<{
   streetName: string;
   features: GeoJSON.Feature<GeoJSON.LineString>[];
   totalLengthMeters: number;
@@ -310,7 +344,7 @@ export async function getStreetGeometry(streetName: string): Promise<{
   const normalizedTarget = normalizeStreetName(streetName);
 
   // 1. Try local exact match
-  if (local[streetName] && local[streetName].length > 0) {
+  if (isDefaultSearchArea(searchArea) && local[streetName] && local[streetName].length > 0) {
     const features = stitchWaysToLines(local[streetName]);
     const totalLengthMeters = features.reduce((sum, f) => sum + Math.round(turf.length(f, { units: 'kilometers' }) * 1000), 0);
     return { streetName, features, totalLengthMeters, junctionPoints: getLocalJunctionPoints(local[streetName], streetName, local) };
@@ -318,7 +352,7 @@ export async function getStreetGeometry(streetName: string): Promise<{
 
   // 2. Try normalized match in local dataset
   for (const [key, ways] of Object.entries(local)) {
-    if (normalizeStreetName(key) === normalizedTarget && ways.length > 0) {
+    if (isDefaultSearchArea(searchArea) && normalizeStreetName(key) === normalizedTarget && ways.length > 0) {
       const features = stitchWaysToLines(ways);
       const totalLengthMeters = features.reduce((sum, f) => sum + Math.round(turf.length(f, { units: 'kilometers' }) * 1000), 0);
       return { streetName: key, features, totalLengthMeters, junctionPoints: getLocalJunctionPoints(ways, key, local) };
@@ -327,7 +361,8 @@ export async function getStreetGeometry(streetName: string): Promise<{
 
   // 3. Fallback to Overpass API query with variants & global bbox
   const variants = generateNameVariants(streetName);
-  const query = `[out:json][timeout:25][bbox:${BECHHOFEN_BBOX}];
+  const bbox = await resolveSearchBbox(searchArea);
+  const query = `[out:json][timeout:25][bbox:${bbox}];
 (
 ${variants.map(v => `  way["highway"]["name"="${v}"];`).join('\n')}
 );

@@ -57,6 +57,8 @@ export interface PublicHelperInfo {
 
 const API_BASE = '/api';
 const BECHHOFEN_BBOX = '49.1241,10.4857,49.2170,10.6304';
+const isDefaultStreetSearchArea = (area?: { city: string; postalCode: string }) =>
+  !area || ((area.city || '').trim().toLowerCase() === 'bechhofen' && (area.postalCode || '').trim() === '91572');
 
 // LocalStorage helpers for standalone/offline fallback
 const localDB = {
@@ -366,11 +368,16 @@ export const api = {
   },
 
   // OVERPASS STREETS
-  async getBechhofenStreets(): Promise<string[]> {
+  async getBechhofenStreets(searchArea?: { city: string; postalCode: string }): Promise<string[]> {
     try {
-      const res = await fetch(`${API_BASE}/overpass/streets`);
+      const params = new URLSearchParams();
+      if (searchArea?.city) params.set('city', searchArea.city);
+      if (searchArea?.postalCode) params.set('postalCode', searchArea.postalCode);
+      const res = await fetch(`${API_BASE}/overpass/streets${params.size ? `?${params}` : ''}`);
       if (res.ok) return await res.json();
     } catch {}
+
+    if (!isDefaultStreetSearchArea(searchArea)) return [];
 
     // Fallback: load pre-compiled local Bechhofen streets dataset
     try {
@@ -389,12 +396,22 @@ export const api = {
   },
 
   // OVERPASS GEOMETRY (with ss/ß and str. tolerance)
-  async getStreetGeometry(streetName: string): Promise<{ streetName: string; features: GeoJSON.Feature<GeoJSON.LineString>[]; totalLengthMeters: number; junctionPoints?: Array<[number, number]> }> {
+  async getStreetGeometry(streetName: string, searchArea?: { city: string; postalCode: string }): Promise<{ streetName: string; features: GeoJSON.Feature<GeoJSON.LineString>[]; totalLengthMeters: number; junctionPoints?: Array<[number, number]> }> {
     // 1. Try backend API first
     try {
-      const res = await fetch(`${API_BASE}/overpass/street-geometry?name=${encodeURIComponent(streetName)}`);
+      const params = new URLSearchParams({ name: streetName });
+      if (searchArea?.city) params.set('city', searchArea.city);
+      if (searchArea?.postalCode) params.set('postalCode', searchArea.postalCode);
+      const res = await fetch(`${API_BASE}/overpass/street-geometry?${params}`);
       if (res.ok) return await res.json();
     } catch {}
+
+    // The offline dataset is deliberately restricted to the configured default
+    // location. It must never return a same-named road from Bechhofen while a
+    // different city/PLZ was selected.
+    if (!isDefaultStreetSearchArea(searchArea)) {
+      throw new Error('Die Straßensuche für den eingestellten Ort ist momentan nicht erreichbar. Bitte Serververbindung sowie Ort und PLZ prüfen.');
+    }
 
     // 2. Direct client fallback: load pre-compiled local Bechhofen street dataset
     try {

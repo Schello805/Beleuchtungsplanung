@@ -5,6 +5,7 @@ import { chunkLineWithFairness, chunkLinePreferringJunctions, createPointSection
 import * as turf from '@turf/turf';
 
 interface CapturePanelProps {
+  streetSearchArea?: { city: string; postalCode: string };
   onPreviewGenerated: (sections: GeneratedSection[], streetInfo: { name: string; method: string; chunkLength: number; minLength: number; totalLength: number }) => void;
   onClearPreview: () => void;
   previewSections: GeneratedSection[];
@@ -20,6 +21,7 @@ interface CapturePanelProps {
 }
 
 export const CapturePanel: React.FC<CapturePanelProps> = ({
+  streetSearchArea,
   onPreviewGenerated,
   onClearPreview,
   previewSections,
@@ -80,12 +82,12 @@ export const CapturePanel: React.FC<CapturePanelProps> = ({
 
   // Load Bechhofen streets for autocomplete
   useEffect(() => {
-    api.getBechhofenStreets().then(list => {
+    api.getBechhofenStreets(streetSearchArea).then(list => {
       setAvailableStreets(list);
     }).catch(err => {
       console.warn('Streets fetch error:', err);
     });
-  }, []);
+  }, [streetSearchArea?.city, streetSearchArea?.postalCode]);
 
   // Filter street suggestions with ß/ss tolerance
   useEffect(() => {
@@ -184,7 +186,7 @@ export const CapturePanel: React.FC<CapturePanelProps> = ({
 
       for (const stName of batchStreetList) {
         try {
-          const res = await api.getStreetGeometry(stName);
+          const res = await api.getStreetGeometry(stName, streetSearchArea);
           if (res.features && res.features.length > 0) {
             streetDataList.push({
               name: res.streetName,
@@ -293,7 +295,7 @@ export const CapturePanel: React.FC<CapturePanelProps> = ({
     setFairnessNotice(null);
 
     try {
-      const data = await api.getStreetGeometry(targetName);
+      const data = await api.getStreetGeometry(targetName, streetSearchArea);
       if (!data.features || data.features.length === 0) {
         throw new Error(`Keine Geometrie für "${targetName}" gefunden.`);
       }

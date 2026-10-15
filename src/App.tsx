@@ -61,6 +61,7 @@ export const App: React.FC = () => {
   const [publicBaseUrl, setPublicBaseUrl] = useState<string>('');
   const [eventName, setEventName] = useState<string>('Lichternacht Bechhofen');
   const [eventLocation, setEventLocation] = useState<string>('Bechhofen a.d. Heide (PLZ 91572)');
+  const [streetSearchArea, setStreetSearchArea] = useState({ city: 'Bechhofen', postalCode: '91572' });
   const [organizerPhone, setOrganizerPhone] = useState<string>('');
   const [isPrintOpen, setIsPrintOpen] = useState<boolean>(false);
   const [isRedistributeOpen, setIsRedistributeOpen] = useState<boolean>(false);
@@ -166,6 +167,10 @@ export const App: React.FC = () => {
       }
       if (settings.event_name) setEventName(settings.event_name);
       if (settings.event_location) setEventLocation(settings.event_location);
+      setStreetSearchArea({
+        city: settings.street_search_city?.trim() || 'Bechhofen',
+        postalCode: settings.street_search_postal_code?.trim() || '91572'
+      });
       if (settings.organizer_phone !== undefined) setOrganizerPhone(settings.organizer_phone);
       if (settings.map_tile_theme) {
         setMapTileTheme(settings.map_tile_theme);
@@ -858,6 +863,7 @@ export const App: React.FC = () => {
           }}
         >
           <CapturePanel
+            streetSearchArea={streetSearchArea}
             onPreviewGenerated={handlePreviewGenerated}
             onClearPreview={handleClearPreview}
             previewSections={previewSections}

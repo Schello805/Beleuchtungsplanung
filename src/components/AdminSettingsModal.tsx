@@ -13,6 +13,8 @@ type SettingValues = Record<string, string>;
 const defaults: SettingValues = {
   event_name: 'Lichternacht Bechhofen',
   event_location: 'Bechhofen a.d. Heide (PLZ 91572)',
+  street_search_city: 'Bechhofen',
+  street_search_postal_code: '91572',
   public_base_url: '',
   organizer_name: '',
   organizer_email: '',
@@ -38,6 +40,8 @@ const defaults: SettingValues = {
 const fieldLabels: Record<string, string> = {
   event_name: 'Veranstaltungsname',
   event_location: 'Ort / Zusatz',
+  street_search_city: 'Karten-Ort für Straßensuche',
+  street_search_postal_code: 'Postleitzahl für Straßensuche',
   public_base_url: 'Öffentliche HTTPS-Adresse',
   organizer_name: 'Ansprechperson',
   organizer_email: 'Orga-E-Mail',
@@ -57,11 +61,12 @@ const fieldLabels: Record<string, string> = {
   smtp_from: 'Absender-Adresse'
 };
 
-const Field: React.FC<{ name: string; values: SettingValues; onChange: (name: string, value: string) => void; placeholder?: string; type?: string }> = ({ name, values, onChange, placeholder, type = 'text' }) => (
+const Field: React.FC<{ name: string; values: SettingValues; onChange: (name: string, value: string) => void; placeholder?: string; type?: string; inputMode?: React.HTMLAttributes<HTMLInputElement>['inputMode'] }> = ({ name, values, onChange, placeholder, type = 'text', inputMode }) => (
   <label style={{ display: 'grid', gap: 5, fontSize: 12, fontWeight: 700, color: 'var(--text-main)' }}>
     {fieldLabels[name]}
     <input
       type={type}
+      inputMode={inputMode}
       value={values[name] || ''}
       onChange={event => onChange(name, event.target.value)}
       placeholder={placeholder}
@@ -149,9 +154,12 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({ isOpen, 
           <div className="admin-settings-grid">
             <Field name="event_name" values={values} onChange={change} />
             <Field name="event_location" values={values} onChange={change} />
+            <Field name="street_search_city" values={values} onChange={change} placeholder="z. B. Bechhofen" />
+            <Field name="street_search_postal_code" values={values} onChange={change} placeholder="z. B. 91572" inputMode="numeric" />
             <Field name="public_base_url" values={values} onChange={change} placeholder="https://beleuchtung.lichternacht-bechhofen.de" type="url" />
             <Field name="currency" values={values} onChange={change} placeholder="EUR" />
           </div>
+          <p style={{ marginTop: 10 }}>Die Straßenliste und Geometrie werden ausschließlich innerhalb dieser Orts-/PLZ-Kombination gesucht. So wird beispielsweise keine Industriestraße aus einem anderen Ort übernommen.</p>
         </section>
 
         <section className="admin-settings-section">

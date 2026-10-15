@@ -410,7 +410,7 @@ app.post('/api/sections/replace-all', (req, res) => {
 // Overpass: List of streets in Bechhofen
 app.get('/api/overpass/streets', async (req, res) => {
   try {
-    const streets = await getBechhofenStreets();
+    const streets = await getBechhofenStreets({ city: String(req.query.city || ''), postalCode: String(req.query.postalCode || '') });
     res.json(streets);
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -425,7 +425,7 @@ app.get('/api/overpass/street-geometry', async (req, res) => {
       return res.status(400).json({ error: 'Straßenname erforderlich' });
     }
 
-    const result = await getStreetGeometry(name.trim());
+    const result = await getStreetGeometry(name.trim(), { city: String(req.query.city || ''), postalCode: String(req.query.postalCode || '') });
     res.json(result);
   } catch (err: any) {
     const msg = err.message || 'Fehler beim Laden der Straße';
