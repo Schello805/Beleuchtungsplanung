@@ -317,7 +317,7 @@ export const api = {
     if (!res.ok) throw new Error('Fehler beim Aktualisieren des Abschnitts in SQLite');
   },
 
-  async batchAssignHelpers(assignments: Array<{ sectionId: string; helperId: string; helperName: string }>): Promise<void> {
+  async batchAssignHelpers(assignments: Array<{ sectionId: string; helperId: string | null; helperName: string | null }>): Promise<void> {
     const res = await fetch(`${API_BASE}/sections/batch-assign`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },

@@ -112,7 +112,11 @@ export const App: React.FC = () => {
   } | null>(null);
   const [migrationNotice, setMigrationNotice] = useState<string | null>(null);
   const [copiedUrl, setCopiedUrl] = useState<boolean>(false);
-  const [lastAutomaticAssignments, setLastAutomaticAssignments] = useState<Array<{ sectionId: string; helperId: string; helperName: string }> | null>(null);
+  const [lastAssignmentUndo, setLastAssignmentUndo] = useState<{
+    label: string;
+    assignments: Array<{ sectionId: string; helperId: string | null; helperName: string | null }>;
+  } | null>(null);
+  const [isUndoingAssignment, setIsUndoingAssignment] = useState(false);
 
   // Apply theme to document
   useEffect(() => {
@@ -347,7 +351,7 @@ export const App: React.FC = () => {
     const question = `${affected.length} Abschnitt${affected.length === 1 ? '' : 'e'} (${sideLabel}) fest ${helper.name} zuordnen?${alreadyElsewhere ? `\n\n${alreadyElsewhere} bestehende Zuweisung${alreadyElsewhere === 1 ? '' : 'en'} wird/werden dabei ersetzt.` : ''}`;
     if (!window.confirm(question)) return;
 
-    setLastAutomaticAssignments(null);
+    rememberAssignmentUndo('Festen Bereich zuweisen', affected.map(section => section.id));
     const assignments = affected.map(section => ({ sectionId: section.id, helperId: helper.id, helperName: helper.name }));
     setSections(previous => previous.map(section => {
       const assignment = assignments.find(item => item.sectionId === section.id);
@@ -549,14 +553,47 @@ export const App: React.FC = () => {
     }
   };
 
+  const rememberAssignmentUndo = (label: string, sectionIds: string[]) => {
+    const ids = new Set(sectionIds);
+    const previousAssignments = sections
+      .filter(section => ids.has(section.id))
+      .map(section => ({
+        sectionId: section.id,
+        helperId: section.assigned_helper_id || null,
+        helperName: section.assigned_helper_name || null
+      }));
+    if (previousAssignments.length) setLastAssignmentUndo({ label, assignments: previousAssignments });
+  };
+
+  const handleUndoLastAssignment = async () => {
+    if (!lastAssignmentUndo || isUndoingAssignment) return;
+    setIsUndoingAssignment(true);
+    const restored = new Map(lastAssignmentUndo.assignments.map(item => [item.sectionId, item]));
+    try {
+      await api.batchAssignHelpers(lastAssignmentUndo.assignments);
+      setSections(previous => previous.map(section => {
+        const assignment = restored.get(section.id);
+        return assignment
+          ? { ...section, assigned_helper_id: assignment.helperId, assigned_helper_name: assignment.helperName }
+          : section;
+      }));
+      setLastAssignmentUndo(null);
+    } catch (error) {
+      console.error('Undo assignment error:', error);
+      alert('Die letzte Zuweisung konnte nicht zurückgenommen werden.');
+      await loadData();
+    } finally {
+      setIsUndoingAssignment(false);
+    }
+  };
+
   // Update Section Helper Assignment
   const handleUpdateSectionHelper = async (
     sectionId: string,
     helperId: string | null,
     helperName: string | null
   ) => {
-    // A later manual change must never be overwritten by an old auto-plan undo.
-    setLastAutomaticAssignments(null);
+    rememberAssignmentUndo('Abschnitt neu zuweisen', [sectionId]);
     // Optimistic UI update
     setSections(prev =>
       prev.map(s =>
@@ -779,7 +816,11 @@ export const App: React.FC = () => {
   };
 
   // Batch Helper Assignment (Auto Fairness or Street Batch)
-  const handleBatchAssign = async (assignments: Array<{ sectionId: string; helperId: string; helperName: string }>) => {
+  const handleBatchAssign = async (
+    assignments: Array<{ sectionId: string; helperId: string; helperName: string }>,
+    undoLabel = 'Mehrere Abschnitte neu zuweisen'
+  ) => {
+    rememberAssignmentUndo(undoLabel, assignments.map(assignment => assignment.sectionId));
     // Optimistic UI update
     const map = new Map(assignments.map(a => [a.sectionId, a]));
     setSections(prev =>
@@ -801,22 +842,7 @@ export const App: React.FC = () => {
   };
 
   const handleAutomaticAssign = async (assignments: Array<{ sectionId: string; helperId: string; helperName: string }>) => {
-    const previous = assignments.map(assignment => {
-      const section = sections.find(item => item.id === assignment.sectionId);
-      return {
-        sectionId: assignment.sectionId,
-        helperId: section?.assigned_helper_id || '',
-        helperName: section?.assigned_helper_name || ''
-      };
-    });
-    await handleBatchAssign(assignments);
-    setLastAutomaticAssignments(previous);
-  };
-
-  const handleUndoAutomaticAssign = async () => {
-    if (!lastAutomaticAssignments) return;
-    await handleBatchAssign(lastAutomaticAssignments);
-    setLastAutomaticAssignments(null);
+    await handleBatchAssign(assignments, 'Automatische Verteilung');
   };
 
   if (publicToken) {
@@ -990,13 +1016,14 @@ export const App: React.FC = () => {
 
           <div style={{ width: 1, height: 16, background: 'var(--border-subtle)', margin: '0 4px' }} />
 
-          {lastAutomaticAssignments && (
+          {lastAssignmentUndo && (
             <button
-              onClick={handleUndoAutomaticAssign}
-              title="Letzte automatische Zuweisung zurücksetzen"
-              style={{ border: '1px solid #F59E0B', background: 'rgba(245, 158, 11, 0.12)', color: 'var(--accent-gold)', borderRadius: 5, padding: '3px 7px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 700 }}
+              onClick={handleUndoLastAssignment}
+              disabled={isUndoingAssignment}
+              title={`Rückgängig: ${lastAssignmentUndo.label}`}
+              style={{ border: '1px solid #F59E0B', background: 'rgba(245, 158, 11, 0.12)', color: 'var(--accent-gold)', borderRadius: 5, padding: '3px 7px', cursor: isUndoingAssignment ? 'wait' : 'pointer', opacity: isUndoingAssignment ? 0.65 : 1, display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, fontWeight: 700 }}
             >
-              <Undo2 size={13} /> Auto-Zuweisung rückgängig
+              <Undo2 size={13} /> {isUndoingAssignment ? 'Wird zurückgenommen …' : 'Rückgängig'}
             </button>
           )}
 
