@@ -47,10 +47,6 @@ function toLeafletLineCoordinates(feature: any): L.LatLngExpression[] | L.LatLng
   return feature.geometry.type === 'MultiLineString' ? converted : converted[0];
 }
 
-function flattenLeafletLineCoordinates(coords: L.LatLngExpression[] | L.LatLngExpression[][]): L.LatLngExpression[] {
-  return Array.isArray(coords[0]) && Array.isArray((coords[0] as any)[0]) ? (coords as L.LatLngExpression[][]).flat() : coords as L.LatLngExpression[];
-}
-
 const lightingSideLabel = (side?: Section['lighting_side']) => side === 'left'
   ? 'Straßenseite A (links in Richtung A → B)'
   : side === 'right'
@@ -825,21 +821,6 @@ export const MapComponent: React.FC<MapComponentProps> = ({
       }
     });
   }, [sections, selectedSectionId, helpers, activeHelperId, onSelectSection, onUpdateSectionHelper, onDeleteSection, onStartExtension]);
-
-  // Zoom to selected section
-  useEffect(() => {
-    if (!selectedSectionId || !mapRef.current) return;
-    const sec = sections.find(s => s.id === selectedSectionId);
-    if (!sec) return;
-
-    if (sec.type === 'line' && ['LineString', 'MultiLineString'].includes(sec.geojson.geometry.type)) {
-      const bounds = L.latLngBounds(flattenLeafletLineCoordinates(toLeafletLineCoordinates(sec.geojson)));
-      mapRef.current.fitBounds(bounds, { padding: [80, 80], maxZoom: 18 });
-    } else if (sec.type === 'point' && sec.geojson.geometry.type === 'Point') {
-      const [lon, lat] = sec.geojson.geometry.coordinates;
-      mapRef.current.flyTo([lat, lon], 18);
-    }
-  }, [selectedSectionId, sections]);
 
   return (
     <div style={{ position: 'relative', width: '100%', height: '100%' }}>
