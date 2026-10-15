@@ -117,6 +117,7 @@ export const MapComponent: React.FC<MapComponentProps> = ({
 
   const sectionsLayerGroupRef = useRef<L.LayerGroup | null>(null);
   const previewLayerGroupRef = useRef<L.LayerGroup | null>(null);
+  const hadPreviewSectionsRef = useRef(false);
   const captureLayerGroupRef = useRef<L.LayerGroup | null>(null);
   const helperLayerGroupRef = useRef<L.LayerGroup | null>(null);
 
@@ -397,7 +398,12 @@ export const MapComponent: React.FC<MapComponentProps> = ({
     if (!group || !map) return;
     group.clearLayers();
 
-    if (!previewSections || previewSections.length === 0) return;
+    if (!previewSections || previewSections.length === 0) {
+      hadPreviewSectionsRef.current = false;
+      return;
+    }
+    const isFirstPreviewRender = !hadPreviewSectionsRef.current;
+    hadPreviewSectionsRef.current = true;
     const bounds = L.latLngBounds([]);
 
     previewSections.forEach(sec => {
@@ -522,7 +528,10 @@ export const MapComponent: React.FC<MapComponentProps> = ({
       }
     });
 
-    if (bounds.isValid() && !focusedPreviewId) {
+    // Only centre once when a new preview starts. Changing A/B, deleting a
+    // preview fragment or adjusting a selection must never pull the organiser
+    // away from the current map position.
+    if (bounds.isValid() && !focusedPreviewId && isFirstPreviewRender) {
       map.fitBounds(bounds, { padding: [50, 50], maxZoom: 17 });
     }
   }, [previewSections, focusedPreviewId]);
