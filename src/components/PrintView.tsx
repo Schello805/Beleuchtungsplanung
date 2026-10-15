@@ -215,8 +215,10 @@ const HelperAreaMap: React.FC<{ sections: Section[]; color?: string; height: num
   let maxX = Math.max(...worlds.map(point => point[0]));
   let minY = Math.min(...worlds.map(point => point[1]));
   let maxY = Math.max(...worlds.map(point => point[1]));
-  let boundsWidth = Math.max((maxX - minX) * 1.32, 110);
-  let boundsHeight = Math.max((maxY - minY) * 1.32, 80);
+  // Keep enough surrounding streets visible for orientation on a small card,
+  // while still fitting the full assigned route with its endpoints.
+  let boundsWidth = Math.max((maxX - minX) * 1.55, 130);
+  let boundsHeight = Math.max((maxY - minY) * 1.55, 96);
   const targetRatio = width / height;
   if (boundsWidth / boundsHeight < targetRatio) boundsWidth = boundsHeight * targetRatio;
   else boundsHeight = boundsWidth / targetRatio;
