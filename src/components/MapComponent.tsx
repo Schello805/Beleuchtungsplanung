@@ -556,6 +556,18 @@ export const MapComponent: React.FC<MapComponentProps> = ({
     if (!group || !map) return;
     group.clearLayers();
 
+    const helperLoad = new Map(helpers.map(helper => {
+      const assigned = sections.filter(section => section.assigned_helper_id === helper.id);
+      return [helper.id, {
+        sectionCount: assigned.length,
+        meters: Math.round(assigned.reduce((total, section) => total + section.lengthMeters, 0))
+      }];
+    }));
+    const helperOptionText = (helper: Helper) => {
+      const load = helperLoad.get(helper.id) || { sectionCount: 0, meters: 0 };
+      return `${helper.name} (${load.sectionCount} Abschnitt${load.sectionCount === 1 ? '' : 'e'} · ${load.meters} m)`;
+    };
+
     sections.forEach(sec => {
       const isSelected = selectedSectionId === sec.id;
       const assignedHelper = helpers.find(h => h.id === sec.assigned_helper_id);
@@ -658,7 +670,7 @@ export const MapComponent: React.FC<MapComponentProps> = ({
             <label style="font-size:11px; font-weight:600; color:#334155; display:block; margin-bottom:3px;">Helfer wählen:</label>
             <select id="popup-helper-select-${sec.id}" style="width:100%; padding:5px 8px; border-radius:6px; border:1px solid #CBD5E1; font-size:12px; background:#F8FAFC;">
               <option value="">-- Nicht zugewiesen --</option>
-              ${helpers.map(h => `<option value="${h.id}" ${h.id === sec.assigned_helper_id ? 'selected' : ''}>${h.name}</option>`).join('')}
+              ${helpers.map(h => `<option value="${h.id}" ${h.id === sec.assigned_helper_id ? 'selected' : ''}>${helperOptionText(h)}</option>`).join('')}
             </select>
           </div>
           <div style="margin-bottom: 10px;">
@@ -820,7 +832,7 @@ export const MapComponent: React.FC<MapComponentProps> = ({
             <label style="font-size:11px; font-weight:600; color:#334155; display:block; margin-bottom:3px;">Helfer zuweisen:</label>
             <select id="popup-pt-helper-${sec.id}" style="width:100%; padding:5px 8px; border-radius:6px; border:1px solid #CBD5E1; font-size:12px;">
               <option value="">-- Nicht zugewiesen --</option>
-              ${helpers.map(h => `<option value="${h.id}" ${h.id === sec.assigned_helper_id ? 'selected' : ''}>${h.name}</option>`).join('')}
+              ${helpers.map(h => `<option value="${h.id}" ${h.id === sec.assigned_helper_id ? 'selected' : ''}>${helperOptionText(h)}</option>`).join('')}
             </select>
           </div>
           <div style="display:flex; justify-content:space-between; align-items:center;">
@@ -1120,10 +1132,12 @@ export const MapComponent: React.FC<MapComponentProps> = ({
                 -- Helfer suchen / anzeigen --
               </option>
               {helpers.map(h => {
-                const count = sections.filter(s => s.assigned_helper_id === h.id).length;
+                const assigned = sections.filter(s => s.assigned_helper_id === h.id);
+                const count = assigned.length;
+                const meters = Math.round(assigned.reduce((total, section) => total + section.lengthMeters, 0));
                 return (
                   <option key={h.id} value={h.id} style={{ background: '#0F172A', color: '#FFFFFF' }}>
-                    {h.name} {count > 0 ? `(${count} Abschnitte)` : '(noch frei)'}
+                    {h.name} ({count} Abschnitt{count === 1 ? '' : 'e'} · {meters} m)
                   </option>
                 );
               })}
