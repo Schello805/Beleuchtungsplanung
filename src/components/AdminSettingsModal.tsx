@@ -161,7 +161,7 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({ isOpen, 
             <Field name="distribution_max_work_meters" values={values} onChange={change} type="number" />
             <Field name="distribution_max_difference_meters" values={values} onChange={change} type="number" />
             <label style={{ display: 'grid', gap: 5, fontSize: 12, fontWeight: 700, color: 'var(--text-main)' }}>Standard-Verteilungsmodus
-              <select value={values.distribution_assignment_mode || 'station_first'} onChange={event => change('distribution_assignment_mode', event.target.value)}>
+              <select value={values.distribution_assignment_mode || 'station_first'} onChange={event => change('distribution_assignment_mode', event.target.value)} style={{ width: '100%', minHeight: 40, border: '1px solid var(--border-subtle)', borderRadius: 7, padding: '8px 10px', background: 'var(--bg-input)', color: 'var(--text-main)' }}>
                 <option value="station_first">Stationen zuerst, dann zusammenhängend</option>
                 <option value="meters_only">Nur nach Metern ausgleichen</option>
               </select>
