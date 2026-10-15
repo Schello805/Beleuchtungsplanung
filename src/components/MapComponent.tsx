@@ -608,13 +608,58 @@ export const MapComponent: React.FC<MapComponentProps> = ({
 
         const isFocusedHelperSection = Boolean(activeHelperId && sec.assigned_helper_id === activeHelperId);
         if (isSelected || isFocusedHelperSection) {
-          displayLines.forEach(displayLine => L.polyline(displayLine, {
-              color: isSelected ? '#FDE047' : '#FFFFFF',
-              weight: isSelected ? 15 : 11,
-              opacity: 0.92,
-              dashArray: isSelected ? '14 10' : undefined,
-              className: isSelected ? 'section-highlight-pulse' : undefined
-            }).addTo(group));
+          displayLines.forEach(displayLine => {
+            if (isSelected) {
+              // The former yellow pulse disappeared beside orange and yellow
+              // section colours. A high-contrast three-layer frame remains
+              // recognisable on every map style and at every zoom level.
+              L.polyline(displayLine, {
+                color: '#0F172A',
+                weight: 22,
+                opacity: 0.96,
+                lineCap: 'round',
+                lineJoin: 'round'
+              }).addTo(group);
+              L.polyline(displayLine, {
+                color: '#FFFFFF',
+                weight: 17,
+                opacity: 1,
+                lineCap: 'round',
+                lineJoin: 'round'
+              }).addTo(group);
+              L.polyline(displayLine, {
+                color: '#06B6D4',
+                weight: 13,
+                opacity: 1,
+                dashArray: '4 9',
+                lineCap: 'round',
+                lineJoin: 'round'
+              }).addTo(group);
+            } else {
+              L.polyline(displayLine, {
+                color: '#FFFFFF',
+                weight: 11,
+                opacity: 0.92
+              }).addTo(group);
+            }
+          });
+
+          // One persistent label removes any doubt about which colourful line
+          // the frame belongs to, without covering the entire route.
+          if (isSelected && displayLines[0]?.length) {
+            const points = displayLines[0] as [number, number][];
+            const midpoint = points[Math.floor(points.length / 2)];
+            if (midpoint) {
+              const label = sec.label.length > 34 ? `${sec.label.slice(0, 31)}…` : sec.label;
+              const icon = L.divIcon({
+                className: 'selected-section-map-label',
+                html: `<div style="white-space:nowrap;background:#0F172A;color:#FFFFFF;border:2px solid #22D3EE;border-radius:999px;padding:4px 9px;font:700 11px Outfit,system-ui,sans-serif;box-shadow:0 2px 8px rgba(15,23,42,.45);">↳ Ausgewählt: ${label}</div>`,
+                iconSize: [1, 1],
+                iconAnchor: [0, 22]
+              });
+              L.marker(midpoint, { icon, interactive: false, keyboard: false, zIndexOffset: 1200 }).addTo(group);
+            }
+          }
         }
 
         const polylines = displayLines.map(displayLine => L.polyline(displayLine, {
