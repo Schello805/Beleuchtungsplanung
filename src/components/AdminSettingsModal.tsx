@@ -76,6 +76,8 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({ isOpen, 
   const [saved, setSaved] = useState(false);
   const [testRecipient, setTestRecipient] = useState('');
   const [smtpPassword, setSmtpPassword] = useState('');
+  const [isSendingTest, setIsSendingTest] = useState(false);
+  const [isSendingAll, setIsSendingAll] = useState(false);
   const [mailStatus, setMailStatus] = useState<string | null>(null);
   const [mailLog, setMailLog] = useState<Array<{ id: string; helper_name?: string; recipient: string; subject: string; status: string; created_at: string }>>([]);
 
@@ -105,15 +107,21 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({ isOpen, 
     }
   };
   const sendTest = async () => {
+    if (isSendingTest) return;
+    setIsSendingTest(true);
     setMailStatus(null);
     try { await persistValues(); await api.sendTestMail(testRecipient); setMailStatus('Test-E-Mail wurde versendet.'); setMailLog(await api.getMailLog()); }
     catch (err: any) { setMailStatus(err.message); }
+    finally { setIsSendingTest(false); }
   };
   const sendAll = async () => {
+    if (isSendingAll) return;
     if (!window.confirm('Jetzt an alle Helfer mit E-Mail-Adresse und persönlichem Link senden?')) return;
+    setIsSendingAll(true);
     setMailStatus(null);
     try { await persistValues(); const result = await api.sendHelperMails(); setMailStatus(`${result.sent} E-Mails versendet${result.failed ? `, ${result.failed} fehlgeschlagen` : ''}.`); setMailLog(await api.getMailLog()); }
     catch (err: any) { setMailStatus(err.message); }
+    finally { setIsSendingAll(false); }
   };
 
   return (
@@ -207,7 +215,7 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({ isOpen, 
           </div>
           <div className="admin-security-note"><Copy size={15} /> Das Passwort wird nicht in der Datenbank, im Export oder im Browser gespeichert. Es landet nur als <code>SMTP_PASSWORD</code> in <code>/etc/lichternacht/lichternacht.env</code> auf dem Server.</div>
           <div className="admin-mail-actions" style={{ gridTemplateColumns: 'auto 1fr', marginTop: 12 }}>
-            <button type="button" onClick={sendTest} disabled={!testRecipient}><Mail size={15} /> Testmail senden</button>
+            <button type="button" onClick={sendTest} disabled={!testRecipient || isSendingTest}><Mail size={15} /> {isSendingTest ? 'Testmail wird gesendet …' : 'Testmail senden'}</button>
           </div>
         </section>
 
@@ -217,7 +225,7 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({ isOpen, 
           <label className="admin-template-field">Betreff<input value={values.mail_subject || ''} onChange={event => change('mail_subject', event.target.value)} /></label>
           <label className="admin-template-field">Nachricht<textarea rows={7} value={values.mail_body || ''} onChange={event => change('mail_body', event.target.value)} /></label>
           <div className="admin-mail-actions">
-            <button type="button" className="admin-send-all" onClick={sendAll}><Send size={15} /> Alle Helfer informieren</button>
+            <button type="button" className="admin-send-all" onClick={sendAll} disabled={isSendingAll}><Send size={15} /> {isSendingAll ? 'E-Mails werden versendet …' : 'Alle Helfer informieren'}</button>
           </div>
           {mailStatus && <p className="admin-mail-status">{mailStatus}</p>}
           {mailLog.length > 0 && <div className="admin-mail-log"><strong>Letzte Versandvorgänge</strong>{mailLog.slice(0, 5).map(entry => <span key={entry.id}>{entry.status === 'failed' ? '✕' : '✓'} {entry.recipient} · {entry.status === 'test' ? 'Test' : entry.helper_name || entry.subject}</span>)}</div>}

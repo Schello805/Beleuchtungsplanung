@@ -503,6 +503,41 @@ const mailTemplate = (template: string, helper: { name: string }, link: string, 
     .replaceAll('{{link}}', link)
     .replaceAll('{{meter}}', String(Math.round(meters)));
 
+const escapeEmailHtml = (value: string) => value.replace(/[&<>"']/g, character => ({
+  '&': '&amp;',
+  '<': '&lt;',
+  '>': '&gt;',
+  '"': '&quot;',
+  "'": '&#39;',
+})[character] || character);
+
+const renderEmailHtml = ({
+  eventName,
+  heading,
+  message,
+  actionUrl,
+  actionLabel,
+}: {
+  eventName: string;
+  heading: string;
+  message: string;
+  actionUrl?: string;
+  actionLabel?: string;
+}) => {
+  const safeUrl = actionUrl ? escapeEmailHtml(actionUrl) : '';
+  return `<!doctype html>
+<html lang="de"><body style="margin:0;padding:24px;background:#f3f5f8;color:#172033;font-family:Arial,Helvetica,sans-serif;">
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"><tr><td align="center">
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:620px;background:#ffffff;border:1px solid #d8e0ea;border-radius:12px;overflow:hidden;">
+<tr><td style="padding:20px 28px;background:#152039;color:#ffffff;"><div style="font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#f6a500;">${escapeEmailHtml(eventName)}</div><div style="margin-top:6px;font-size:22px;font-weight:700;">${escapeEmailHtml(heading)}</div></td></tr>
+<tr><td style="padding:28px;font-size:16px;line-height:1.6;color:#243047;">${escapeEmailHtml(message).replace(/\r?\n/g, '<br>')}</td></tr>
+${safeUrl ? `<tr><td style="padding:0 28px 28px;"><a href="${safeUrl}" style="display:inline-block;padding:12px 18px;border-radius:8px;background:#f6a500;color:#172033;font-weight:700;text-decoration:none;">${escapeEmailHtml(actionLabel || 'Bereich öffnen')}</a></td></tr>` : ''}
+<tr><td style="padding:16px 28px;border-top:1px solid #e5eaf0;font-size:12px;line-height:1.5;color:#66758a;">Diese Nachricht wurde über den Lichternacht-Streckenplaner versendet.</td></tr>
+</table></td></tr></table></body></html>`;
+};
+
+const recentlySentTestMails = new Map<string, number>();
+
 const getSmtpTransport = () => {
   const settings = dbService.getAllSettings();
   const host = settings.smtp_host?.trim();
@@ -537,13 +572,19 @@ app.get('/api/mail/log', (req, res) => {
 app.post('/api/mail/test', async (req, res) => {
   const recipient = String(req.body?.to || '').trim().toLowerCase();
   if (!/^\S+@\S+\.\S+$/.test(recipient)) return res.status(400).json({ error: 'Bitte eine gültige Empfänger-E-Mail-Adresse angeben.' });
+  const lastSentAt = recentlySentTestMails.get(recipient);
+  if (lastSentAt && Date.now() - lastSentAt < 15_000) return res.json({ success: true, duplicate: true });
+  recentlySentTestMails.set(recipient, Date.now());
   try {
     const { transport, from, settings } = getSmtpTransport();
     const subject = `[Test] ${settings.event_name || 'Lichternacht'} – Versand eingerichtet`;
-    await transport.sendMail({ from, to: recipient, subject, text: 'Dies ist eine Test-E-Mail des Lichternacht-Streckenplaners. Der SMTP-Versand ist erreichbar.' });
+    const text = 'Dies ist eine Test-E-Mail des Lichternacht-Streckenplaners. Der SMTP-Versand ist erreichbar.';
+    const html = renderEmailHtml({ eventName: settings.event_name || 'Lichternacht', heading: 'SMTP-Test erfolgreich', message: text });
+    await transport.sendMail({ from, to: recipient, subject, text, html });
     dbService.addMailLog({ recipient, subject, status: 'test' });
     res.json({ success: true });
   } catch (err: any) {
+    recentlySentTestMails.delete(recipient);
     dbService.addMailLog({ recipient, subject: '[Test] SMTP', status: 'failed', errorMessage: err.message });
     res.status(500).json({ error: err.message });
   }
@@ -565,8 +606,15 @@ app.post('/api/mail/helpers', async (req, res) => {
       const link = `${baseUrl}/helfer/${helper.public_token}`;
       const subject = mailTemplate(subjectTemplate.replaceAll('{{event}}', settings.event_name || 'Lichternacht'), helper, link, meters);
       const text = mailTemplate(bodyTemplate.replaceAll('{{event}}', settings.event_name || 'Lichternacht'), helper, link, meters);
+      const html = renderEmailHtml({
+        eventName: settings.event_name || 'Lichternacht',
+        heading: 'Dein Beleuchtungsbereich',
+        message: text,
+        actionUrl: link,
+        actionLabel: 'Persönlichen Bereich öffnen',
+      });
       try {
-        await transport.sendMail({ from, to: helper.email, subject, text });
+        await transport.sendMail({ from, to: helper.email, subject, text, html });
         dbService.addMailLog({ helperId: helper.id, recipient: helper.email, subject, status: 'sent' }); sent++;
       } catch (err: any) {
         dbService.addMailLog({ helperId: helper.id, recipient: helper.email, subject, status: 'failed', errorMessage: err.message }); failed++;
