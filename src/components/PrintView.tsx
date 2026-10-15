@@ -443,7 +443,7 @@ export const PrintView: React.FC<PrintViewProps> = ({
             display: flex !important;
             flex-direction: column !important;
             gap: 8mm !important;
-            height: 272mm !important;
+            height: 244mm !important;
             break-inside: avoid !important;
             page-break-inside: avoid !important;
             break-after: page !important;
@@ -454,8 +454,8 @@ export const PrintView: React.FC<PrintViewProps> = ({
             page-break-after: auto !important;
           }
           .helper-info-sheet {
-            flex: 0 0 132mm !important;
-            height: 132mm !important;
+            flex: 0 0 118mm !important;
+            height: 118mm !important;
             min-height: 0 !important;
             break-before: auto !important;
             break-after: auto !important;
@@ -1009,7 +1009,7 @@ export const PrintView: React.FC<PrintViewProps> = ({
                     style={{
                       border: '2px solid #0F172A',
                       borderRadius: 10,
-                      padding: 12,
+                      padding: 8,
                       boxSizing: 'border-box',
                       background: '#FFFFFF',
                       pageBreakInside: 'avoid',
@@ -1018,29 +1018,29 @@ export const PrintView: React.FC<PrintViewProps> = ({
                       pageBreakAfter: 'auto'
                     }}
                   >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '3px solid #0F172A', paddingBottom: 10, marginBottom: 12 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '2px solid #0F172A', paddingBottom: 6, marginBottom: 7 }}>
                       <div>
-                        <div style={{ fontSize: 12, fontWeight: 800, color: '#D97706', textTransform: 'uppercase' }}>
+                        <div style={{ fontSize: 10, fontWeight: 800, color: '#D97706', textTransform: 'uppercase' }}>
                           {eventName} • Dein Bereich
                         </div>
-                        <div style={{ fontSize: 22, fontWeight: 900, color: '#0F172A' }}>
+                        <div style={{ fontSize: 18, fontWeight: 900, color: '#0F172A' }}>
                           {group.helper.name}
                         </div>
                         {group.helper.phone && <div style={{ fontSize: 11, color: '#64748B' }}>Helfer-Kontakt: {group.helper.phone}</div>}
                       </div>
 
                       <div style={{ textAlign: 'right' }}>
-                        <div style={{ fontSize: 22, fontWeight: 900, color: '#D97706' }}>
+                        <div style={{ fontSize: 18, fontWeight: 900, color: '#D97706' }}>
                           {group.meters} Meter
                         </div>
-                        <div style={{ fontSize: 13, fontWeight: 800, color: '#059669', background: '#ECFDF5', padding: '2px 8px', borderRadius: 4, marginTop: 2 }}>
+                        <div style={{ fontSize: 10, fontWeight: 800, color: '#059669', background: '#ECFDF5', padding: '2px 6px', borderRadius: 4, marginTop: 2 }}>
                           Persönliche Helfer-Information
                         </div>
                       </div>
                     </div>
 
                     {/* Information only – no material issue or confirmation */}
-                    <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', padding: 10, borderRadius: 6, marginBottom: 14, fontSize: 11 }}>
+                    <div style={{ background: '#F8FAFC', border: '1px solid #E2E8F0', padding: 6, borderRadius: 6, marginBottom: 7, fontSize: 9 }}>
                       <div>
                         <div style={{ fontWeight: 800, color: '#0F172A', marginBottom: 2 }}>🕯️ Kerzenbeleuchtung:</div>
                         <div>• Die Beleuchtung deines ausgewiesenen Bereichs ist verpflichtend.</div>
@@ -1050,34 +1050,34 @@ export const PrintView: React.FC<PrintViewProps> = ({
                       </div>
                     </div>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 142px', gap: 14, marginBottom: 14, alignItems: 'start' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 104px', gap: 8, marginBottom: 7, alignItems: 'start' }}>
                       <div>
-                        <div style={{ fontSize: 12, fontWeight: 800, color: '#0F172A', marginBottom: 6 }}>Kartenausschnitte deines Bereichs</div>
+                        <div style={{ fontSize: 10, fontWeight: 800, color: '#0F172A', marginBottom: 3 }}>Kartenausschnitte deines Bereichs</div>
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                           <div>
                             <div style={{ fontSize: 9, fontWeight: 800, color: '#475569', marginBottom: 3 }}>🗺️ Karte</div>
-                            <HelperAreaMap sections={group.sections} color={group.helper.color} height={118} mapStyle="street" />
+                            <HelperAreaMap sections={group.sections} color={group.helper.color} height={82} mapStyle="street" />
                           </div>
                           <div>
                             <div style={{ fontSize: 9, fontWeight: 800, color: '#475569', marginBottom: 3 }}>🛰️ Satellit</div>
-                            <HelperAreaMap sections={group.sections} color={group.helper.color} height={118} mapStyle="satellite" />
+                            <HelperAreaMap sections={group.sections} color={group.helper.color} height={82} mapStyle="satellite" />
                           </div>
                         </div>
-                        <div style={{ fontSize: 10, color: '#475569', marginTop: 5, lineHeight: 1.4 }}><b>A</b> markiert den Start und <b>B</b> das Ende. Folge der farbigen Linie genau von A nach B.</div>
+                        <div style={{ fontSize: 8, color: '#475569', marginTop: 3, lineHeight: 1.25 }}><b>A</b> markiert den Start und <b>B</b> das Ende. Folge der farbigen Linie genau von A nach B.</div>
                       </div>
-                      <div style={{ border: '1px solid #CBD5E1', borderRadius: 7, padding: 8, textAlign: 'center', background: '#F8FAFC' }}>
-                        <img src={qrUrl} alt="QR-Code zur Helfer-Information" style={{ width: 124, height: 124 }} />
-                        <div style={{ fontSize: 9, fontWeight: 800, marginTop: 4 }}>QR-Code zur Info-Seite</div>
-                        <div style={{ fontSize: 8, color: '#475569', overflowWrap: 'anywhere', marginTop: 4 }}>{publicUrl}</div>
+                      <div style={{ border: '1px solid #CBD5E1', borderRadius: 7, padding: 5, textAlign: 'center', background: '#F8FAFC' }}>
+                        <img src={qrUrl} alt="QR-Code zur Helfer-Information" style={{ width: 88, height: 88 }} />
+                        <div style={{ fontSize: 8, fontWeight: 800, marginTop: 2 }}>QR-Code zur Info-Seite</div>
+                        <div style={{ fontSize: 7, color: '#475569', overflowWrap: 'anywhere', marginTop: 2 }}>{publicUrl}</div>
                       </div>
                     </div>
 
                     {/* Detailed Sections List */}
-                    <div style={{ marginBottom: 14 }}>
-                      <div style={{ fontSize: 12, fontWeight: 800, color: '#0F172A', marginBottom: 6 }}>
+                    <div style={{ marginBottom: 7 }}>
+                      <div style={{ fontSize: 10, fontWeight: 800, color: '#0F172A', marginBottom: 3 }}>
                         Dein Streckenbereich:
                       </div>
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
                         {group.sections.map((sec, sIdx) => {
                           const sLen = Math.round(sec.length_meters ?? (sec as any).lengthMeters ?? 0);
                           const codes = endpointCodes(group.sections, sec);
@@ -1088,21 +1088,21 @@ export const PrintView: React.FC<PrintViewProps> = ({
                                 display: 'flex',
                                 justifyContent: 'space-between',
                                 alignItems: 'center',
-                                padding: '8px 12px',
+                                padding: '4px 7px',
                                 background: '#FFFFFF',
                                 border: '1px solid #CBD5E1',
                                 borderRadius: 6
                               }}
                             >
                               <div>
-                                <span style={{ fontWeight: 800, fontSize: 13 }}>#{sIdx + 1} {sec.label}</span>
-                                <span style={{ color: '#64748B', fontSize: 12, marginLeft: 8 }}>({sec.street_name})</span>
-                                <div style={{ fontSize: 11, color: '#475569', fontWeight: 700, marginTop: 2 }}>Beleuchtung: {lightingSideText(sec)}</div>
-                                {codes && <div style={{ fontSize: 11, color: '#334155', fontWeight: 700, marginTop: 3 }}>Von Punkt {codes.start} bis Punkt {codes.end} entlang der farbigen Linie.</div>}
-                                {sec.notes && <div style={{ fontSize: 10, color: '#D97706' }}>Hinweis: {sec.notes}</div>}
+                                <span style={{ fontWeight: 800, fontSize: 10 }}>#{sIdx + 1} {sec.label}</span>
+                                <span style={{ color: '#64748B', fontSize: 9, marginLeft: 5 }}>({sec.street_name})</span>
+                                <div style={{ fontSize: 8, color: '#475569', fontWeight: 700, marginTop: 1 }}>Beleuchtung: {lightingSideText(sec)}</div>
+                                {codes && <div style={{ fontSize: 8, color: '#334155', fontWeight: 700, marginTop: 1 }}>Von Punkt {codes.start} bis Punkt {codes.end} entlang der farbigen Linie.</div>}
+                                {sec.notes && <div style={{ fontSize: 8, color: '#D97706' }}>Hinweis: {sec.notes}</div>}
                               </div>
                               <div style={{ textAlign: 'right' }}>
-                                <span style={{ fontWeight: 800, fontSize: 13, color: '#0F172A' }}>{sLen} m</span>
+                                <span style={{ fontWeight: 800, fontSize: 10, color: '#0F172A' }}>{sLen} m</span>
                               </div>
                             </div>
                           );
@@ -1110,7 +1110,7 @@ export const PrintView: React.FC<PrintViewProps> = ({
                       </div>
                     </div>
 
-                    <div style={{ borderTop: '1px solid #CBD5E1', paddingTop: 10, fontSize: 11, color: '#475569' }}>
+                    <div style={{ borderTop: '1px solid #CBD5E1', paddingTop: 5, fontSize: 8, color: '#475569' }}>
                       Wir zählen auf eine zuverlässige Umsetzung. Diese Information dient zur Orientierung; eine Rückmeldung oder Unterschrift ist nicht erforderlich.
                     </div>
                   </div>
