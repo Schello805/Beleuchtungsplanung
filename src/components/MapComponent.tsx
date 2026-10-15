@@ -117,7 +117,6 @@ export const MapComponent: React.FC<MapComponentProps> = ({
 
   const sectionsLayerGroupRef = useRef<L.LayerGroup | null>(null);
   const previewLayerGroupRef = useRef<L.LayerGroup | null>(null);
-  const hadPreviewSectionsRef = useRef(false);
   const captureLayerGroupRef = useRef<L.LayerGroup | null>(null);
   const helperLayerGroupRef = useRef<L.LayerGroup | null>(null);
 
@@ -398,20 +397,12 @@ export const MapComponent: React.FC<MapComponentProps> = ({
     if (!group || !map) return;
     group.clearLayers();
 
-    if (!previewSections || previewSections.length === 0) {
-      hadPreviewSectionsRef.current = false;
-      return;
-    }
-    const isFirstPreviewRender = !hadPreviewSectionsRef.current;
-    hadPreviewSectionsRef.current = true;
-    const bounds = L.latLngBounds([]);
-
+    if (!previewSections || previewSections.length === 0) return;
     previewSections.forEach(sec => {
       const isFocused = focusedPreviewId === sec.id;
 
       if (sec.type === 'line' && sec.geojson.geometry.type === 'LineString') {
         const coords = sec.geojson.geometry.coordinates.map(c => [c[1], c[0]] as [number, number]);
-        coords.forEach(pt => bounds.extend(pt));
         const displayLines = toLightingDisplayLines(sec as Pick<Section, 'geojson' | 'lighting_side'>);
 
         // Highlight halo if focused
@@ -490,7 +481,6 @@ export const MapComponent: React.FC<MapComponentProps> = ({
         });
       } else if (sec.type === 'point' && sec.geojson.geometry.type === 'Point') {
         const [lon, lat] = sec.geojson.geometry.coordinates;
-        bounds.extend([lat, lon]);
 
         const icon = L.divIcon({
           className: 'custom-point-marker',
@@ -528,12 +518,8 @@ export const MapComponent: React.FC<MapComponentProps> = ({
       }
     });
 
-    // Only centre once when a new preview starts. Changing A/B, deleting a
-    // preview fragment or adjusting a selection must never pull the organiser
-    // away from the current map position.
-    if (bounds.isValid() && !focusedPreviewId && isFirstPreviewRender) {
-      map.fitBounds(bounds, { padding: [50, 50], maxZoom: 17 });
-    }
+    // Deliberately do not fit bounds here. Searching or changing a preview must
+    // never override the organiser's manually chosen position and zoom.
   }, [previewSections, focusedPreviewId]);
 
   // Smoothly zoom to focused preview section if clicked in sidebar
