@@ -118,6 +118,13 @@ export const App: React.FC = () => {
     assignments: Array<{ sectionId: string; helperId: string | null; helperName: string | null }>;
   } | null>(null);
   const [isUndoingAssignment, setIsUndoingAssignment] = useState(false);
+  const [lastGeometryUndo, setLastGeometryUndo] = useState<{
+    label: string;
+    sectionId: string;
+    geojson: GeoJSON.Feature<GeoJSON.LineString>;
+    lengthMeters: number;
+  } | null>(null);
+  const [isUndoingGeometry, setIsUndoingGeometry] = useState(false);
 
   // Apply theme to document
   useEffect(() => {
@@ -403,6 +410,12 @@ export const App: React.FC = () => {
       const geojson = turf.lineString(combinedCoordinates);
       const lengthMeters = Math.max(1, Math.round(turf.length(geojson, { units: 'kilometers' }) * 1000));
       await api.updateSection(sectionId, { geojson, length_meters: lengthMeters });
+      setLastGeometryUndo({
+        label: 'Manuelle Verlängerung',
+        sectionId,
+        geojson: section.geojson,
+        lengthMeters: section.length_meters ?? section.lengthMeters ?? 0
+      });
       setSections(current => current.map(item => item.id === sectionId
         ? { ...item, geojson, length_meters: lengthMeters, lengthMeters }
         : item));
@@ -476,6 +489,12 @@ export const App: React.FC = () => {
       const geojson = turf.lineString(combinedCoordinates);
       const lengthMeters = Math.max(1, Math.round(turf.length(geojson, { units: 'kilometers' }) * 1000));
       await api.updateSection(section.id, { geojson, length_meters: lengthMeters });
+      setLastGeometryUndo({
+        label: 'Automatische Verlängerung',
+        sectionId: section.id,
+        geojson: section.geojson,
+        lengthMeters: section.length_meters ?? section.lengthMeters ?? 0
+      });
       setSections(current => current.map(item => item.id === section.id
         ? { ...item, geojson, length_meters: lengthMeters, lengthMeters }
         : item));
@@ -664,6 +683,28 @@ export const App: React.FC = () => {
       await loadData();
     } finally {
       setIsUndoingAssignment(false);
+    }
+  };
+
+  const handleUndoLastGeometry = async () => {
+    if (!lastGeometryUndo || isUndoingGeometry) return;
+    setIsUndoingGeometry(true);
+    try {
+      await api.updateSection(lastGeometryUndo.sectionId, {
+        geojson: lastGeometryUndo.geojson,
+        length_meters: lastGeometryUndo.lengthMeters
+      });
+      setSections(current => current.map(section => section.id === lastGeometryUndo.sectionId
+        ? { ...section, geojson: lastGeometryUndo.geojson, length_meters: lastGeometryUndo.lengthMeters, lengthMeters: lastGeometryUndo.lengthMeters }
+        : section));
+      setSelectedSectionId(lastGeometryUndo.sectionId);
+      setLastGeometryUndo(null);
+    } catch (error) {
+      console.error('Undo geometry error:', error);
+      alert('Die letzte Verlängerung konnte nicht zurückgenommen werden.');
+      await loadData();
+    } finally {
+      setIsUndoingGeometry(false);
     }
   };
 
@@ -1193,6 +1234,9 @@ export const App: React.FC = () => {
             extensionSectionId={extensionSectionId}
             onStartExtension={(sectionId) => { setSelectedSectionId(sectionId); setSplitSectionId(null); setExtensionSectionId(sectionId); }}
             onExtendToNearestSection={handleExtendToNearestSection}
+            undoLabel={lastGeometryUndo?.label || null}
+            onUndo={lastGeometryUndo ? handleUndoLastGeometry : undefined}
+            isUndoing={isUndoingGeometry}
             onExtensionTarget={handleExtendSection}
             onCancelExtension={() => setExtensionSectionId(null)}
             splitSectionId={splitSectionId}

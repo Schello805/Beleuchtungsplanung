@@ -20,6 +20,9 @@ interface MapComponentProps {
   extensionSectionId?: string | null;
   onStartExtension?: (sectionId: string) => void;
   onExtendToNearestSection?: (sectionId: string) => void;
+  undoLabel?: string | null;
+  onUndo?: () => void;
+  isUndoing?: boolean;
   onExtensionTarget?: (lat: number, lon: number) => void;
   onCancelExtension?: () => void;
   splitSectionId?: string | null;
@@ -97,6 +100,9 @@ export const MapComponent: React.FC<MapComponentProps> = ({
   extensionSectionId,
   onStartExtension,
   onExtendToNearestSection,
+  undoLabel,
+  onUndo,
+  isUndoing,
   onExtensionTarget,
   onCancelExtension,
   splitSectionId,
@@ -998,6 +1004,14 @@ export const MapComponent: React.FC<MapComponentProps> = ({
       <div ref={mapContainerRef} style={{ width: '100%', height: '100%' }} />
 
       {/* Map controls stay compact until they are explicitly needed. */}
+      <button
+        className="no-print map-undo-button"
+        onClick={() => onUndo?.()}
+        disabled={!undoLabel || isUndoing}
+        title={undoLabel ? `Rückgängig: ${undoLabel}` : 'Noch keine Verlängerung zum Rückgängigmachen'}
+      >
+        ↶ {isUndoing ? 'Wird zurückgenommen …' : 'Rückgängig'}
+      </button>
       <button
         className="no-print map-gps-button"
         onClick={locateCurrentPosition}
