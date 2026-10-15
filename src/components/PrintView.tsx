@@ -303,6 +303,11 @@ export const PrintView: React.FC<PrintViewProps> = ({
     })
     .filter(g => g.sections.length > 0)
     .sort((a, b) => a.helper.name.localeCompare(b.helper.name, 'de'));
+  const helperGroupPairs = helperGroups.reduce((pairs, group, index) => {
+    if (index % 2 === 0) pairs.push([group]);
+    else pairs[pairs.length - 1].push(group);
+    return pairs;
+  }, [] as typeof helperGroups[]);
 
   const totalCandlesBase = sections.reduce((sum, s) => {
     const len = s.length_meters ?? (s as any).lengthMeters ?? 0;
@@ -372,7 +377,7 @@ export const PrintView: React.FC<PrintViewProps> = ({
 
   return (
     <div
-      className="print-view-root"
+      className={`print-view-root print-layout-${printLayout}`}
       style={{
         position: 'fixed',
         inset: 0,
@@ -428,11 +433,30 @@ export const PrintView: React.FC<PrintViewProps> = ({
             break-inside: avoid !important;
             page-break-inside: avoid !important;
           }
-          .helper-info-sheet {
+          .print-layout-sheets .print-document-header {
+            display: none !important;
+          }
+          .print-layout-sheets .print-content-container {
+            padding: 0 !important;
+          }
+          .helper-info-page {
+            display: grid !important;
+            grid-template-rows: repeat(2, 132mm) !important;
+            gap: 8mm !important;
             break-after: page !important;
             page-break-after: always !important;
           }
-          .helper-info-sheet:last-child {
+          .helper-info-page:last-child {
+            break-after: auto !important;
+            page-break-after: auto !important;
+          }
+          .helper-info-sheet {
+            break-after: page !important;
+            page-break-after: always !important;
+            height: 132mm !important;
+            min-height: 0 !important;
+          }
+          .helper-info-page .helper-info-sheet {
             break-after: auto !important;
             page-break-after: auto !important;
           }
@@ -517,7 +541,7 @@ export const PrintView: React.FC<PrintViewProps> = ({
               }}
             >
               <Grid size={14} />
-              Helfer-Info (A5)
+              Helfer-Info (2 pro A4)
             </button>
 
             <button
@@ -609,9 +633,9 @@ export const PrintView: React.FC<PrintViewProps> = ({
       </div>
 
       {/* PRINT CONTENT CONTAINER */}
-      <div style={{ maxWidth: 960, margin: '0 auto', padding: '24px 20px' }}>
+      <div className="print-content-container" style={{ maxWidth: 960, margin: '0 auto', padding: '24px 20px' }}>
         {/* DOCUMENT HEADER */}
-        <div style={{ borderBottom: '3px solid #0F172A', paddingBottom: 16, marginBottom: 20 }}>
+        <div className="print-document-header" style={{ borderBottom: '3px solid #0F172A', paddingBottom: 16, marginBottom: 20 }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
             <div>
               <h1 style={{ fontSize: 24, fontWeight: 900, color: '#0F172A', margin: 0, textTransform: 'uppercase', letterSpacing: '0.02em' }}>
@@ -970,8 +994,9 @@ export const PrintView: React.FC<PrintViewProps> = ({
         {/* LAYOUT 3: AUSFÜHRLICHE LAUFZETTEL (A5 FORMAT) */}
         {printLayout === 'sheets' && (
           <div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 24 }}>
-              {helperGroups.map(group => {
+            {helperGroupPairs.map((pair, pairIndex) => (
+              <div className="helper-info-page" key={`helper-page-${pairIndex}`}>
+              {pair.map(group => {
                 const publicUrl = getPublicHelperUrl(group.helper.public_token);
                 const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=130x130&margin=2&data=${encodeURIComponent(publicUrl)}`;
 
@@ -982,12 +1007,13 @@ export const PrintView: React.FC<PrintViewProps> = ({
                     style={{
                       border: '2px solid #0F172A',
                       borderRadius: 10,
-                      padding: 20,
+                      padding: 12,
+                      boxSizing: 'border-box',
                       background: '#FFFFFF',
                       pageBreakInside: 'avoid',
                       breakInside: 'avoid',
-                      minHeight: '185mm',
-                      pageBreakAfter: 'always'
+                      minHeight: 0,
+                      pageBreakAfter: 'auto'
                     }}
                   >
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', borderBottom: '3px solid #0F172A', paddingBottom: 10, marginBottom: 12 }}>
@@ -1028,11 +1054,11 @@ export const PrintView: React.FC<PrintViewProps> = ({
                         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8 }}>
                           <div>
                             <div style={{ fontSize: 9, fontWeight: 800, color: '#475569', marginBottom: 3 }}>🗺️ Karte</div>
-                            <HelperAreaMap sections={group.sections} color={group.helper.color} height={150} mapStyle="street" />
+                            <HelperAreaMap sections={group.sections} color={group.helper.color} height={118} mapStyle="street" />
                           </div>
                           <div>
                             <div style={{ fontSize: 9, fontWeight: 800, color: '#475569', marginBottom: 3 }}>🛰️ Satellit</div>
-                            <HelperAreaMap sections={group.sections} color={group.helper.color} height={150} mapStyle="satellite" />
+                            <HelperAreaMap sections={group.sections} color={group.helper.color} height={118} mapStyle="satellite" />
                           </div>
                         </div>
                         <div style={{ fontSize: 10, color: '#475569', marginTop: 5, lineHeight: 1.4 }}><b>A</b> markiert den Start und <b>B</b> das Ende. Folge der farbigen Linie genau von A nach B.</div>
@@ -1088,7 +1114,8 @@ export const PrintView: React.FC<PrintViewProps> = ({
                   </div>
                 );
               })}
-            </div>
+              </div>
+            ))}
           </div>
         )}
 
