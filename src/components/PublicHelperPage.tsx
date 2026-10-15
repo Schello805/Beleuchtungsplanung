@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
 import * as turf from '@turf/turf';
-import { Crosshair, MapPin } from 'lucide-react';
+import { Crosshair, MapPin, Route } from 'lucide-react';
 import type { PublicHelperInfo } from '../utils/api';
 import { getSectionEndpoints } from '../utils/sectionEndpoints';
 
@@ -43,6 +43,7 @@ const PublicAreaMap: React.FC<{ info: PublicHelperInfo }> = ({ info }) => {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<L.Map | null>(null);
   const locationLayerRef = useRef<L.LayerGroup | null>(null);
+  const areaBoundsRef = useRef<L.LatLngBounds | null>(null);
   const [locationMessage, setLocationMessage] = useState('');
 
   useEffect(() => {
@@ -80,13 +81,18 @@ const PublicAreaMap: React.FC<{ info: PublicHelperInfo }> = ({ info }) => {
       }
     });
 
-    if (group.getLayers().length) map.fitBounds(group.getBounds(), { padding: [32, 32], maxZoom: 18 });
+    if (group.getLayers().length) {
+      const bounds = group.getBounds();
+      areaBoundsRef.current = bounds;
+      map.fitBounds(bounds, { padding: [32, 32], maxZoom: 18 });
+    }
     else map.setView([49.174, 10.56], 14);
     window.setTimeout(() => map.invalidateSize(), 0);
     return () => {
       map.remove();
       mapRef.current = null;
       locationLayerRef.current = null;
+      areaBoundsRef.current = null;
     };
   }, [info]);
 
@@ -117,8 +123,14 @@ const PublicAreaMap: React.FC<{ info: PublicHelperInfo }> = ({ info }) => {
     }, { enableHighAccuracy: true, timeout: 12_000, maximumAge: 30_000 });
   };
 
+  const focusArea = () => {
+    const map = mapRef.current;
+    const bounds = areaBoundsRef.current;
+    if (map && bounds?.isValid()) map.fitBounds(bounds, { padding: [32, 32], maxZoom: 18, animate: true });
+  };
+
   return <section className="public-helper-map-panel" aria-label="Interaktive Karte deines Bereichs">
-    <div className="public-helper-map-heading"><div><b>Dein Bereich auf der Karte</b><small>Zoomen, verschieben und der orangefarbenen Linie von A nach B folgen.</small></div><button type="button" onClick={locateMe}><Crosshair size={17} /> Mein Standort</button></div>
+    <div className="public-helper-map-heading"><div><b>Dein Bereich auf der Karte</b><small>Zoomen, verschieben und der orangefarbenen Linie von A nach B folgen.</small></div><div className="public-helper-map-actions"><button type="button" onClick={locateMe}><Crosshair size={17} /> Mein Standort</button><button type="button" onClick={focusArea}><Route size={17} /> Zum Bereich</button></div></div>
     <div ref={containerRef} className="public-helper-interactive-map" />
     <div className="public-helper-map-legend"><span><b className="legend-line" /> Dein Bereich</span><span><b className="legend-start">A</b> Start</span><span><b className="legend-end">B</b> Ende</span></div>
     {locationMessage && <p className="public-helper-location-status" role="status">{locationMessage}</p>}
