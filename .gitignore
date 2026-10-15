@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Laufzeitdaten: Eine neue Installation beginnt immer mit einer leeren Planung.
+data/streckenplaner.sqlite
+data/backups/

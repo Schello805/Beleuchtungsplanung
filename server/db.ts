@@ -147,26 +147,6 @@ const missingPublicTokens = db.prepare('SELECT id FROM helpers WHERE public_toke
 const setPublicToken = db.prepare('UPDATE helpers SET public_token = ? WHERE id = ?');
 missingPublicTokens.forEach(helper => setPublicToken.run(crypto.randomBytes(24).toString('base64url'), helper.id));
 
-// Pre-seed 30 initial helper slots if empty so the user immediately has the 30 dropdown choices ready
-const countStmt = db.prepare('SELECT COUNT(*) as count FROM helpers');
-const result = countStmt.get() as { count: number };
-if (result && result.count === 0) {
-  const insertHelper = db.prepare('INSERT INTO helpers (id, name, color, created_at) VALUES (?, ?, ?, ?)');
-  const colors = [
-    '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6',
-    '#EC4899', '#14B8A6', '#F97316', '#6366F1', '#84CC16',
-    '#06B6D4', '#D946EF', '#EAB308', '#22C55E', '#A855F7',
-    '#0EA5E9', '#F43F5E', '#10B981', '#FBBF24', '#38BDF8',
-    '#4ADE80', '#FB7185', '#C084FC', '#2DD4BF', '#F472B6',
-    '#818CF8', '#34D399', '#F87171', '#60A5FA', '#A78BFA'
-  ];
-
-  for (let i = 1; i <= 35; i++) {
-    const num = String(i).padStart(2, '0');
-    insertHelper.run(`h-${i}`, `Helfer ${num}`, colors[(i - 1) % colors.length], new Date().toISOString());
-  }
-}
-
 export interface HelperRecord {
   id: string;
   name: string;
@@ -376,14 +356,6 @@ export const dbService = {
     let updated = 0;
     db.exec('BEGIN TRANSACTION');
     try {
-      // The initial empty installation creates numbered placeholders. They are
-      // not real people and would otherwise be counted in addition to every
-      // imported Lichternacht station. Assigned placeholders stay untouched.
-      db.prepare(`DELETE FROM helpers
-        WHERE source_station_id IS NULL
-          AND name GLOB 'Helfer [0-9][0-9]'
-          AND NOT EXISTS (SELECT 1 FROM sections WHERE assigned_helper_id = helpers.id)`).run();
-
       const byStationId = db.prepare('SELECT id FROM helpers WHERE source_station_id = ?');
       const byNameWithoutStation = db.prepare('SELECT id FROM helpers WHERE name = ? AND source_station_id IS NULL');
       const update = db.prepare(`UPDATE helpers
@@ -732,23 +704,6 @@ export const dbService = {
     db.prepare('DELETE FROM sections').run();
     db.prepare('DELETE FROM streets').run();
     db.prepare('DELETE FROM helpers').run();
-    
-    // Re-seed 30 default helpers
-    const insertHelper = db.prepare('INSERT INTO helpers (id, name, color, created_at) VALUES (?, ?, ?, ?)');
-    const colors = [
-      '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6',
-      '#EC4899', '#14B8A6', '#F97316', '#6366F1', '#84CC16',
-      '#06B6D4', '#D946EF', '#EAB308', '#22C55E', '#A855F7',
-      '#0EA5E9', '#F43F5E', '#10B981', '#FBBF24', '#38BDF8',
-      '#4ADE80', '#FB7185', '#C084FC', '#2DD4BF', '#F472B6',
-      '#818CF8', '#34D399', '#F87171', '#60A5FA', '#A78BFA'
-    ];
-
-    for (let i = 1; i <= 35; i++) {
-      const num = String(i).padStart(2, '0');
-      insertHelper.run(`h-${i}`, `Helfer ${num}`, colors[(i - 1) % colors.length], new Date().toISOString());
-    }
-
     return true;
   }
 };

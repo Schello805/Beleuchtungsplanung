@@ -58,34 +58,12 @@ export interface PublicHelperInfo {
 const API_BASE = '/api';
 const BECHHOFEN_BBOX = '49.1241,10.4857,49.2170,10.6304';
 
-// Default 30 Helper placeholders for instant standalone operation
-function getDefaultHelpers(): Helper[] {
-  const colors = [
-    '#3B82F6', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6',
-    '#EC4899', '#14B8A6', '#F97316', '#6366F1', '#84CC16',
-    '#06B6D4', '#D946EF', '#EAB308', '#22C55E', '#A855F7',
-    '#0EA5E9', '#F43F5E', '#10B981', '#FBBF24', '#38BDF8',
-    '#4ADE80', '#FB7185', '#C084FC', '#2DD4BF', '#F472B6',
-    '#818CF8', '#34D399', '#F87171', '#60A5FA', '#A78BFA'
-  ];
-  return Array.from({ length: 30 }, (_, i) => ({
-    id: `h-${i + 1}`,
-    name: `Helfer ${String(i + 1).padStart(2, '0')}`,
-    color: colors[i % colors.length],
-    created_at: new Date().toISOString()
-  }));
-}
-
 // LocalStorage helpers for standalone/offline fallback
 const localDB = {
   getHelpers(): Helper[] {
     const raw = localStorage.getItem('ln_helpers');
-    if (!raw) {
-      const def = getDefaultHelpers();
-      localStorage.setItem('ln_helpers', JSON.stringify(def));
-      return def;
-    }
-    try { return JSON.parse(raw); } catch { return getDefaultHelpers(); }
+    if (!raw) return [];
+    try { return JSON.parse(raw); } catch { return []; }
   },
   saveHelpers(list: Helper[]) {
     localStorage.setItem('ln_helpers', JSON.stringify(list));
@@ -563,7 +541,7 @@ out body geom;`;
 
     localDB.saveSections([]);
     localDB.saveStreets([]);
-    localDB.saveHelpers(getDefaultHelpers());
+    localDB.saveHelpers([]);
   },
 
   async getSettings(): Promise<Record<string, string>> {

@@ -465,7 +465,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                 Helferliste importieren & überschreiben
               </h3>
               <p style={{ fontSize: 12, color: 'var(--text-muted)', margin: 0 }}>
-                Ersetze Platzhalter ('Helfer 01' etc.) durch deine echten Namen – per Excel, CSV oder Copy & Paste
+                Übernimm die echten Helfernamen per Excel, CSV oder Copy & Paste
               </p>
             </div>
           </div>
@@ -809,7 +809,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                         Bestehende Helferliste komplett überschreiben
                       </div>
                       <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 2, lineHeight: 1.3 }}>
-                        Löscht alle bisherigen <strong>{helpers.length} Platzhalter ('Helfer 01' bis ...)</strong> und trägt deine <strong>{currentHelpersToImport.length} neuen Helfer</strong> ein. Zuweisungen werden zurückgesetzt.
+                        Löscht alle bisherigen <strong>{helpers.length} Helfer</strong> und trägt deine <strong>{currentHelpersToImport.length} neuen Helfer</strong> ein. Zuweisungen werden zurückgesetzt.
                       </div>
                     </div>
                   </label>
@@ -1085,7 +1085,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
                               onChange={e => setWipeHelpersBeforeSchedule(e.target.checked)}
                               style={{ accentColor: '#EF4444' }}
                             />
-                            <span><b>Bestehende {helpers.length} Helfer vorher komplett leeren</b> (überschreibt alte Platzhalter 'Helfer 01' etc.)</span>
+                            <span><b>Bestehende {helpers.length} Helfer vorher komplett leeren</b></span>
                           </label>
                           {wipeHelpersBeforeSchedule && (
                             <div style={{

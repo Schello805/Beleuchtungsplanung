@@ -668,7 +668,7 @@ export const App: React.FC = () => {
   };
 
   const handleResetDatabase = async () => {
-    if (confirm('Achtung: Möchtest du wirklich alle erfassten Straßen und Zuweisungen löschen? Die 30 Helfer werden auf Standard zurückgesetzt.')) {
+    if (confirm('Achtung: Möchtest du wirklich alle erfassten Straßen, Helfer und Zuweisungen löschen?')) {
       try {
         await api.resetDatabase();
         handleClearPreview();

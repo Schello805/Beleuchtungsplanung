@@ -1112,7 +1112,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         await onDeleteAllHelpers();
                       }
                     }}
-                    title="Alle bestehenden Helfer (z.B. Platzhalter 'Helfer 01' - '35') löschen und Liste leeren"
+                    title="Alle bestehenden Helfer löschen und Liste leeren"
                     style={{
                       padding: '7px 8px',
                       borderRadius: 'var(--radius-sm)',

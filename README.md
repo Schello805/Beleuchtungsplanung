@@ -71,7 +71,7 @@ curl -fsSL https://raw.githubusercontent.com/Schello805/Beleuchtungsplanung/main
 **Was das Skript automatisch erledigt:**
 1. Installiert Node.js 22 LTS, Git und Systemtools.
 2. Klont das Repository nach `/opt/lichternacht`.
-3. Baut das Vite-Frontend und richtet die SQLite-Datenbank ein.
+3. Baut das Vite-Frontend und richtet eine leere SQLite-Datenbank ein. Straßen, Abschnitte und Helfer werden erst durch Import oder manuelle Eingabe angelegt.
 4. Erstellt und aktiviert den Systemd-Dienst `lichternacht.service` mit automatischem Neustart bei Systemstart.
 5. Gibt die direkte IP-Adresse des Containers aus (z. B. `http://192.168.1.xxx:3000`).
 
