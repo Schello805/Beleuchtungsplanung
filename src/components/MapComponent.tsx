@@ -3,7 +3,7 @@ import L from 'leaflet';
 import * as turf from '@turf/turf';
 import type { Section, Helper } from '../utils/api';
 import type { GeneratedSection } from '../utils/geo';
-import { Settings, ChevronLeft, ChevronRight, X, UserCheck } from 'lucide-react';
+import { Settings, ChevronLeft, ChevronRight, X, UserCheck, LocateFixed } from 'lucide-react';
 
 interface MapComponentProps {
   sections: Section[];
@@ -127,11 +127,13 @@ export const MapComponent: React.FC<MapComponentProps> = ({
   const previewLayerGroupRef = useRef<L.LayerGroup | null>(null);
   const captureLayerGroupRef = useRef<L.LayerGroup | null>(null);
   const helperLayerGroupRef = useRef<L.LayerGroup | null>(null);
+  const currentLocationLayerRef = useRef<L.LayerGroup | null>(null);
 
   // The selected helper is a map focus, not an assignment tool.
   const [internalStampHelperId, setInternalStampHelperId] = useState<string | null>(null);
   const [showLayerMenu, setShowLayerMenu] = useState<boolean>(false);
   const [areaAssignmentSide, setAreaAssignmentSide] = useState<'left' | 'right' | 'both'>('both');
+  const [isLocating, setIsLocating] = useState(false);
 
   const activeHelperId = activeStampHelperId !== undefined ? activeStampHelperId : internalStampHelperId;
 
@@ -140,6 +142,43 @@ export const MapComponent: React.FC<MapComponentProps> = ({
     setInternalStampHelperId(id);
     const firstAssigned = id ? sections.find(section => section.assigned_helper_id === id) : undefined;
     onSelectSection(firstAssigned?.id || null);
+  };
+
+  const locateCurrentPosition = () => {
+    if (!navigator.geolocation) {
+      window.alert('Dein Browser unterstützt keine Standortbestimmung.');
+      return;
+    }
+    setIsLocating(true);
+    navigator.geolocation.getCurrentPosition(position => {
+      setIsLocating(false);
+      const map = mapRef.current;
+      if (!map) return;
+      const { latitude, longitude, accuracy } = position.coords;
+      currentLocationLayerRef.current?.remove();
+      const layer = L.layerGroup().addTo(map);
+      L.circle([latitude, longitude], {
+        radius: accuracy,
+        color: '#0284C7',
+        weight: 1,
+        fillColor: '#38BDF8',
+        fillOpacity: 0.16
+      }).addTo(layer);
+      L.circleMarker([latitude, longitude], {
+        radius: 10,
+        color: '#FFFFFF',
+        weight: 3,
+        fillColor: '#0284C7',
+        fillOpacity: 1
+      }).bindTooltip(`Du bist hier (±${Math.round(accuracy)} m)`, { permanent: true, direction: 'top', offset: [0, -9] }).addTo(layer);
+      currentLocationLayerRef.current = layer;
+      map.setView([latitude, longitude], Math.max(map.getZoom(), 17), { animate: true });
+    }, error => {
+      setIsLocating(false);
+      window.alert(error.code === error.PERMISSION_DENIED
+        ? 'Bitte erlaube den Standortzugriff im Browser.'
+        : 'Dein Standort konnte gerade nicht bestimmt werden.');
+    }, { enableHighAccuracy: true, timeout: 12_000, maximumAge: 30_000 });
   };
 
   const handlePrevHelper = () => {
@@ -261,6 +300,7 @@ export const MapComponent: React.FC<MapComponentProps> = ({
     return () => {
       map.remove();
       mapRef.current = null;
+      currentLocationLayerRef.current = null;
     };
   }, []);
 
@@ -948,6 +988,15 @@ export const MapComponent: React.FC<MapComponentProps> = ({
       <div ref={mapContainerRef} style={{ width: '100%', height: '100%' }} />
 
       {/* Map controls stay compact until they are explicitly needed. */}
+      <button
+        className="no-print map-gps-button"
+        onClick={locateCurrentPosition}
+        title="Deinen aktuellen Standort auf der Karte anzeigen"
+        aria-label="Meinen Standort auf der Karte anzeigen"
+        disabled={isLocating}
+      >
+        <LocateFixed size={16} /> {isLocating ? 'Suche …' : 'Mein Standort'}
+      </button>
       <button
         className="no-print map-controls-toggle"
         onClick={() => setShowLayerMenu(open => !open)}
