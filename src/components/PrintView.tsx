@@ -47,7 +47,7 @@ const lightingSvgLines = (section: Section, coordinates: number[][], project: (c
 
 /** Separate operational map: colours remain available here to discuss who
  * covers which parts. The neutral overview below deliberately has no colours. */
-const AssignmentOverviewMap: React.FC<{ sections: Section[] }> = ({ sections }) => {
+const AssignmentOverviewMap: React.FC<{ sections: Section[]; helperLabels?: Record<string, string> }> = ({ sections, helperLabels }) => {
   const lines = getMapLines(sections);
   const points = sections.filter(section => section.geojson?.geometry?.type === 'Point');
   const coordinates = [...lines.flatMap(line => line.coordinates), ...points.map(point => point.geojson.geometry.coordinates as number[])];
@@ -74,8 +74,17 @@ const AssignmentOverviewMap: React.FC<{ sections: Section[] }> = ({ sections }) 
       <rect width="1100" height="650" fill="#F8FAFC" />
       {tiles.map(tile => <image key={`${tile.x}-${tile.y}`} href={`https://tile.openstreetmap.org/${zoom}/${tile.x}/${tile.y}.png`} x={((tile.x * tileSize - minX) / (maxX - minX)) * 1100} y={((tile.y * tileSize - minY) / (maxY - minY)) * 650} width={(tileSize / (maxX - minX)) * 1100} height={(tileSize / (maxY - minY)) * 650} preserveAspectRatio="none" />)}
       {lines.flatMap(({ section, coordinates: lineCoordinates }, index) => lightingSvgLines(section, lineCoordinates, project).map((points, sideIndex) => <polyline key={`${section.id}-${index}-${sideIndex}-halo`} points={points.map(point => point.join(',')).join(' ')} fill="none" stroke="#FFFFFF" strokeWidth="10" strokeLinecap="round" strokeLinejoin="round" opacity=".95" />))}
-      {lines.flatMap(({ section, coordinates: lineCoordinates }, index) => lightingSvgLines(section, lineCoordinates, project).map((points, sideIndex) => <polyline key={`${section.id}-${index}-${sideIndex}`} points={points.map(point => point.join(',')).join(' ')} fill="none" stroke={section.color || '#F59E0B'} strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />))}
+      {lines.flatMap(({ section, coordinates: lineCoordinates }, index) => lightingSvgLines(section, lineCoordinates, project).map((points, sideIndex) => <polyline key={`${section.id}-${index}-${sideIndex}`} points={points.map(point => point.join(',')).join(' ')} fill="none" stroke={helperLabels ? '#334155' : section.color || '#F59E0B'} strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" />))}
       {points.map(point => { const [x, y] = project(point.geojson.geometry.coordinates as number[]); return <circle key={point.id} cx={x} cy={y} r="8" fill={point.color || '#F59E0B'} stroke="#FFFFFF" strokeWidth="3" />; })}
+      {helperLabels && Object.entries(helperLabels).map(([helperId, label]) => {
+        const line = lines.find(candidate => candidate.section.assigned_helper_id === helperId);
+        if (!line?.coordinates.length) return null;
+        const [x, y] = project(line.coordinates[Math.floor(line.coordinates.length / 2)]);
+        return <g key={helperId}>
+          <circle cx={x} cy={y} r="16" fill="#F59E0B" stroke="#FFFFFF" strokeWidth="4" />
+          <text x={x} y={y + 4} textAnchor="middle" fontSize="10" fontWeight="900" fill="#0F172A">{label}</text>
+        </g>;
+      })}
       <rect x="12" y="614" width="210" height="24" rx="4" fill="#FFFFFF" opacity=".88" /><text x="22" y="631" fill="#475569" fontSize="12">© OpenStreetMap-Mitwirkende</text>
     </svg>
     <p style={{ margin: '10px 0 0', color: '#475569', fontSize: 11 }}>Farben zeigen die einzelnen zugewiesenen Abschnitte. Für die neutrale Außenkommunikation nutze die Beleuchtungsübersicht.</p>
@@ -277,7 +286,7 @@ export const PrintView: React.FC<PrintViewProps> = ({
   onSavePublicBaseUrl,
   onClose
 }) => {
-  const [printLayout, setPrintLayout] = useState<'table' | 'assignment-map' | 'overview-map' | 'cards' | 'sheets'>('sheets');
+  const [printLayout, setPrintLayout] = useState<'table' | 'assignment-map' | 'overview-map' | 'organization' | 'cards' | 'sheets'>('sheets');
   const [publicUrlInput, setPublicUrlInput] = useState(publicBaseUrl);
   const [meetingTime, setMeetingTime] = useState<string>('17:30 Uhr Materialausgabe • 18:15 Uhr Entzünden');
 
@@ -308,6 +317,11 @@ export const PrintView: React.FC<PrintViewProps> = ({
     else pairs[pairs.length - 1].push(group);
     return pairs;
   }, [] as typeof helperGroups[]);
+  const helperPlanIds = Object.fromEntries(helperGroups.map((group, index) => [group.helper.id, `H${String(index + 1).padStart(2, '0')}`]));
+  const describeHelperArea = (group: typeof helperGroups[number]) => {
+    const labels = [...new Set(group.sections.map(section => `${section.street_name || section.label} · ${Math.round(section.length_meters ?? (section as any).lengthMeters ?? 0)} m`))];
+    return labels.join(' · ');
+  };
 
   const totalCandlesBase = sections.reduce((sum, s) => {
     const len = s.length_meters ?? (s as any).lengthMeters ?? 0;
@@ -571,6 +585,18 @@ export const PrintView: React.FC<PrintViewProps> = ({
             </button>
 
             <button
+              onClick={() => setPrintLayout('organization')}
+              style={{
+                padding: '5px 12px', borderRadius: 4, border: 'none',
+                background: printLayout === 'organization' ? '#F59E0B' : 'transparent',
+                color: printLayout === 'organization' ? '#0F172A' : '#FFFFFF', fontWeight: 700, fontSize: 12,
+                cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 5
+              }}
+            >
+              <FileText size={14} /> Orga-Plan
+            </button>
+
+            <button
               onClick={() => setPrintLayout('table')}
               style={{
                 padding: '5px 12px',
@@ -650,6 +676,8 @@ export const PrintView: React.FC<PrintViewProps> = ({
                   ? 'Gesamtkarte der Helfer-Zuweisungen'
                   : printLayout === 'overview-map'
                   ? 'Beleuchtungsübersicht mit Rundweg'
+                  : printLayout === 'organization'
+                  ? 'Organisationsplan – Helfer, Bereiche & Karten-IDs'
                   : printLayout === 'cards'
                   ? 'Kompakte Helfer-Informationen mit Karte & QR-Code'
                   : 'Persönliche Helfer-Informationen (A5)'}
@@ -730,6 +758,58 @@ export const PrintView: React.FC<PrintViewProps> = ({
               <span style={{ fontSize: 11, color: '#64748B' }}>Für den Ausdruck idealerweise „Querformat“ wählen</span>
             </div>
             <NeutralOverviewMap sections={sections} />
+          </div>
+        )}
+
+        {/* ORGANISATION: readable index first, then a matching label map. */}
+        {printLayout === 'organization' && (
+          <div>
+            <section style={{ pageBreakAfter: 'always' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
+                <div>
+                  <h2 style={{ fontSize: 16, fontWeight: 800, textTransform: 'uppercase', color: '#0F172A', margin: 0, letterSpacing: '0.04em' }}>Helfer- und Bereichsverzeichnis</h2>
+                  <p style={{ margin: '4px 0 0', color: '#64748B', fontSize: 11 }}>Die Kennung links findet sich auf der Karte auf der folgenden Seite wieder.</p>
+                </div>
+                <span style={{ fontSize: 11, fontWeight: 800, color: '#D97706' }}>{helperGroups.length} Helfer · {sections.length} Abschnitte</span>
+              </div>
+              <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11 }}>
+                <thead>
+                  <tr style={{ background: '#0F172A', color: '#FFFFFF', textAlign: 'left' }}>
+                    <th style={{ padding: '7px 8px', width: 48 }}>ID</th>
+                    <th style={{ padding: '7px 8px', width: '22%' }}>Helfer</th>
+                    <th style={{ padding: '7px 8px', textAlign: 'right', width: 62 }}>Meter</th>
+                    <th style={{ padding: '7px 8px', textAlign: 'right', width: 75 }}>Abschn.</th>
+                    <th style={{ padding: '7px 8px' }}>Zuständiger Bereich</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {helperGroups.map((group, index) => (
+                    <tr key={group.helper.id} style={{ borderBottom: '1px solid #CBD5E1', background: index % 2 ? '#F8FAFC' : '#FFFFFF', pageBreakInside: 'avoid' }}>
+                      <td style={{ padding: '7px 8px' }}><span style={{ display: 'inline-block', borderRadius: 99, padding: '3px 6px', background: '#FEF3C7', color: '#92400E', fontWeight: 900 }}>{helperPlanIds[group.helper.id]}</span></td>
+                      <td style={{ padding: '7px 8px', fontWeight: 800, color: '#0F172A' }}>{group.helper.name}</td>
+                      <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: 800, color: '#D97706' }}>{group.meters} m</td>
+                      <td style={{ padding: '7px 8px', textAlign: 'right', fontWeight: 700 }}>{group.sections.length}</td>
+                      <td style={{ padding: '7px 8px', color: '#334155', lineHeight: 1.35 }}>{describeHelperArea(group)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {unassignedSections.length > 0 && <p style={{ marginTop: 12, padding: '8px 10px', border: '1px solid #FCA5A5', borderRadius: 6, background: '#FEF2F2', color: '#991B1B', fontSize: 11, fontWeight: 700 }}>Noch offen: {unassignedSections.map(section => section.label).join(', ')}</p>}
+            </section>
+
+            <section>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 10 }}>
+                <div>
+                  <h2 style={{ fontSize: 16, fontWeight: 800, textTransform: 'uppercase', color: '#0F172A', margin: 0, letterSpacing: '0.04em' }}>Kartenindex für die Besprechung</h2>
+                  <p style={{ margin: '4px 0 0', color: '#64748B', fontSize: 11 }}>Dunkle Linien zeigen die beleuchteten Bereiche. Die orange Kennung verweist auf die Zeile im Verzeichnis.</p>
+                </div>
+                <span style={{ fontSize: 11, color: '#64748B' }}>Für den Ausdruck idealerweise „Querformat“ wählen</span>
+              </div>
+              <AssignmentOverviewMap sections={sections} helperLabels={helperPlanIds} />
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, minmax(0, 1fr))', gap: 6, marginTop: 12, fontSize: 10 }}>
+                {helperGroups.map(group => <div key={group.helper.id} style={{ display: 'flex', gap: 5, alignItems: 'center', color: '#334155' }}><b style={{ color: '#92400E' }}>{helperPlanIds[group.helper.id]}</b><span>{group.helper.name}</span></div>)}
+              </div>
+            </section>
           </div>
         )}
 
