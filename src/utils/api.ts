@@ -173,11 +173,63 @@ export const api = {
     return data;
   },
 
-  async createUser(input: { email: string; displayName: string; password: string; role: UserRole }): Promise<AuthUser> {
-    const res = await fetch(`${API_BASE}/users`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
+  async createUser(input: {
+    email: string;
+    displayName: string;
+    password?: string;
+    role: UserRole;
+    sendInviteMail?: boolean;
+  }): Promise<{ user: AuthUser; mailSent: boolean; mailError?: string; inviteUrl?: string }> {
+    const res = await fetch(`${API_BASE}/users`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input)
+    });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || 'Benutzer konnte nicht angelegt werden.');
     return data;
+  },
+
+  async reinviteUser(id: string): Promise<{ success: boolean; mailSent: boolean; mailError?: string; inviteUrl?: string }> {
+    const res = await fetch(`${API_BASE}/users/${encodeURIComponent(id)}/invite`, { method: 'POST' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'Einladung konnte nicht gesendet werden.');
+    return data;
+  },
+
+  async updateUser(id: string, input: { email: string; displayName: string; role: UserRole }): Promise<AuthUser> {
+    const res = await fetch(`${API_BASE}/users/${encodeURIComponent(id)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(input)
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'Benutzer konnte nicht aktualisiert werden.');
+    return data;
+  },
+
+  async deleteUser(id: string): Promise<void> {
+    const res = await fetch(`${API_BASE}/users/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'Benutzer konnte nicht gelöscht werden.');
+  },
+
+  async verifyResetToken(token: string): Promise<{ valid: boolean; email: string; displayName: string; role: UserRole }> {
+    const res = await fetch(`${API_BASE}/auth/verify-token?token=${encodeURIComponent(token)}`);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'Dieser Link ist ungültig oder abgelaufen.');
+    return data;
+  },
+
+  async setPassword(token: string, password: string): Promise<AuthUser> {
+    const res = await fetch(`${API_BASE}/auth/set-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token, password })
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'Passwort konnte nicht gesetzt werden.');
+    return data.user;
   },
 
   async getPublicHelper(token: string): Promise<PublicHelperInfo> {

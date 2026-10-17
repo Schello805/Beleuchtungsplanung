@@ -98,6 +98,100 @@ app.post('/api/auth/logout', (req, res) => {
   res.json({ success: true });
 });
 
+const mailTemplate = (template: string, helper: { name: string }, link: string, meters: number) =>
+  template
+    .replaceAll('{{name}}', helper.name)
+    .replaceAll('{{link}}', link)
+    .replaceAll('{{meter}}', String(Math.round(meters)));
+
+const escapeEmailHtml = (value: string) => value.replace(/[&<>"']/g, character => ({
+  '&': '&amp;',
+  '<': '&lt;',
+  '>': '&gt;',
+  '"': '&quot;',
+  "'": '&#39;',
+})[character] || character);
+
+const renderEmailHtml = ({
+  eventName,
+  heading,
+  message,
+  actionUrl,
+  actionLabel,
+}: {
+  eventName: string;
+  heading: string;
+  message: string;
+  actionUrl?: string;
+  actionLabel?: string;
+}) => {
+  const safeUrl = actionUrl ? escapeEmailHtml(actionUrl) : '';
+  return `<!doctype html>
+<html lang="de"><body style="margin:0;padding:24px;background:#f3f5f8;color:#172033;font-family:Arial,Helvetica,sans-serif;">
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"><tr><td align="center">
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:620px;background:#ffffff;border:1px solid #d8e0ea;border-radius:12px;overflow:hidden;">
+<tr><td style="padding:20px 28px;background:#152039;color:#ffffff;"><div style="font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#f6a500;">${escapeEmailHtml(eventName)}</div><div style="margin-top:6px;font-size:22px;font-weight:700;">${escapeEmailHtml(heading)}</div></td></tr>
+<tr><td style="padding:28px;font-size:16px;line-height:1.6;color:#243047;">${escapeEmailHtml(message).replace(/\r?\n/g, '<br>')}</td></tr>
+${safeUrl ? `<tr><td style="padding:0 28px 28px;"><a href="${safeUrl}" style="display:inline-block;padding:12px 18px;border-radius:8px;background:#f6a500;color:#172033;font-weight:700;text-decoration:none;">${escapeEmailHtml(actionLabel || 'Bereich öffnen')}</a></td></tr>` : ''}
+<tr><td style="padding:16px 28px;border-top:1px solid #e5eaf0;font-size:12px;line-height:1.5;color:#66758a;">Diese Nachricht wurde über den Lichternacht-Streckenplaner versendet.</td></tr>
+</table></td></tr></table></body></html>`;
+};
+
+const getSmtpTransport = () => {
+  const settings = dbService.getAllSettings();
+  const host = settings.smtp_host?.trim();
+  const port = Number(settings.smtp_port || 587);
+  const user = settings.smtp_user?.trim();
+  const password = smtpPasswordOverride || process.env.SMTP_PASSWORD?.trim();
+  const from = settings.smtp_from?.trim();
+  const configuredSecurity = settings.smtp_security?.trim();
+  const security = configuredSecurity === 'ssl' || configuredSecurity === 'starttls' || configuredSecurity === 'none'
+    ? configuredSecurity
+    : port === 465 ? 'ssl' : 'starttls';
+  if (!host || !Number.isFinite(port) || !user || !password || !from) {
+    throw new Error('SMTP ist noch nicht vollständig eingerichtet (Host, Port, Benutzer, Absender und SMTP_PASSWORD).');
+  }
+  return {
+    transport: nodemailer.createTransport({
+      host, port,
+      secure: security === 'ssl',
+      requireTLS: security === 'starttls',
+      ignoreTLS: security === 'none',
+      auth: { user, pass: password }
+    }),
+    from,
+    settings
+  };
+};
+
+async function sendUserInviteEmail(user: UserRecord, token: string, inviteUrl: string): Promise<{ success: boolean; error?: string }> {
+  try {
+    const { transport, from, settings } = getSmtpTransport();
+    const eventName = settings.event_name || 'Lichternacht';
+    const roleLabels: Record<string, string> = {
+      admin: 'Administrator (Volle Rechte & Benutzerverwaltung)',
+      planner: 'Planung (Strecken erfassen, Abschnitte einteilen, Helfer zuweisen)',
+      viewer: 'Lesen (Einsicht in Strecken & Pläne)'
+    };
+    const roleText = roleLabels[user.role] || user.role;
+    const subject = `[Zugang] ${eventName} – Einladung zur Streckenplanung`;
+    const message = `Hallo ${user.display_name},\n\nfür dich wurde ein persönlicher Zugang zur Streckenplanung der ${eventName} eingerichtet.\n\nDeine Rolle: ${roleText}\nBenutzername / E-Mail: ${user.email}\n\nBitte klicke auf den folgenden Button, um dein persönliches Passwort festzulegen (mindestens 12 Zeichen) und deinen Zugang zu aktivieren:\n${inviteUrl}\n\nDieser Link ist aus Sicherheitsgründen 48 Stunden gültig.`;
+    const html = renderEmailHtml({
+      eventName,
+      heading: 'Willkommen im Planungsteam',
+      message,
+      actionUrl: inviteUrl,
+      actionLabel: 'Passwort jetzt erstellen & aktivieren'
+    });
+    await transport.sendMail({ from, to: user.email, subject, text: `${message}\n\n${inviteUrl}`, html });
+    dbService.addMailLog({ recipient: user.email, subject, status: 'sent' });
+    return { success: true };
+  } catch (err: any) {
+    dbService.addMailLog({ recipient: user.email, subject: '[Einladung] Streckenplanung', status: 'failed', errorMessage: err.message });
+    return { success: false, error: err.message };
+  }
+}
+
 // Public helper links deliberately expose only the assigned work package. They
 // do not grant access to helpers, stations, planning data, or administration.
 app.get('/api/public/helpers/:token', (req, res) => {
@@ -110,6 +204,39 @@ app.get('/api/public/helpers/:token', (req, res) => {
       geojson: typeof section.geojson === 'string' ? JSON.parse(section.geojson) : section.geojson
     }))
   });
+});
+
+// Public endpoints for token-based password setup / invitations
+app.get('/api/auth/verify-token', (req, res) => {
+  const token = String(req.query.token || '').trim();
+  if (!token) return res.status(400).json({ error: 'Kein Token angegeben.' });
+  const result = dbService.getUserByResetToken(token);
+  if (!result) return res.status(404).json({ error: 'Dieser Einladungslink ist ungültig oder abgelaufen.' });
+  res.json({
+    valid: true,
+    email: result.user.email,
+    displayName: result.user.display_name,
+    role: result.user.role
+  });
+});
+
+app.post('/api/auth/set-password', (req, res) => {
+  const { token, password } = req.body || {};
+  if (!token || typeof token !== 'string') return res.status(400).json({ error: 'Kein Token angegeben.' });
+  if (!password || typeof password !== 'string' || password.length < 12) {
+    return res.status(400).json({ error: 'Das Passwort muss mindestens 12 Zeichen lang sein.' });
+  }
+  const result = dbService.getUserByResetToken(token);
+  if (!result) return res.status(404).json({ error: 'Dieser Einladungslink ist ungültig oder abgelaufen.' });
+
+  dbService.setUserPassword(result.user.id, passwordHash(password));
+
+  const sessionId = crypto.randomUUID();
+  const expires = new Date(Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000);
+  dbService.createSession(sessionId, result.user.id, expires.toISOString());
+  dbService.touchUserLogin(result.user.id);
+  res.cookie(SESSION_COOKIE, sessionId, { httpOnly: true, sameSite: 'strict', secure: req.secure, expires, path: '/' });
+  res.json({ success: true, user: toSafeUser(result.user) });
 });
 
 app.use('/api', (req, res, next) => {
@@ -131,26 +258,172 @@ app.get('/api/users', (req, res) => {
   res.json(dbService.getUsers());
 });
 
-app.post('/api/users', (req, res) => {
+app.post('/api/users', async (req, res) => {
   const user = (req as AuthenticatedRequest).authUser!;
   if (user.role !== 'admin') return res.status(403).json({ error: 'Nur Administratoren dürfen Benutzer verwalten.' });
-  const { email, displayName, password, role } = req.body || {};
-  if (typeof email !== 'string' || typeof displayName !== 'string' || typeof password !== 'string' || !['admin', 'planner', 'viewer'].includes(role)) {
-    return res.status(400).json({ error: 'Bitte E-Mail, Namen, Rolle und ein Passwort mit mindestens 12 Zeichen angeben.' });
+  const { email, displayName, password, role, sendInviteMail } = req.body || {};
+  if (typeof email !== 'string' || typeof displayName !== 'string' || !['admin', 'planner', 'viewer'].includes(role)) {
+    return res.status(400).json({ error: 'Bitte E-Mail, Namen und eine gültige Rolle angeben.' });
   }
-  if (password.length < 12) return res.status(400).json({ error: 'Das Passwort muss mindestens 12 Zeichen lang sein.' });
-  if (dbService.getUserByEmail(email)) return res.status(409).json({ error: 'Diese E-Mail-Adresse ist bereits angelegt.' });
-  const created = dbService.createUser({ id: crypto.randomUUID(), email, display_name: displayName, role: role as UserRole, password_hash: passwordHash(password) });
-  res.status(201).json(toSafeUser(created));
+  const cleanEmail = email.trim().toLowerCase();
+  const cleanDisplayName = displayName.trim();
+  if (!cleanEmail || !cleanDisplayName) {
+    return res.status(400).json({ error: 'Bitte E-Mail und Namen angeben.' });
+  }
+  if (password && typeof password === 'string' && password.length < 12) {
+    return res.status(400).json({ error: 'Das Passwort muss mindestens 12 Zeichen lang sein.' });
+  }
+  if (dbService.getUserByEmail(cleanEmail)) return res.status(409).json({ error: 'Diese E-Mail-Adresse ist bereits angelegt.' });
+
+  const initialPasswordHash = password ? passwordHash(password) : passwordHash(crypto.randomBytes(32).toString('hex'));
+  const created = dbService.createUser({
+    id: crypto.randomUUID(),
+    email: cleanEmail,
+    display_name: cleanDisplayName,
+    role: role as UserRole,
+    password_hash: initialPasswordHash
+  });
+
+  const shouldSendMail = sendInviteMail !== false || !password;
+  let inviteUrl: string | undefined;
+  let mailSent = false;
+  let mailError: string | undefined;
+
+  if (shouldSendMail || !password) {
+    const token = dbService.createPasswordResetToken(created.id, 48);
+    const settings = dbService.getAllSettings();
+    const baseUrl = (settings.public_base_url || '').trim().replace(/\/$/, '') || `${req.protocol}://${req.get('host')}`;
+    inviteUrl = `${baseUrl}/passwort-setzen/${token}`;
+
+    const mailResult = await sendUserInviteEmail(created, token, inviteUrl);
+    mailSent = mailResult.success;
+    mailError = mailResult.error;
+  }
+
+  res.status(201).json({
+    user: toSafeUser(created),
+    mailSent,
+    mailError,
+    inviteUrl
+  });
+});
+
+app.post('/api/users/:id/invite', async (req, res) => {
+  const user = (req as AuthenticatedRequest).authUser!;
+  if (user.role !== 'admin') return res.status(403).json({ error: 'Nur Administratoren dürfen Benutzer verwalten.' });
+  const targetUser = dbService.getUserById(req.params.id);
+  if (!targetUser) return res.status(404).json({ error: 'Benutzer nicht gefunden.' });
+
+  const token = dbService.createPasswordResetToken(targetUser.id, 48);
+  const settings = dbService.getAllSettings();
+  const baseUrl = (settings.public_base_url || '').trim().replace(/\/$/, '') || `${req.protocol}://${req.get('host')}`;
+  const inviteUrl = `${baseUrl}/passwort-setzen/${token}`;
+
+  const mailResult = await sendUserInviteEmail(targetUser, token, inviteUrl);
+  res.json({
+    success: true,
+    mailSent: mailResult.success,
+    mailError: mailResult.error,
+    inviteUrl
+  });
+});
+
+app.put('/api/users/:id', (req, res) => {
+  const user = (req as AuthenticatedRequest).authUser!;
+  if (user.role !== 'admin') return res.status(403).json({ error: 'Nur Administratoren dürfen Benutzer verwalten.' });
+  const targetUser = dbService.getUserById(req.params.id);
+  if (!targetUser) return res.status(404).json({ error: 'Benutzer nicht gefunden.' });
+
+  const { email, displayName, role } = req.body || {};
+  if (typeof email !== 'string' || typeof displayName !== 'string' || !['admin', 'planner', 'viewer'].includes(role)) {
+    return res.status(400).json({ error: 'Bitte E-Mail, Namen und eine gültige Rolle angeben.' });
+  }
+  const cleanEmail = email.trim().toLowerCase();
+  const cleanDisplayName = displayName.trim();
+  if (!cleanEmail || !cleanDisplayName) return res.status(400).json({ error: 'Bitte E-Mail und Namen angeben.' });
+  const sameEmailUser = dbService.getUserByEmail(cleanEmail);
+  if (sameEmailUser && sameEmailUser.id !== targetUser.id) return res.status(409).json({ error: 'Diese E-Mail-Adresse ist bereits angelegt.' });
+  if (targetUser.id === user.id && role !== 'admin') return res.status(400).json({ error: 'Das eigene Administratorkonto muss Administrator bleiben.' });
+
+  const updated = dbService.updateUser(targetUser.id, {
+    email: cleanEmail,
+    display_name: cleanDisplayName,
+    role: role as UserRole
+  });
+  res.json(toSafeUser(updated!));
+});
+
+app.delete('/api/users/:id', (req, res) => {
+  const user = (req as AuthenticatedRequest).authUser!;
+  if (user.role !== 'admin') return res.status(403).json({ error: 'Nur Administratoren dürfen Benutzer verwalten.' });
+  const { id } = req.params;
+  if (id === user.id) return res.status(400).json({ error: 'Das eigene Administratorkonto kann nicht gelöscht werden.' });
+  dbService.deleteUser(id);
+  res.json({ success: true });
 });
 
 app.use('/api', (req, res, next) => {
   const user = (req as AuthenticatedRequest).authUser!;
-  const adminOnly = req.path.startsWith('/settings') || req.path.startsWith('/database') || req.path.startsWith('/mail');
-  const writeRequest = !['GET', 'HEAD', 'OPTIONS'].includes(req.method);
-  if ((adminOnly && user.role !== 'admin') || (writeRequest && !['admin', 'planner'].includes(user.role))) {
+  const isGet = ['GET', 'HEAD', 'OPTIONS'].includes(req.method);
+
+  // Settings:
+  // - Reading settings (GET /api/settings) is allowed for everyone (admin, planner, viewer)
+  // - Writing settings (PUT /api/settings/:key):
+  //   * Admin can write all settings
+  //   * Planner can write planning & display settings
+  if (req.path.startsWith('/settings')) {
+    if (isGet) return next();
+    if (user.role === 'admin') return next();
+    if (user.role === 'planner' && req.method === 'PUT') {
+      const allowedPlannerSettings = [
+        'candle_spacing',
+        'candle_buffer',
+        'map_tile_theme',
+        'theme',
+        'distribution_default_chunk_length',
+        'distribution_min_work_meters',
+        'distribution_max_work_meters',
+        'distribution_max_difference_meters',
+        'distribution_assignment_mode'
+      ];
+      const key = req.path.replace(/^\/settings\/?/, '');
+      if (allowedPlannerSettings.includes(key)) {
+        return next();
+      }
+    }
+    return res.status(403).json({ error: 'Für diese Einstellung fehlen Administrator-Rechte.' });
+  }
+
+  // Database:
+  // - Reset (POST /api/database/reset): strictly admin-only
+  // - Backup export, import, migrate: allowed for admin and planner
+  if (req.path.startsWith('/database')) {
+    if (req.path === '/database/reset') {
+      if (user.role !== 'admin') return res.status(403).json({ error: 'Nur Administratoren dürfen die gesamte Datenbank zurücksetzen.' });
+      return next();
+    }
+    if (['admin', 'planner'].includes(user.role)) return next();
+    return res.status(403).json({ error: 'Für diese Datenbank-Aktion fehlen die erforderlichen Rechte.' });
+  }
+
+  // Mail:
+  // - Helper mails: admin and planner
+  // - Mail log & test mail: admin only
+  if (req.path.startsWith('/mail')) {
+    if (req.path === '/mail/helpers' && ['admin', 'planner'].includes(user.role)) {
+      return next();
+    }
+    if (user.role !== 'admin') {
+      return res.status(403).json({ error: 'Nur Administratoren dürfen E-Mail-Einstellungen und Logs verwalten.' });
+    }
+    return next();
+  }
+
+  // All other write requests (streets, sections, helpers) are allowed for admin and planner:
+  if (!isGet && !['admin', 'planner'].includes(user.role)) {
     return res.status(403).json({ error: 'Für diese Aktion fehlen die erforderlichen Rechte.' });
   }
+
   next();
 });
 
@@ -497,73 +770,7 @@ app.post('/api/database/reset', (req, res) => {
   }
 });
 
-const mailTemplate = (template: string, helper: { name: string }, link: string, meters: number) =>
-  template
-    .replaceAll('{{name}}', helper.name)
-    .replaceAll('{{link}}', link)
-    .replaceAll('{{meter}}', String(Math.round(meters)));
-
-const escapeEmailHtml = (value: string) => value.replace(/[&<>"']/g, character => ({
-  '&': '&amp;',
-  '<': '&lt;',
-  '>': '&gt;',
-  '"': '&quot;',
-  "'": '&#39;',
-})[character] || character);
-
-const renderEmailHtml = ({
-  eventName,
-  heading,
-  message,
-  actionUrl,
-  actionLabel,
-}: {
-  eventName: string;
-  heading: string;
-  message: string;
-  actionUrl?: string;
-  actionLabel?: string;
-}) => {
-  const safeUrl = actionUrl ? escapeEmailHtml(actionUrl) : '';
-  return `<!doctype html>
-<html lang="de"><body style="margin:0;padding:24px;background:#f3f5f8;color:#172033;font-family:Arial,Helvetica,sans-serif;">
-<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"><tr><td align="center">
-<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:620px;background:#ffffff;border:1px solid #d8e0ea;border-radius:12px;overflow:hidden;">
-<tr><td style="padding:20px 28px;background:#152039;color:#ffffff;"><div style="font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#f6a500;">${escapeEmailHtml(eventName)}</div><div style="margin-top:6px;font-size:22px;font-weight:700;">${escapeEmailHtml(heading)}</div></td></tr>
-<tr><td style="padding:28px;font-size:16px;line-height:1.6;color:#243047;">${escapeEmailHtml(message).replace(/\r?\n/g, '<br>')}</td></tr>
-${safeUrl ? `<tr><td style="padding:0 28px 28px;"><a href="${safeUrl}" style="display:inline-block;padding:12px 18px;border-radius:8px;background:#f6a500;color:#172033;font-weight:700;text-decoration:none;">${escapeEmailHtml(actionLabel || 'Bereich öffnen')}</a></td></tr>` : ''}
-<tr><td style="padding:16px 28px;border-top:1px solid #e5eaf0;font-size:12px;line-height:1.5;color:#66758a;">Diese Nachricht wurde über den Lichternacht-Streckenplaner versendet.</td></tr>
-</table></td></tr></table></body></html>`;
-};
-
 const recentlySentTestMails = new Map<string, number>();
-
-const getSmtpTransport = () => {
-  const settings = dbService.getAllSettings();
-  const host = settings.smtp_host?.trim();
-  const port = Number(settings.smtp_port || 587);
-  const user = settings.smtp_user?.trim();
-  const password = smtpPasswordOverride || process.env.SMTP_PASSWORD?.trim();
-  const from = settings.smtp_from?.trim();
-  const configuredSecurity = settings.smtp_security?.trim();
-  const security = configuredSecurity === 'ssl' || configuredSecurity === 'starttls' || configuredSecurity === 'none'
-    ? configuredSecurity
-    : port === 465 ? 'ssl' : 'starttls';
-  if (!host || !Number.isFinite(port) || !user || !password || !from) {
-    throw new Error('SMTP ist noch nicht vollständig eingerichtet (Host, Port, Benutzer, Absender und SMTP_PASSWORD).');
-  }
-  return {
-    transport: nodemailer.createTransport({
-      host, port,
-      secure: security === 'ssl',
-      requireTLS: security === 'starttls',
-      ignoreTLS: security === 'none',
-      auth: { user, pass: password }
-    }),
-    from,
-    settings
-  };
-};
 
 app.get('/api/mail/log', (req, res) => {
   res.json(dbService.getMailLog());

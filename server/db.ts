@@ -120,6 +120,15 @@ db.exec(`
     error_message TEXT,
     created_at TEXT NOT NULL
   );
+
+  CREATE TABLE IF NOT EXISTS password_reset_tokens (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    token TEXT NOT NULL UNIQUE,
+    expires_at TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS password_reset_tokens_token_idx ON password_reset_tokens(token);
 `);
 
 // Kept separate from CREATE TABLE so existing event databases are upgraded in place.
@@ -281,6 +290,53 @@ export const dbService = {
 
   deleteSession(id: string): void {
     db.prepare('DELETE FROM sessions WHERE id = ?').run(id);
+  },
+
+  getUserById(id: string): UserRecord | undefined {
+    return db.prepare('SELECT * FROM users WHERE id = ?').get(id) as UserRecord | undefined;
+  },
+
+  updateUser(id: string, values: Pick<UserRecord, 'email' | 'display_name' | 'role'>): UserRecord | undefined {
+    db.prepare('UPDATE users SET email = ?, display_name = ?, role = ? WHERE id = ?')
+      .run(values.email.trim().toLowerCase(), values.display_name.trim(), values.role, id);
+    return db.prepare('SELECT * FROM users WHERE id = ?').get(id) as UserRecord | undefined;
+  },
+
+  deleteUser(id: string): void {
+    db.prepare('DELETE FROM sessions WHERE user_id = ?').run(id);
+    db.prepare('DELETE FROM password_reset_tokens WHERE user_id = ?').run(id);
+    db.prepare('DELETE FROM users WHERE id = ?').run(id);
+  },
+
+  createPasswordResetToken(userId: string, hoursValid = 48): string {
+    const token = crypto.randomBytes(32).toString('base64url');
+    const id = crypto.randomUUID();
+    const expiresAt = new Date(Date.now() + hoursValid * 3600 * 1000).toISOString();
+    const createdAt = new Date().toISOString();
+    db.prepare('DELETE FROM password_reset_tokens WHERE user_id = ?').run(userId);
+    db.prepare('INSERT INTO password_reset_tokens (id, user_id, token, expires_at, created_at) VALUES (?, ?, ?, ?, ?)')
+      .run(id, userId, token, expiresAt, createdAt);
+    return token;
+  },
+
+  getUserByResetToken(token: string): { user: UserRecord; tokenId: string } | undefined {
+    const now = new Date().toISOString();
+    db.prepare('DELETE FROM password_reset_tokens WHERE expires_at <= ?').run(now);
+    const row = db.prepare(`
+      SELECT password_reset_tokens.id AS token_id, users.*
+      FROM password_reset_tokens
+      JOIN users ON users.id = password_reset_tokens.user_id
+      WHERE password_reset_tokens.token = ? AND password_reset_tokens.expires_at > ?
+    `).get(token, now) as (UserRecord & { token_id: string }) | undefined;
+    if (!row) return undefined;
+    const { token_id, ...user } = row;
+    return { user, tokenId: token_id };
+  },
+
+  setUserPassword(userId: string, passwordHash: string): void {
+    db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(passwordHash, userId);
+    db.prepare('DELETE FROM password_reset_tokens WHERE user_id = ?').run(userId);
+    db.prepare('DELETE FROM sessions WHERE user_id = ?').run(userId);
   },
 
   touchUserLogin(id: string): void {

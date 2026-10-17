@@ -5,17 +5,21 @@ import { RedistributeModal } from './components/RedistributeModal';
 import { AutoAssignModal } from './components/AutoAssignModal';
 import { PublicHelperPage } from './components/PublicHelperPage';
 import { AdminSettingsModal } from './components/AdminSettingsModal';
+import { SetPasswordScreen } from './components/SetPasswordScreen';
 
 const MapComponent = lazy(() => import('./components/MapComponent').then(module => ({ default: module.MapComponent })));
 const PrintView = lazy(() => import('./components/PrintView').then(module => ({ default: module.PrintView })));
 const ExcelImportModal = lazy(() => import('./components/ExcelImportModal').then(module => ({ default: module.ExcelImportModal })));
 import { api, type Section, type Helper, type Street, type AuthUser, type PublicHelperInfo } from './utils/api';
 import { splitSectionAtPoint, splitSectionInHalf, type GeneratedSection } from './utils/geo';
-import { Check, X, UserRound, ChevronDown, Menu, Wrench } from 'lucide-react';
+import { Check, X, UserRound, ChevronDown, Menu, Wrench, Mail, Trash2, Copy, Send, Pencil } from 'lucide-react';
 import * as turf from '@turf/turf';
 
 export const App: React.FC = () => {
   const publicToken = window.location.pathname.match(/^\/helfer\/([A-Za-z0-9_-]{20,})\/?$/)?.[1] || null;
+  const inviteToken = window.location.pathname.match(/^\/(?:passwort-setzen|einladung)\/([A-Za-z0-9_-]{20,})\/?$/)?.[1]
+    || new URLSearchParams(window.location.search).get('token')
+    || null;
   const [publicHelperInfo, setPublicHelperInfo] = useState<PublicHelperInfo | null>(null);
   const [publicHelperError, setPublicHelperError] = useState<string | null>(null);
   const [authState, setAuthState] = useState<'loading' | 'anonymous' | 'authenticated' | 'setup-required'>('loading');
@@ -31,6 +35,14 @@ export const App: React.FC = () => {
   const [isAdminSettingsOpen, setIsAdminSettingsOpen] = useState(false);
   const [managedUsers, setManagedUsers] = useState<AuthUser[]>([]);
   const [newUser, setNewUser] = useState({ email: '', displayName: '', password: '', role: 'planner' as AuthUser['role'] });
+  const [sendInviteMail, setSendInviteMail] = useState(true);
+  const [userManagementNotice, setUserManagementNotice] = useState<string | null>(null);
+  const [userManagementInviteUrl, setUserManagementInviteUrl] = useState<string | null>(null);
+  const [reinvitingUserId, setReinvitingUserId] = useState<string | null>(null);
+  const [copiedInviteUrl, setCopiedInviteUrl] = useState(false);
+  const [editingUser, setEditingUser] = useState<AuthUser | null>(null);
+  const [editedUser, setEditedUser] = useState({ email: '', displayName: '', role: 'planner' as AuthUser['role'] });
+  const [isSavingUser, setIsSavingUser] = useState(false);
   const [userManagementError, setUserManagementError] = useState<string | null>(null);
   const [sections, setSections] = useState<Section[]>([]);
   const [helpers, setHelpers] = useState<Helper[]>([]);
@@ -270,6 +282,8 @@ export const App: React.FC = () => {
 
   const openUserManagement = async () => {
     setUserManagementError(null);
+    setUserManagementNotice(null);
+    setUserManagementInviteUrl(null);
     try {
       setManagedUsers(await api.getUsers());
       setIsUserManagementOpen(true);
@@ -281,12 +295,86 @@ export const App: React.FC = () => {
   const handleCreateUser = async (event: React.FormEvent) => {
     event.preventDefault();
     setUserManagementError(null);
+    setUserManagementNotice(null);
+    setUserManagementInviteUrl(null);
     try {
-      const created = await api.createUser(newUser);
-      setManagedUsers(users => [...users, created].sort((a, b) => a.email.localeCompare(b.email)));
+      const result = await api.createUser({
+        email: newUser.email,
+        displayName: newUser.displayName,
+        password: newUser.password || undefined,
+        role: newUser.role,
+        sendInviteMail
+      });
+      setManagedUsers(users => [...users, result.user].sort((a, b) => a.email.localeCompare(b.email)));
       setNewUser({ email: '', displayName: '', password: '', role: 'planner' });
+      if (result.mailSent) {
+        setUserManagementNotice(`✅ Einladungs-E-Mail wurde erfolgreich an ${result.user.email} gesendet.`);
+      } else if (result.inviteUrl) {
+        setUserManagementNotice(`Benutzer angelegt. Da kein SMTP eingerichtet ist, bitte diesen Einladungs-Link übermitteln:`);
+        setUserManagementInviteUrl(result.inviteUrl);
+      } else {
+        setUserManagementNotice(`✅ Benutzer ${result.user.display_name} wurde erfolgreich angelegt.`);
+      }
     } catch (error) {
       setUserManagementError(error instanceof Error ? error.message : 'Benutzer konnte nicht angelegt werden.');
+    }
+  };
+
+  const handleReinviteUser = async (user: AuthUser) => {
+    setUserManagementError(null);
+    setUserManagementNotice(null);
+    setUserManagementInviteUrl(null);
+    setReinvitingUserId(user.id);
+    try {
+      const result = await api.reinviteUser(user.id);
+      if (result.mailSent) {
+        setUserManagementNotice(`✅ Einladungs-E-Mail wurde erneut an ${user.email} gesendet.`);
+      } else if (result.inviteUrl) {
+        setUserManagementNotice(`Neuer Link für ${user.display_name} generiert (E-Mail konnte nicht gesendet werden):`);
+        setUserManagementInviteUrl(result.inviteUrl);
+      }
+    } catch (error) {
+      setUserManagementError(error instanceof Error ? error.message : 'Einladungs-Link konnte nicht generiert werden.');
+    } finally {
+      setReinvitingUserId(null);
+    }
+  };
+
+  const handleDeleteUser = async (user: AuthUser) => {
+    if (!window.confirm(`Benutzer "${user.display_name}" (${user.email}) wirklich löschen?`)) return;
+    setUserManagementError(null);
+    setUserManagementNotice(null);
+    try {
+      await api.deleteUser(user.id);
+      setManagedUsers(users => users.filter(u => u.id !== user.id));
+      setUserManagementNotice(`Benutzer "${user.display_name}" wurde gelöscht.`);
+    } catch (error) {
+      setUserManagementError(error instanceof Error ? error.message : 'Benutzer konnte nicht gelöscht werden.');
+    }
+  };
+
+  const startEditingUser = (user: AuthUser) => {
+    setUserManagementError(null);
+    setUserManagementNotice(null);
+    setEditingUser(user);
+    setEditedUser({ email: user.email, displayName: user.display_name, role: user.role });
+  };
+
+  const handleUpdateUser = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!editingUser) return;
+    setUserManagementError(null);
+    setIsSavingUser(true);
+    try {
+      const updated = await api.updateUser(editingUser.id, editedUser);
+      setManagedUsers(users => users.map(user => user.id === updated.id ? updated : user).sort((a, b) => a.email.localeCompare(b.email)));
+      if (currentUser?.id === updated.id) setCurrentUser(updated);
+      setEditingUser(null);
+      setUserManagementNotice(`Benutzer „${updated.display_name}“ wurde aktualisiert.`);
+    } catch (error) {
+      setUserManagementError(error instanceof Error ? error.message : 'Benutzer konnte nicht aktualisiert werden.');
+    } finally {
+      setIsSavingUser(false);
     }
   };
 
@@ -629,7 +717,7 @@ export const App: React.FC = () => {
           length_meters: sec.lengthMeters,
           color: sec.color,
           type: sec.type,
-          lighting_side: sec.lighting_side || 'both',
+            lighting_side: sec.lighting_side || 'both',
           geojson: sec.geojson,
           assigned_helper_id: null,
           assigned_helper_name: null,
@@ -965,6 +1053,19 @@ export const App: React.FC = () => {
   const handleAutomaticAssign = async (assignments: Array<{ sectionId: string; helperId: string; helperName: string }>) => {
     await handleBatchAssign(assignments, 'Automatische Verteilung');
   };
+
+  if (inviteToken) {
+    return (
+      <SetPasswordScreen
+        token={inviteToken}
+        onSuccess={(user) => {
+          setCurrentUser(user);
+          setAuthState('authenticated');
+          window.history.replaceState({}, '', '/');
+        }}
+      />
+    );
+  }
 
   if (publicToken) {
     if (publicHelperInfo) return <PublicHelperPage info={publicHelperInfo} />;
@@ -1319,18 +1420,197 @@ export const App: React.FC = () => {
       </Suspense>
       {isUserManagementOpen && (
         <div className="user-modal-backdrop">
-          <section className="user-modal">
+          <section className="user-modal" style={{ width: 'min(100%, 560px)' }}>
             <button className="user-modal-close" onClick={() => setIsUserManagementOpen(false)}>×</button>
             <p className="auth-kicker">ADMINISTRATION</p><h2>Benutzer & Rechte</h2>
-            <div className="user-list">{managedUsers.map(user => <div key={user.id}><strong>{user.display_name}</strong><span>{user.email} · {user.role === 'admin' ? 'Administrator' : user.role === 'planner' ? 'Planung' : 'Lesen'}</span></div>)}</div>
-            <form onSubmit={handleCreateUser} className="auth-form">
+
+            {userManagementNotice && (
+              <div style={{
+                padding: '12px 14px',
+                borderRadius: 8,
+                background: 'rgba(16, 185, 129, 0.12)',
+                border: '1px solid rgba(16, 185, 129, 0.3)',
+                color: '#34d399',
+                fontSize: 13,
+                marginBottom: 16
+              }}>
+                <p style={{ margin: 0, fontWeight: 600 }}>{userManagementNotice}</p>
+                {userManagementInviteUrl && (
+                  <div style={{ display: 'flex', gap: 8, marginTop: 8 }}>
+                    <input
+                      readOnly
+                      value={userManagementInviteUrl}
+                      style={{
+                        flex: 1,
+                        background: 'var(--bg-input)',
+                        border: '1px solid var(--border-subtle)',
+                        borderRadius: 6,
+                        padding: '7px 10px',
+                        fontSize: 12,
+                        color: 'var(--text-main)'
+                      }}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => {
+                        navigator.clipboard.writeText(userManagementInviteUrl);
+                        setCopiedInviteUrl(true);
+                        setTimeout(() => setCopiedInviteUrl(false), 2000);
+                      }}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 4,
+                        padding: '7px 12px',
+                        background: 'var(--accent-gold)',
+                        color: '#172033',
+                        border: 0,
+                        borderRadius: 6,
+                        fontSize: 12,
+                        fontWeight: 700,
+                        cursor: 'pointer'
+                      }}
+                    >
+                      {copiedInviteUrl ? <Check size={13} /> : <Copy size={13} />}
+                      {copiedInviteUrl ? 'Kopiert' : 'Kopieren'}
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {editingUser && (
+              <form onSubmit={handleUpdateUser} className="auth-form" style={{ margin: '0 0 16px', padding: 14, border: '1px solid rgba(245,158,11,.45)', borderRadius: 8, background: 'rgba(245,158,11,.08)' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                  <h3 style={{ margin: 0 }}>Benutzer bearbeiten</h3>
+                  <button type="button" onClick={() => setEditingUser(null)} style={{ border: 0, background: 'transparent', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 18 }}>×</button>
+                </div>
+                <label>Name<input value={editedUser.displayName} onChange={event => setEditedUser(value => ({ ...value, displayName: event.target.value }))} required /></label>
+                <label>E-Mail-Adresse<input type="email" value={editedUser.email} onChange={event => setEditedUser(value => ({ ...value, email: event.target.value }))} required /></label>
+                <label>Rolle
+                  <select value={editedUser.role} onChange={event => setEditedUser(value => ({ ...value, role: event.target.value as AuthUser['role'] }))} disabled={editingUser.id === currentUser?.id}>
+                    <option value="planner">Planung – darf Strecken, Abschnitte und Helfer bearbeiten</option>
+                    <option value="viewer">Lesen – nur ansehen</option>
+                    <option value="admin">Administrator – volle Verwaltung</option>
+                  </select>
+                </label>
+                <p style={{ margin: 0, color: 'var(--text-muted)', fontSize: 11 }}>Passwörter werden nicht angezeigt oder überschrieben. Für ein neues Passwort nutze „Einladen“.</p>
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                  <button type="button" onClick={() => setEditingUser(null)} style={{ border: '1px solid var(--border-subtle)', borderRadius: 6, padding: '7px 10px', background: 'transparent', color: 'var(--text-main)', cursor: 'pointer' }}>Abbrechen</button>
+                  <button type="submit" disabled={isSavingUser} style={{ border: 0, borderRadius: 6, padding: '7px 10px', background: 'var(--accent-gold)', color: '#172033', fontWeight: 800, cursor: 'pointer' }}>{isSavingUser ? 'Speichern …' : 'Änderungen speichern'}</button>
+                </div>
+              </form>
+            )}
+
+            <div className="user-list">
+              {managedUsers.map(user => (
+                <div key={user.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 10 }}>
+                  <div style={{ overflow: 'hidden' }}>
+                    <strong>{user.display_name}</strong>
+                    <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {user.email} · {user.role === 'admin' ? 'Administrator' : user.role === 'planner' ? 'Planung' : 'Lesen'}
+                    </span>
+                  </div>
+                  <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
+                    <button
+                      type="button"
+                      title="Benutzer bearbeiten"
+                      onClick={() => startEditingUser(user)}
+                      style={{ display: 'inline-flex', alignItems: 'center', padding: '6px 8px', fontSize: 11, borderRadius: 6, background: 'rgba(245,158,11,.12)', border: '1px solid rgba(245,158,11,.35)', color: 'var(--accent-gold)', cursor: 'pointer' }}
+                    >
+                      <Pencil size={12} />
+                    </button>
+                    <button
+                      type="button"
+                      title="Einladung per E-Mail / Link senden"
+                      disabled={reinvitingUserId === user.id}
+                      onClick={() => handleReinviteUser(user)}
+                      style={{
+                        display: 'inline-flex',
+                        alignItems: 'center',
+                        gap: 4,
+                        padding: '6px 9px',
+                        fontSize: 11,
+                        borderRadius: 6,
+                        background: 'rgba(59, 130, 246, 0.15)',
+                        border: '1px solid rgba(59, 130, 246, 0.3)',
+                        color: '#60a5fa',
+                        cursor: 'pointer',
+                        fontWeight: 600
+                      }}
+                    >
+                      <Mail size={12} />
+                      {reinvitingUserId === user.id ? 'Sende …' : 'Einladen'}
+                    </button>
+                    {currentUser?.id !== user.id && (
+                      <button
+                        type="button"
+                        title="Benutzer löschen"
+                        onClick={() => handleDeleteUser(user)}
+                        style={{
+                          display: 'inline-flex',
+                          alignItems: 'center',
+                          padding: '6px 8px',
+                          fontSize: 11,
+                          borderRadius: 6,
+                          background: 'rgba(239, 68, 68, 0.12)',
+                          border: '1px solid rgba(239, 68, 68, 0.3)',
+                          color: '#f87171',
+                          cursor: 'pointer'
+                        }}
+                      >
+                        <Trash2 size={12} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+            <form onSubmit={handleCreateUser} className="auth-form" style={{ marginTop: 22, paddingTop: 18, borderTop: '1px solid var(--border-subtle)' }}>
               <h3>Neuen Zugang anlegen</h3>
-              <label>Name<input value={newUser.displayName} onChange={event => setNewUser(value => ({ ...value, displayName: event.target.value }))} required /></label>
-              <label>E-Mail-Adresse<input type="email" value={newUser.email} onChange={event => setNewUser(value => ({ ...value, email: event.target.value }))} required /></label>
-              <label>Einmaliges Passwort<input type="password" minLength={12} value={newUser.password} onChange={event => setNewUser(value => ({ ...value, password: event.target.value }))} required /></label>
-              <label>Rolle<select value={newUser.role} onChange={event => setNewUser(value => ({ ...value, role: event.target.value as AuthUser['role'] }))}><option value="planner">Planung – darf bearbeiten</option><option value="viewer">Lesen – nur ansehen</option><option value="admin">Administrator – volle Verwaltung</option></select></label>
+              <label>Name<input value={newUser.displayName} onChange={event => setNewUser(value => ({ ...value, displayName: event.target.value }))} placeholder="z. B. Max Mustermann" required /></label>
+              <label>E-Mail-Adresse<input type="email" value={newUser.email} onChange={event => setNewUser(value => ({ ...value, email: event.target.value }))} placeholder="max@example.org" required /></label>
+              <label>Rolle
+                <select value={newUser.role} onChange={event => setNewUser(value => ({ ...value, role: event.target.value as AuthUser['role'] }))}>
+                  <option value="planner">Planung – darf Strecken, Abschnitte und Helfer bearbeiten</option>
+                  <option value="viewer">Lesen – nur ansehen</option>
+                  <option value="admin">Administrator – volle Verwaltung</option>
+                </select>
+              </label>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, margin: '4px 0' }}>
+                <input
+                  type="checkbox"
+                  id="sendInviteMailCheck"
+                  checked={sendInviteMail}
+                  onChange={e => setSendInviteMail(e.target.checked)}
+                  style={{ width: 'auto', cursor: 'pointer' }}
+                />
+                <label htmlFor="sendInviteMailCheck" style={{ cursor: 'pointer', fontSize: 13, color: 'var(--text-main)', margin: 0, fontWeight: 500 }}>
+                  Einladungs-E-Mail senden (Benutzer erstellt Passwort selbst per Link)
+                </label>
+              </div>
+
+              {!sendInviteMail && (
+                <label>
+                  Initiales Passwort (mindestens 12 Zeichen)
+                  <input
+                    type="password"
+                    minLength={12}
+                    value={newUser.password}
+                    onChange={event => setNewUser(value => ({ ...value, password: event.target.value }))}
+                    placeholder="Mindestens 12 Zeichen"
+                    required={!sendInviteMail}
+                  />
+                </label>
+              )}
+
               {userManagementError && <p className="auth-error">{userManagementError}</p>}
-              <button type="submit">Zugang anlegen</button>
+              <button type="submit" style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 6 }}>
+                <Send size={14} />
+                Zugang anlegen {sendInviteMail ? '& Einladung senden' : ''}
+              </button>
             </form>
           </section>
         </div>
