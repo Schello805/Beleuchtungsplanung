@@ -183,7 +183,7 @@ async function sendUserInviteEmail(user: UserRecord, token: string, inviteUrl: s
       actionUrl: inviteUrl,
       actionLabel: 'Passwort jetzt erstellen & aktivieren'
     });
-    await transport.sendMail({ from, to: user.email, subject, text: `${message}\n\n${inviteUrl}`, html });
+    await transport.sendMail({ from, to: user.email, cc: settings.smtp_cc?.trim() || undefined, subject, text: `${message}\n\n${inviteUrl}`, html });
     dbService.addMailLog({ recipient: user.email, subject, status: 'sent' });
     return { success: true };
   } catch (err: any) {
@@ -787,7 +787,7 @@ app.post('/api/mail/test', async (req, res) => {
     const subject = `[Test] ${settings.event_name || 'Lichternacht'} – Versand eingerichtet`;
     const text = 'Dies ist eine Test-E-Mail des Lichternacht-Streckenplaners. Der SMTP-Versand ist erreichbar.';
     const html = renderEmailHtml({ eventName: settings.event_name || 'Lichternacht', heading: 'SMTP-Test erfolgreich', message: text });
-    await transport.sendMail({ from, to: recipient, subject, text, html });
+    await transport.sendMail({ from, to: recipient, cc: settings.smtp_cc?.trim() || undefined, subject, text, html });
     dbService.addMailLog({ recipient, subject, status: 'test' });
     res.json({ success: true });
   } catch (err: any) {
@@ -821,7 +821,7 @@ app.post('/api/mail/helpers', async (req, res) => {
         actionLabel: 'Persönlichen Bereich öffnen',
       });
       try {
-        await transport.sendMail({ from, to: helper.email, subject, text, html });
+        await transport.sendMail({ from, to: helper.email, cc: settings.smtp_cc?.trim() || undefined, subject, text, html });
         dbService.addMailLog({ helperId: helper.id, recipient: helper.email, subject, status: 'sent' }); sent++;
       } catch (err: any) {
         dbService.addMailLog({ helperId: helper.id, recipient: helper.email, subject, status: 'failed', errorMessage: err.message }); failed++;

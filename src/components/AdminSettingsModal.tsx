@@ -33,6 +33,7 @@ const defaults: SettingValues = {
   smtp_security: '',
   smtp_user: '',
   smtp_from: '',
+  smtp_cc: '',
   mail_subject: '{{event}}: Dein Beleuchtungsbereich',
   mail_body: 'Hallo {{name}},\n\nhier ist dein persönlicher Bereich für die Lichternacht:\n{{link}}\n\nUmfang: ca. {{meter}} m\n\nVielen Dank für deine Unterstützung!'
 };
@@ -58,7 +59,8 @@ const fieldLabels: Record<string, string> = {
   smtp_port: 'SMTP-Port',
   smtp_security: 'Verschlüsselung',
   smtp_user: 'SMTP-Benutzer',
-  smtp_from: 'Absender-Adresse'
+  smtp_from: 'Absender-Adresse',
+  smtp_cc: 'Admin-Kopie (CC)'
 };
 
 const Field: React.FC<{ name: string; values: SettingValues; onChange: (name: string, value: string) => void; placeholder?: string; type?: string; inputMode?: React.HTMLAttributes<HTMLInputElement>['inputMode'] }> = ({ name, values, onChange, placeholder, type = 'text', inputMode }) => (
@@ -217,6 +219,7 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({ isOpen, 
             </label>
             <Field name="smtp_user" values={values} onChange={change} placeholder="benutzer" />
             <Field name="smtp_from" values={values} onChange={change} placeholder="lichternacht@example.de" type="email" />
+            <Field name="smtp_cc" values={values} onChange={change} placeholder="admin@example.de" type="email" />
             <label style={{ display: 'grid', gap: 5, fontSize: 12, fontWeight: 700, color: 'var(--text-main)' }}>SMTP-Passwort
               <input type="password" autoComplete="new-password" value={smtpPassword} onChange={event => setSmtpPassword(event.target.value)} placeholder="Nur bei Änderung eingeben" style={{ width: '100%', minHeight: 40, border: '1px solid var(--border-subtle)', borderRadius: 7, padding: '8px 10px', background: 'var(--bg-input)', color: 'var(--text-main)' }} />
             </label>
