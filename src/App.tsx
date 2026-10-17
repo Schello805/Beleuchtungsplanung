@@ -310,7 +310,7 @@ export const App: React.FC = () => {
       if (result.mailSent) {
         setUserManagementNotice(`✅ Einladungs-E-Mail wurde erfolgreich an ${result.user.email} gesendet.`);
       } else if (result.inviteUrl) {
-        setUserManagementNotice(`Benutzer angelegt. Da kein SMTP eingerichtet ist, bitte diesen Einladungs-Link übermitteln:`);
+        setUserManagementNotice(`Benutzer angelegt, aber E-Mail konnte nicht gesendet werden${result.mailError ? `: ${result.mailError}` : '.'} Bitte diesen Einladungs-Link übermitteln:`);
         setUserManagementInviteUrl(result.inviteUrl);
       } else {
         setUserManagementNotice(`✅ Benutzer ${result.user.display_name} wurde erfolgreich angelegt.`);
@@ -330,7 +330,7 @@ export const App: React.FC = () => {
       if (result.mailSent) {
         setUserManagementNotice(`✅ Einladungs-E-Mail wurde erneut an ${user.email} gesendet.`);
       } else if (result.inviteUrl) {
-        setUserManagementNotice(`Neuer Link für ${user.display_name} generiert (E-Mail konnte nicht gesendet werden):`);
+        setUserManagementNotice(`Neuer Link für ${user.display_name} generiert. E-Mail konnte nicht gesendet werden${result.mailError ? `: ${result.mailError}` : '.'}`);
         setUserManagementInviteUrl(result.inviteUrl);
       }
     } catch (error) {
