@@ -671,7 +671,8 @@ export const MapComponent: React.FC<MapComponentProps> = ({
                 color: '#06B6D4',
                 weight: 9,
                 opacity: 0.94,
-                dashArray: '1 10',
+                dashArray: '2 10',
+                className: 'selected-section-animation',
                 lineCap: 'round',
                 lineJoin: 'round'
               }).addTo(group);
