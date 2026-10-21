@@ -126,14 +126,17 @@ const renderEmailHtml = ({
   actionLabel?: string;
 }) => {
   const safeUrl = actionUrl ? escapeEmailHtml(actionUrl) : '';
+  const safeMessage = escapeEmailHtml(message)
+    .replaceAll(safeUrl, safeUrl ? `<a href="${safeUrl}" style="color:#0F5CC0;text-decoration:underline;">Deinen persönlichen Bereich auf der Karte öffnen</a>` : '')
+    .replace(/\r?\n/g, '<br>');
   return `<!doctype html>
-<html lang="de"><body style="margin:0;padding:24px;background:#f3f5f8;color:#172033;font-family:Arial,Helvetica,sans-serif;">
+<html lang="de"><body style="margin:0;padding:0;background:#ffffff;color:#1F2937;font-family:Arial,Helvetica,sans-serif;">
 <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"><tr><td align="center">
-<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:620px;background:#ffffff;border:1px solid #d8e0ea;border-radius:12px;overflow:hidden;">
-<tr><td style="padding:20px 28px;background:#152039;color:#ffffff;"><div style="font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#f6a500;">${escapeEmailHtml(eventName)}</div><div style="margin-top:6px;font-size:22px;font-weight:700;">${escapeEmailHtml(heading)}</div></td></tr>
-<tr><td style="padding:28px;font-size:16px;line-height:1.6;color:#243047;">${escapeEmailHtml(message).replace(/\r?\n/g, '<br>')}</td></tr>
-${safeUrl ? `<tr><td style="padding:0 28px 28px;"><a href="${safeUrl}" style="display:inline-block;padding:12px 18px;border-radius:8px;background:#f6a500;color:#172033;font-weight:700;text-decoration:none;">${escapeEmailHtml(actionLabel || 'Bereich öffnen')}</a></td></tr>` : ''}
-<tr><td style="padding:16px 28px;border-top:1px solid #e5eaf0;font-size:12px;line-height:1.5;color:#66758a;">Diese Nachricht wurde über den Lichternacht-Streckenplaner versendet.</td></tr>
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:760px;background:#ffffff;">
+<tr><td style="padding:24px 32px;background:#152039;color:#ffffff;"><div style="font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#F6A500;">${escapeEmailHtml(eventName)}</div><div style="margin-top:6px;font-size:24px;font-weight:700;line-height:1.25;">${escapeEmailHtml(heading)}</div></td></tr>
+<tr><td style="padding:30px 32px 22px;font-size:16px;line-height:1.65;color:#1F2937;">${safeMessage}</td></tr>
+${safeUrl ? `<tr><td style="padding:0 32px 30px;"><a href="${safeUrl}" style="display:inline-block;padding:12px 18px;border-radius:5px;background:#F6A500;color:#172033;font-weight:700;text-decoration:none;">${escapeEmailHtml(actionLabel || 'Bereich öffnen')}</a></td></tr>` : ''}
+<tr><td style="padding:16px 32px 24px;border-top:1px solid #E5E7EB;font-size:12px;line-height:1.5;color:#6B7280;">Diese Nachricht wurde über den Lichternacht-Streckenplaner versendet.</td></tr>
 </table></td></tr></table></body></html>`;
 };
 
