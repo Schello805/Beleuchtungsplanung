@@ -14,6 +14,7 @@ const authRequired = process.env.AUTH_REQUIRED ?? (process.env.NODE_ENV === 'pro
 const AUTH_REQUIRED = authRequired.toLowerCase() !== 'false';
 const SESSION_COOKIE = 'lichternacht_session';
 const SESSION_DAYS = 14;
+const MIN_PASSWORD_LENGTH = 8;
 let smtpPasswordOverride = process.env.SMTP_PASSWORD?.trim() || '';
 
 type SafeUser = Pick<UserRecord, 'id' | 'email' | 'display_name' | 'role'>;
@@ -42,7 +43,7 @@ const passwordMatches = (password: string, stored: string) => {
 function bootstrapAdmin() {
   const email = process.env.ADMIN_EMAIL?.trim();
   const password = process.env.ADMIN_PASSWORD;
-  const configured = email && password && password.length >= 12
+  const configured = email && password && password.length >= MIN_PASSWORD_LENGTH
     && email.toLowerCase() !== 'admin@example.org' && !password.startsWith('BITTE_HIER_');
   if (dbService.getUserCount() === 0 && configured) {
     dbService.createUser({
@@ -178,7 +179,7 @@ async function sendUserInviteEmail(user: UserRecord, token: string, inviteUrl: s
     };
     const roleText = roleLabels[user.role] || user.role;
     const subject = `[Zugang] ${eventName} – Einladung zur Streckenplanung`;
-    const message = `Hallo ${user.display_name},\n\nfür Sie wurde ein persönlicher Zugang zur Streckenplanung der ${eventName} eingerichtet.\n\nIhre Rolle: ${roleText}\nBenutzername / E-Mail: ${user.email}\n\nBitte klicken Sie auf den folgenden Button, um Ihr persönliches Passwort festzulegen (mindestens 12 Zeichen) und Ihren Zugang zu aktivieren:\n${inviteUrl}\n\nDieser Link ist aus Sicherheitsgründen 48 Stunden gültig.`;
+    const message = `Hallo ${user.display_name},\n\nfür Sie wurde ein persönlicher Zugang zur Streckenplanung der ${eventName} eingerichtet.\n\nIhre Rolle: ${roleText}\nBenutzername / E-Mail: ${user.email}\n\nBitte klicken Sie auf den folgenden Button, um Ihr persönliches Passwort festzulegen (mindestens ${MIN_PASSWORD_LENGTH} Zeichen) und Ihren Zugang zu aktivieren:\n${inviteUrl}\n\nDieser Link ist aus Sicherheitsgründen 48 Stunden gültig.`;
     const html = renderEmailHtml({
       eventName,
       heading: 'Willkommen im Planungsteam',
@@ -226,19 +227,14 @@ app.get('/api/auth/verify-token', (req, res) => {
 app.post('/api/auth/set-password', (req, res) => {
   const { token, password } = req.body || {};
   if (!token || typeof token !== 'string') return res.status(400).json({ error: 'Kein Token angegeben.' });
-  if (!password || typeof password !== 'string' || password.length < 12) {
-    return res.status(400).json({ error: 'Das Passwort muss mindestens 12 Zeichen lang sein.' });
+  if (!password || typeof password !== 'string' || password.length < MIN_PASSWORD_LENGTH) {
+    return res.status(400).json({ error: `Das Passwort muss mindestens ${MIN_PASSWORD_LENGTH} Zeichen lang sein.` });
   }
   const result = dbService.getUserByResetToken(token);
   if (!result) return res.status(404).json({ error: 'Dieser Einladungslink ist ungültig oder abgelaufen.' });
 
   dbService.setUserPassword(result.user.id, passwordHash(password));
 
-  const sessionId = crypto.randomUUID();
-  const expires = new Date(Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000);
-  dbService.createSession(sessionId, result.user.id, expires.toISOString());
-  dbService.touchUserLogin(result.user.id);
-  res.cookie(SESSION_COOKIE, sessionId, { httpOnly: true, sameSite: 'strict', secure: req.secure, expires, path: '/' });
   res.json({ success: true, user: toSafeUser(result.user) });
 });
 
@@ -273,8 +269,8 @@ app.post('/api/users', async (req, res) => {
   if (!cleanEmail || !cleanDisplayName) {
     return res.status(400).json({ error: 'Bitte E-Mail und Namen angeben.' });
   }
-  if (password && typeof password === 'string' && password.length < 12) {
-    return res.status(400).json({ error: 'Das Passwort muss mindestens 12 Zeichen lang sein.' });
+  if (password && typeof password === 'string' && password.length < MIN_PASSWORD_LENGTH) {
+    return res.status(400).json({ error: `Das Passwort muss mindestens ${MIN_PASSWORD_LENGTH} Zeichen lang sein.` });
   }
   if (dbService.getUserByEmail(cleanEmail)) return res.status(409).json({ error: 'Diese E-Mail-Adresse ist bereits angelegt.' });
 
@@ -930,6 +926,10 @@ const HOST = AUTH_REQUIRED && !authReady ? '127.0.0.1' : '0.0.0.0';
 if (AUTH_REQUIRED && !authReady) {
   console.error('[Sicherheit] Kein Admin-Konto gefunden. Der Server bleibt bis zur Einrichtung auf 127.0.0.1 gebunden.');
 }
-app.listen(PORT, HOST, () => {
-  console.log(`Lichternacht Backend Server läuft auf ${HOST}:${PORT}`);
-});
+export { app };
+
+if (process.env.NODE_ENV !== 'test') {
+  app.listen(PORT, HOST, () => {
+    console.log(`Lichternacht Backend Server läuft auf ${HOST}:${PORT}`);
+  });
+}

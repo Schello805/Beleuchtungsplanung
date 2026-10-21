@@ -107,7 +107,7 @@ sudo nano /etc/lichternacht/lichternacht.env
 AUTH_REQUIRED=true
 ADMIN_EMAIL=deine-adresse@example.org
 ADMIN_NAME=Michael
-ADMIN_PASSWORD=ein-langes-einmaliges-passwort-mit-mindestens-12-zeichen
+ADMIN_PASSWORD=ein-langes-einmaliges-passwort-mit-mindestens-8-zeichen
 # Nur für den Versand von Helfer-Informationen nötig:
 SMTP_PASSWORD=dein-smtp-passwort
 ```

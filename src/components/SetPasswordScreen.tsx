@@ -1,13 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { api, type AuthUser } from '../utils/api';
+import { api } from '../utils/api';
 import { Lock, CheckCircle2, AlertCircle, ArrowRight } from 'lucide-react';
 
 interface SetPasswordScreenProps {
   token: string;
-  onSuccess: (user: AuthUser) => void;
 }
 
-export const SetPasswordScreen: React.FC<SetPasswordScreenProps> = ({ token, onSuccess }) => {
+export const SetPasswordScreen: React.FC<SetPasswordScreenProps> = ({ token }) => {
   const [loading, setLoading] = useState(true);
   const [verifyingError, setVerifyingError] = useState<string | null>(null);
   const [userInfo, setUserInfo] = useState<{ email: string; displayName: string; role: string } | null>(null);
@@ -38,8 +37,8 @@ export const SetPasswordScreen: React.FC<SetPasswordScreenProps> = ({ token, onS
     e.preventDefault();
     setSubmitError(null);
 
-    if (password.length < 12) {
-      setSubmitError('Das Passwort muss mindestens 12 Zeichen lang sein.');
+    if (password.length < 8) {
+      setSubmitError('Das Passwort muss mindestens 8 Zeichen lang sein.');
       return;
     }
     if (password !== passwordRepeat) {
@@ -49,11 +48,8 @@ export const SetPasswordScreen: React.FC<SetPasswordScreenProps> = ({ token, onS
 
     setSubmitting(true);
     try {
-      const user = await api.setPassword(token, password);
+      await api.setPassword(token, password);
       setSuccess(true);
-      setTimeout(() => {
-        onSuccess(user);
-      }, 1200);
     } catch (err: any) {
       setSubmitError(err?.message || 'Passwort konnte nicht gespeichert werden.');
       setSubmitting(false);
@@ -100,26 +96,29 @@ export const SetPasswordScreen: React.FC<SetPasswordScreenProps> = ({ token, onS
         {!loading && !verifyingError && userInfo && (
           <>
             <p style={{ color: 'var(--text-muted)', fontSize: 13, lineHeight: 1.5, margin: '8px 0 18px' }}>
-              Hallo <strong>{userInfo.displayName}</strong>, bitte lege dein persönliches Passwort für deinen Zugang (<span style={{ color: 'var(--text-main)' }}>{userInfo.email}</span>) fest.
+              Hallo <strong>{userInfo.displayName}</strong>, bitte legen Sie Ihr persönliches Passwort für Ihren Zugang (<span style={{ color: 'var(--text-main)' }}>{userInfo.email}</span>) fest.
             </p>
 
             {success ? (
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12, padding: '20px 0', color: '#34d399' }}>
                 <CheckCircle2 size={36} />
                 <strong style={{ fontSize: 16 }}>Passwort erfolgreich eingerichtet!</strong>
-                <span style={{ color: 'var(--text-muted)', fontSize: 13 }}>Du wirst weitergeleitet …</span>
+                <span style={{ color: 'var(--text-muted)', fontSize: 13 }}>Bitte melden Sie sich jetzt mit Ihrem neuen Passwort an.</span>
+                <button type="button" onClick={() => { window.location.href = '/'; }} style={{ width: '100%', marginTop: 6 }}>
+                  Zur Anmeldung
+                </button>
               </div>
             ) : (
               <form onSubmit={handleSubmit} className="auth-form">
                 <label>
-                  Neues Passwort (mind. 12 Zeichen)
+                  Neues Passwort (mind. 8 Zeichen)
                   <input
                     type="password"
                     value={password}
                     onChange={e => setPassword(e.target.value)}
-                    minLength={12}
+                    minLength={8}
                     autoComplete="new-password"
-                    placeholder="Mindestens 12 Zeichen"
+                    placeholder="Mindestens 8 Zeichen"
                     required
                   />
                 </label>
@@ -130,7 +129,7 @@ export const SetPasswordScreen: React.FC<SetPasswordScreenProps> = ({ token, onS
                     type="password"
                     value={passwordRepeat}
                     onChange={e => setPasswordRepeat(e.target.value)}
-                    minLength={12}
+                    minLength={8}
                     autoComplete="new-password"
                     placeholder="Passwort wiederholen"
                     required
@@ -146,7 +145,7 @@ export const SetPasswordScreen: React.FC<SetPasswordScreenProps> = ({ token, onS
 
                 <button
                   type="submit"
-                  disabled={submitting || password.length < 12}
+                  disabled={submitting || password.length < 8}
                   style={{
                     display: 'flex',
                     alignItems: 'center',

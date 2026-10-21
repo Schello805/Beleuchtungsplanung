@@ -1058,11 +1058,6 @@ export const App: React.FC = () => {
     return (
       <SetPasswordScreen
         token={inviteToken}
-        onSuccess={(user) => {
-          setCurrentUser(user);
-          setAuthState('authenticated');
-          window.history.replaceState({}, '', '/');
-        }}
       />
     );
   }
@@ -1594,13 +1589,13 @@ export const App: React.FC = () => {
 
               {!sendInviteMail && (
                 <label>
-                  Initiales Passwort (mindestens 12 Zeichen)
+                  Initiales Passwort (mindestens 8 Zeichen)
                   <input
                     type="password"
-                    minLength={12}
+                    minLength={8}
                     value={newUser.password}
                     onChange={event => setNewUser(value => ({ ...value, password: event.target.value }))}
-                    placeholder="Mindestens 12 Zeichen"
+                    placeholder="Mindestens 8 Zeichen"
                     required={!sendInviteMail}
                   />
                 </label>
