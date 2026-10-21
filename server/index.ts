@@ -4,6 +4,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 import nodemailer from 'nodemailer';
+import { formatMailText, plainMailText } from '../src/utils/mailFormatting.ts';
 import { dbService, type UserRecord, type UserRole } from './db.ts';
 import { getBechhofenStreets, getStreetGeometry } from './overpass.ts';
 import { getFootRoute } from './routing.ts';
@@ -127,7 +128,7 @@ const renderEmailHtml = ({
   actionLabel?: string;
 }) => {
   const safeUrl = actionUrl ? escapeEmailHtml(actionUrl) : '';
-  const safeMessage = escapeEmailHtml(message)
+  const safeMessage = formatMailText(message)
     .replaceAll(safeUrl, safeUrl ? `<a href="${safeUrl}" style="color:#0F5CC0;text-decoration:underline;">Ihren persönlichen Bereich auf der Karte öffnen</a>` : '')
     .replace(/\r?\n/g, '<br>');
   return `<!doctype html>
@@ -849,7 +850,7 @@ app.post('/api/mail/helpers', async (req, res) => {
         actionLabel: 'Persönlichen Bereich öffnen',
       });
       try {
-        await transport.sendMail({ from, to: helper.email, cc: settings.smtp_cc?.trim() || undefined, subject, text, html });
+        await transport.sendMail({ from, to: helper.email, cc: settings.smtp_cc?.trim() || undefined, subject, text: plainMailText(text), html });
         dbService.addMailLog({ helperId: helper.id, recipient: helper.email, subject, status: 'sent' }); sent++;
       } catch (err: any) {
         dbService.addMailLog({ helperId: helper.id, recipient: helper.email, subject, status: 'failed', errorMessage: err.message }); failed++;
@@ -886,7 +887,7 @@ app.post('/api/mail/helpers/preview', async (_req, res) => {
       actionUrl: link,
       actionLabel: 'Persönlichen Bereich öffnen',
     });
-    await transport.sendMail({ from, to: recipient, subject, text, html });
+    await transport.sendMail({ from, to: recipient, subject, text: plainMailText(text), html });
     dbService.addMailLog({ helperId: helper.id, recipient, subject, status: 'test' });
     res.json({ success: true, helperName: helper.name, recipient });
   } catch (err: any) {

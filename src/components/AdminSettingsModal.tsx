@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { Check, Copy, Mail, Send, Settings, X } from 'lucide-react';
 import { api } from '../utils/api';
+import { MailTextEditor } from './MailTextEditor';
 
 interface AdminSettingsModalProps {
   isOpen: boolean;
@@ -257,7 +258,7 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({ isOpen, 
           <h3>Mailvorlage & Versand</h3>
           <p>Platzhalter: <code>{'{{event}}'}</code>, <code>{'{{name}}'}</code>, <code>{'{{meter}}'}</code> und <code>{'{{link}}'}</code>.</p>
           <label className="admin-template-field">Betreff<input value={values.mail_subject || ''} onChange={event => change('mail_subject', event.target.value)} /></label>
-          <label className="admin-template-field">Nachricht<textarea rows={7} value={values.mail_body || ''} onChange={event => change('mail_body', event.target.value)} /></label>
+          <div className="admin-template-field">Nachricht<MailTextEditor value={values.mail_body || ''} onChange={value => change('mail_body', value)} /></div>
           <div className="admin-mail-actions">
             <button type="button" onClick={sendHelperMailPreview} disabled={isSendingPreview}><Mail size={15} /> {isSendingPreview ? 'Vorschau wird gesendet …' : 'Rundmail-Vorschau an Admin'}</button>
             <button type="button" className="admin-send-all" onClick={sendAll} disabled={isSendingAll}><Send size={15} /> {isSendingAll ? 'E-Mails werden versendet …' : 'Alle Helfer informieren'}</button>
