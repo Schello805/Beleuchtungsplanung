@@ -1376,23 +1376,30 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 </div>
                 <span style={{ color: 'var(--accent-gold)', fontSize: 11, fontWeight: 800, whiteSpace: 'nowrap' }}>Ø {avgMetersPerActiveHelper} m</span>
               </div>
-              <div style={{ overflowX: 'auto' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 11, minWidth: 350 }}>
+              <div style={{ overflowX: 'hidden' }}>
+                <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed', fontSize: 11 }}>
+                  <colgroup>
+                    <col style={{ width: 30 }} />
+                    <col />
+                    <col style={{ width: 54 }} />
+                    <col style={{ width: 48 }} />
+                    <col style={{ width: 38 }} />
+                  </colgroup>
                   <thead>
                     <tr style={{ color: 'var(--text-muted)', background: 'var(--bg-input)', textAlign: 'left' }}>
-                      <th style={{ padding: '7px 8px', width: 28 }}>#</th>
-                      <th style={{ padding: '7px 8px' }}>Helfer</th>
-                      <th style={{ padding: '7px 8px', textAlign: 'right' }}>
-                        <button type="button" onClick={() => toggleStatsSort('meters')} title="Nach Metern sortieren" style={{ border: 0, background: 'transparent', color: statsSort === 'meters' ? 'var(--accent-gold)' : 'var(--text-muted)', padding: 0, cursor: 'pointer', fontSize: 11, fontWeight: 800 }}>
-                          Meter {statsSort === 'meters' ? (statsSortDirection === 'desc' ? '↓' : '↑') : '↕'}
+                      <th style={{ padding: '7px 6px' }}>#</th>
+                      <th style={{ padding: '7px 5px' }}>Helfer</th>
+                      <th style={{ padding: '7px 4px', textAlign: 'right' }}>
+                        <button type="button" onClick={() => toggleStatsSort('meters')} title="Nach Metern sortieren" style={{ border: 0, background: 'transparent', color: statsSort === 'meters' ? 'var(--accent-gold)' : 'var(--text-muted)', padding: 0, cursor: 'pointer', fontSize: 11, fontWeight: 800, whiteSpace: 'nowrap' }}>
+                          m {statsSort === 'meters' ? (statsSortDirection === 'desc' ? '↓' : '↑') : '↕'}
                         </button>
                       </th>
-                      <th style={{ padding: '7px 8px', textAlign: 'right' }}>
-                        <button type="button" onClick={() => toggleStatsSort('sections')} title="Nach Abschnittsanzahl sortieren" style={{ border: 0, background: 'transparent', color: statsSort === 'sections' ? 'var(--accent-gold)' : 'var(--text-muted)', padding: 0, cursor: 'pointer', fontSize: 11, fontWeight: 800 }}>
-                          Abschnitte {statsSort === 'sections' ? (statsSortDirection === 'desc' ? '↓' : '↑') : '↕'}
+                      <th style={{ padding: '7px 4px', textAlign: 'right' }}>
+                        <button type="button" onClick={() => toggleStatsSort('sections')} title="Nach Abschnittsanzahl sortieren" style={{ border: 0, background: 'transparent', color: statsSort === 'sections' ? 'var(--accent-gold)' : 'var(--text-muted)', padding: 0, cursor: 'pointer', fontSize: 11, fontWeight: 800, whiteSpace: 'nowrap' }}>
+                          Abs. {statsSort === 'sections' ? (statsSortDirection === 'desc' ? '↓' : '↑') : '↕'}
                         </button>
                       </th>
-                      <th style={{ padding: '7px 8px', width: 30 }} aria-label="Auf Karte anzeigen" />
+                      <th style={{ padding: '7px 4px' }} aria-label="Auf Karte anzeigen" />
                     </tr>
                   </thead>
                   <tbody>
@@ -1411,18 +1418,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
                           title={item.sections.length ? `${item.helper.name} auf der Karte anzeigen` : 'Noch kein Bereich zugeteilt'}
                           style={{ borderTop: '1px solid var(--border-subtle)', cursor: item.sections.length ? 'pointer' : 'default', background: isFocused ? 'rgba(245,158,11,.10)' : 'transparent' }}
                         >
-                          <td style={{ padding: '8px', color: 'var(--text-muted)', fontWeight: 700 }}>{index + 1}</td>
-                          <td style={{ padding: '8px', minWidth: 130 }}>
+                          <td style={{ padding: '8px 6px', color: 'var(--text-muted)', fontWeight: 700 }}>{index + 1}</td>
+                          <td style={{ padding: '8px 5px', minWidth: 0, overflowWrap: 'anywhere' }}>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 6, color: 'var(--text-main)', fontWeight: 700 }}>
                               <span style={{ width: 8, height: 8, borderRadius: '50%', background: item.helper.color || 'var(--accent-gold)', flexShrink: 0 }} />
-                              <span>{item.helper.name}</span>
-                              {item.sectionsCount > 0 && <MapPin size={12} color="var(--accent-gold)" aria-label="Auf Karte anzeigen" />}
+                              <span style={{ minWidth: 0, overflowWrap: 'anywhere' }}>{item.helper.name}</span>
                             </div>
                             {item.sectionsCount > 0 && <div style={{ fontSize: 10, marginTop: 2, color: difference > 0 ? '#F59E0B' : difference < 0 ? '#60A5FA' : 'var(--text-muted)' }}>{difference === 0 ? 'genau im Durchschnitt' : `${difference > 0 ? '+' : ''}${difference} m zum Ø`}</div>}
                           </td>
-                          <td style={{ padding: '8px', textAlign: 'right', color: 'var(--accent-gold)', fontWeight: 800, whiteSpace: 'nowrap' }}>{item.meters} m</td>
-                          <td style={{ padding: '8px', textAlign: 'right', color: 'var(--text-main)', fontWeight: 700 }}>{item.sectionsCount}</td>
-                          <td style={{ padding: '6px 8px' }}>
+                          <td style={{ padding: '8px 4px', textAlign: 'right', color: 'var(--accent-gold)', fontWeight: 800, whiteSpace: 'nowrap' }}>{item.meters} m</td>
+                          <td style={{ padding: '8px 4px', textAlign: 'right', color: 'var(--text-main)', fontWeight: 700 }}>{item.sectionsCount}</td>
+                          <td style={{ padding: '6px 4px', textAlign: 'center' }}>
                             {item.sectionsCount > 0 && (
                               <button
                                 type="button"
@@ -1433,9 +1439,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                                   selectAndFocusSection(item.sections[0].id);
                                 }}
                                 title={`${item.helper.name} auf der Karte anzeigen`}
-                                style={{ display: 'inline-flex', alignItems: 'center', gap: 3, border: '1px solid rgba(245,158,11,.45)', borderRadius: 5, padding: '4px 5px', background: 'rgba(245,158,11,.10)', color: 'var(--accent-gold)', cursor: 'pointer', fontSize: 10, fontWeight: 800 }}
+                                aria-label={`${item.helper.name} auf der Karte anzeigen`}
+                                style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', width: 27, height: 27, border: '1px solid rgba(245,158,11,.45)', borderRadius: 5, padding: 0, background: 'rgba(245,158,11,.10)', color: 'var(--accent-gold)', cursor: 'pointer' }}
                               >
-                                <MapPin size={12} /> Karte
+                                <MapPin size={13} />
                               </button>
                             )}
                           </td>
