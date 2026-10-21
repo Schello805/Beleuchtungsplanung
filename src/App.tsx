@@ -367,7 +367,7 @@ export const App: React.FC = () => {
     setIsSavingUser(true);
     try {
       const updated = await api.updateUser(editingUser.id, editedUser);
-      setManagedUsers(users => users.map(user => user.id === updated.id ? updated : user).sort((a, b) => a.email.localeCompare(b.email)));
+      setManagedUsers(users => users.map(user => user.id === updated.id ? { ...user, ...updated } : user).sort((a, b) => a.email.localeCompare(b.email)));
       if (currentUser?.id === updated.id) setCurrentUser(updated);
       setEditingUser(null);
       setUserManagementNotice(`Benutzer „${updated.display_name}“ wurde aktualisiert.`);
@@ -1504,6 +1504,11 @@ export const App: React.FC = () => {
                     <strong>{user.display_name}</strong>
                     <span style={{ display: 'block', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {user.email} · {user.role === 'admin' ? 'Administrator' : user.role === 'planner' ? 'Planung' : 'Lesen'}
+                    </span>
+                    <span style={{ display: 'block', marginTop: 4, fontSize: 11, color: 'var(--text-muted)' }}>
+                      Letzter Login: {user.last_login_at
+                        ? new Date(user.last_login_at).toLocaleString('de-DE', { timeZone: 'Europe/Berlin', dateStyle: 'short', timeStyle: 'short' })
+                        : 'Noch nie angemeldet'}
                     </span>
                   </div>
                   <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>

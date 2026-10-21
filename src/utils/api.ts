@@ -48,6 +48,7 @@ export interface AuthUser {
   email: string;
   display_name: string;
   role: UserRole;
+  last_login_at?: string | null;
 }
 
 export interface PublicHelperInfo {
