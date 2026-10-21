@@ -833,6 +833,39 @@ app.post('/api/mail/helpers', async (req, res) => {
   }
 });
 
+app.post('/api/mail/helpers/preview', async (_req, res) => {
+  try {
+    const { transport, from, settings } = getSmtpTransport();
+    const recipient = settings.smtp_cc?.trim().toLowerCase();
+    if (!recipient || !/^\S+@\S+\.\S+$/.test(recipient)) {
+      throw new Error('Bitte zuerst unter „Admin-Kopie (CC)“ eine gültige Admin-E-Mail-Adresse speichern.');
+    }
+    const baseUrl = (settings.public_base_url || '').trim().replace(/\/$/, '');
+    if (!baseUrl.startsWith('https://')) throw new Error('Bitte zuerst die öffentliche HTTPS-Adresse in den Grundeinstellungen speichern.');
+    const helper = dbService.getHelpers().find(candidate => candidate.public_token && (dbService.getPublicHelper(candidate.public_token)?.sections.length || 0) > 0);
+    if (!helper?.public_token) throw new Error('Für die Vorschau wird mindestens ein Helfer mit zugewiesenem Abschnitt benötigt.');
+    const sections = dbService.getPublicHelper(helper.public_token)?.sections || [];
+    const meters = sections.reduce((sum, section) => sum + section.length_meters, 0);
+    const link = `${baseUrl}/helfer/${helper.public_token}`;
+    const subjectTemplate = settings.mail_subject || '{{event}}: Dein Beleuchtungsbereich';
+    const bodyTemplate = settings.mail_body || 'Hallo {{name}},\n\nhier ist dein persönlicher Bereich für die Lichternacht:\n{{link}}\n\nUmfang: ca. {{meter}} m\n\nVielen Dank für deine Unterstützung!';
+    const subject = `[Vorschau] ${mailTemplate(subjectTemplate.replaceAll('{{event}}', settings.event_name || 'Lichternacht'), helper, link, meters)}`;
+    const text = mailTemplate(bodyTemplate.replaceAll('{{event}}', settings.event_name || 'Lichternacht'), helper, link, meters);
+    const html = renderEmailHtml({
+      eventName: settings.event_name || 'Lichternacht',
+      heading: 'Dein Beleuchtungsbereich',
+      message: text,
+      actionUrl: link,
+      actionLabel: 'Persönlichen Bereich öffnen',
+    });
+    await transport.sendMail({ from, to: recipient, subject, text, html });
+    dbService.addMailLog({ helperId: helper.id, recipient, subject, status: 'test' });
+    res.json({ success: true, helperName: helper.name, recipient });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // Settings API (Map token, preferences, etc. - fully centralized in DB)
 app.get('/api/settings', (req, res) => {
   try {

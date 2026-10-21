@@ -652,6 +652,12 @@ out body geom;`;
     return await res.json();
   },
 
+  async sendHelperMailPreview(): Promise<{ helperName: string; recipient: string }> {
+    const res = await fetch(`${API_BASE}/mail/helpers/preview`, { method: 'POST' });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Rundmail-Vorschau konnte nicht gesendet werden.');
+    return await res.json();
+  },
+
   async getMailLog(): Promise<Array<{ id: string; helper_name?: string; recipient: string; subject: string; status: string; error_message?: string; created_at: string }>> {
     const res = await fetch(`${API_BASE}/mail/log`);
     if (!res.ok) throw new Error('Versandprotokoll konnte nicht geladen werden.');

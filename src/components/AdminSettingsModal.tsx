@@ -84,6 +84,7 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({ isOpen, 
   const [testRecipient, setTestRecipient] = useState('');
   const [smtpPassword, setSmtpPassword] = useState('');
   const [isSendingTest, setIsSendingTest] = useState(false);
+  const [isSendingPreview, setIsSendingPreview] = useState(false);
   const [isSendingAll, setIsSendingAll] = useState(false);
   const [mailStatus, setMailStatus] = useState<string | null>(null);
   const [mailStatusKind, setMailStatusKind] = useState<'success' | 'error' | null>(null);
@@ -132,6 +133,24 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({ isOpen, 
     try { await persistValues(); const result = await api.sendHelperMails(); setMailStatus(`${result.sent} E-Mails versendet${result.failed ? `, ${result.failed} fehlgeschlagen` : ''}.`); setMailStatusKind(result.failed ? 'error' : 'success'); setMailLog(await api.getMailLog()); }
     catch (err: any) { setMailStatus(err.message); setMailStatusKind('error'); }
     finally { setIsSendingAll(false); }
+  };
+  const sendHelperMailPreview = async () => {
+    if (isSendingPreview) return;
+    setIsSendingPreview(true);
+    setMailStatus(null);
+    setMailStatusKind(null);
+    try {
+      await persistValues();
+      const result = await api.sendHelperMailPreview();
+      setMailStatus(`✓ Rundmail-Vorschau für „${result.helperName}“ an ${result.recipient} versendet.`);
+      setMailStatusKind('success');
+      setMailLog(await api.getMailLog());
+    } catch (err: any) {
+      setMailStatus(`✕ Rundmail-Vorschau konnte nicht gesendet werden: ${err.message}`);
+      setMailStatusKind('error');
+    } finally {
+      setIsSendingPreview(false);
+    }
   };
 
   return (
@@ -240,6 +259,7 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({ isOpen, 
           <label className="admin-template-field">Betreff<input value={values.mail_subject || ''} onChange={event => change('mail_subject', event.target.value)} /></label>
           <label className="admin-template-field">Nachricht<textarea rows={7} value={values.mail_body || ''} onChange={event => change('mail_body', event.target.value)} /></label>
           <div className="admin-mail-actions">
+            <button type="button" onClick={sendHelperMailPreview} disabled={isSendingPreview}><Mail size={15} /> {isSendingPreview ? 'Vorschau wird gesendet …' : 'Rundmail-Vorschau an Admin'}</button>
             <button type="button" className="admin-send-all" onClick={sendAll} disabled={isSendingAll}><Send size={15} /> {isSendingAll ? 'E-Mails werden versendet …' : 'Alle Helfer informieren'}</button>
           </div>
           {mailLog.length > 0 && <div className="admin-mail-log"><strong>Letzte Versandvorgänge</strong>{mailLog.slice(0, 5).map(entry => <span key={entry.id}>{entry.status === 'failed' ? '✕' : '✓'} {entry.recipient} · {entry.status === 'test' ? 'Test' : entry.helper_name || entry.subject}</span>)}</div>}
