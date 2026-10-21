@@ -1050,10 +1050,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     fontSize: 12,
                     cursor: 'pointer'
                   }}
-                  title="Stations- oder Helferliste aus der Lichternacht-App übernehmen"
+                  title="Stations- oder Helferliste aus Excel oder CSV importieren"
                 >
                   <FileUp size={15} />
-                  Liste übernehmen
+                  Excel/CSV importieren
                 </button>
 
                 <button
@@ -1083,10 +1083,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 <button
                   type="button"
                   onClick={() => onOpenHelperImport ? onOpenHelperImport('paste') : onOpenExcelImport?.()}
-                  title="Namen direkt aus WhatsApp, Word oder E-Mail einfügen"
+                  title="Namen direkt aus WhatsApp, Word oder E-Mail importieren"
                   style={{ padding: '7px 8px', borderRadius: 'var(--radius-sm)', background: 'rgba(56, 189, 248, 0.12)', border: '1px solid rgba(56, 189, 248, 0.35)', color: '#38BDF8', fontSize: 11, fontWeight: 700, cursor: 'pointer' }}
                 >
-                  <ClipboardList size={12} /> Text einfügen
+                  <ClipboardList size={12} /> Text importieren
                 </button>
                 <button
                   type="button"
