@@ -259,15 +259,15 @@ const HelperAreaMap: React.FC<{ sections: Section[]; color?: string; height: num
   return <>
     <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${mapStyle === 'satellite' ? 'Satellitenbild' : 'Karte'} des zugewiesenen Bereichs`} style={{ width: '100%', height: 'auto', aspectRatio: '2 / 1', display: 'block', borderRadius: 7, border: '1px solid #CBD5E1', background: '#F8FAFC' }}>
     {tiles.map(tile => <image key={`${tile.x}-${tile.y}`} href={tileUrl(tile)} x={((tile.x * tileSize - minX) / boundsWidth) * width} y={((tile.y * tileSize - minY) / boundsHeight) * height} width={(tileSize / boundsWidth) * width} height={(tileSize / boundsHeight) * height} preserveAspectRatio="none" />)}
-    {geometries.filter(geometry => geometry.type !== 'Point').flatMap((geometry, index) => lightingSvgLines(geometry.section, geometry.coordinates, project).map((points, sideIndex) => <polyline key={`outline-${index}-${sideIndex}`} points={points.map(point => point.join(',')).join(' ')} fill="none" stroke="#FFFFFF" strokeWidth="10" strokeLinecap="round" strokeLinejoin="round" opacity=".95" />))}
-    {geometries.filter(geometry => geometry.type !== 'Point').flatMap((geometry, index) => lightingSvgLines(geometry.section, geometry.coordinates, project).map((points, sideIndex) => <polyline key={`line-${index}-${sideIndex}`} points={points.map(point => point.join(',')).join(' ')} fill="none" stroke={color} strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" />))}
+    {geometries.filter(geometry => geometry.type !== 'Point').flatMap((geometry, index) => lightingSvgLines(geometry.section, geometry.coordinates, project).map((points, sideIndex) => <polyline key={`outline-${index}-${sideIndex}`} points={points.map(point => point.join(',')).join(' ')} fill="none" stroke="#FFFFFF" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round" opacity=".95" />))}
+    {geometries.filter(geometry => geometry.type !== 'Point').flatMap((geometry, index) => lightingSvgLines(geometry.section, geometry.coordinates, project).map((points, sideIndex) => <polyline key={`line-${index}-${sideIndex}`} points={points.map(point => point.join(',')).join(' ')} fill="none" stroke={color} strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />))}
     {geometries.filter(geometry => geometry.type === 'Point').map((geometry, index) => { const [x, y] = project(geometry.coordinates[0]); return <circle key={`point-${index}`} cx={x} cy={y} r="8" fill={color} stroke="#FFFFFF" strokeWidth="3" />; })}
     {endpointMarkers.map((marker, index) => {
       const [x, y] = project(marker.coordinate);
       const fill = marker.kind === 'start' ? '#15803D' : '#B91C1C';
       return <g key={`${marker.label}-${index}`}>
-        <circle cx={x} cy={y} r="11" fill="#FFFFFF" stroke={fill} strokeWidth="3" />
-        <text x={x} y={y + 4} textAnchor="middle" fontSize="10" fontWeight="900" fill={fill}>{marker.label}</text>
+        <circle cx={x} cy={y} r="8" fill="#FFFFFF" stroke={fill} strokeWidth="2.5" />
+        <text x={x} y={y + 3} textAnchor="middle" fontSize="8" fontWeight="900" fill={fill}>{marker.label}</text>
       </g>;
     })}
     </svg>
@@ -1021,6 +1021,7 @@ export const PrintView: React.FC<PrintViewProps> = ({
                                     <div style={{ fontSize: 9, color: '#64748B' }}>{sec.street_name}</div>
                                     <div style={{ fontSize: 9, color: '#475569', fontWeight: 700 }}>{lightingSideText(sec)}</div>
                                     {codes && <div style={{ fontSize: 9, fontWeight: 800, color: '#475569', marginTop: 1 }}>Von {codes.start} bis {codes.end}</div>}
+                                    {sec.notes?.trim() && <div style={{ fontSize: 9, color: '#B45309', fontWeight: 700, marginTop: 2, whiteSpace: 'pre-wrap' }}>Hinweis: {sec.notes.trim()}</div>}
                                   </div>
                                   <div style={{ textAlign: 'right', fontWeight: 700, color: '#475569' }}>
                                     {sLen} m
@@ -1180,7 +1181,7 @@ export const PrintView: React.FC<PrintViewProps> = ({
                                 <span style={{ color: '#64748B', fontSize: 9, marginLeft: 5 }}>({sec.street_name})</span>
                                 <div style={{ fontSize: 8, color: '#475569', fontWeight: 700, marginTop: 1 }}>Beleuchtung: {lightingSideText(sec)}</div>
                                 {codes && <div style={{ fontSize: 8, color: '#334155', fontWeight: 700, marginTop: 1 }}>Von Punkt {codes.start} bis Punkt {codes.end} entlang der farbigen Linie.</div>}
-                                {sec.notes && <div style={{ fontSize: 8, color: '#D97706' }}>Hinweis: {sec.notes}</div>}
+                                {sec.notes?.trim() && <div style={{ fontSize: 8, color: '#B45309', fontWeight: 700, marginTop: 2, whiteSpace: 'pre-wrap' }}>Hinweis: {sec.notes.trim()}</div>}
                               </div>
                               <div style={{ textAlign: 'right' }}>
                                 <span style={{ fontWeight: 800, fontSize: 10, color: '#0F172A' }}>{sLen} m</span>
