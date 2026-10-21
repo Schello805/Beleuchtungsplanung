@@ -34,8 +34,8 @@ const defaults: SettingValues = {
   smtp_user: '',
   smtp_from: '',
   smtp_cc: '',
-  mail_subject: '{{event}}: Dein Beleuchtungsbereich',
-  mail_body: 'Hallo {{name}},\n\nhier ist dein persönlicher Bereich für die Lichternacht:\n{{link}}\n\nUmfang: ca. {{meter}} m\n\nVielen Dank für deine Unterstützung!'
+  mail_subject: '{{event}}: Ihr Beleuchtungsbereich',
+  mail_body: 'Hallo {{name}},\n\nhier ist Ihr persönlicher Bereich für die Lichternacht:\n{{link}}\n\nUmfang: ca. {{meter}} m\n\nVielen Dank für Ihre Unterstützung!'
 };
 
 const fieldLabels: Record<string, string> = {

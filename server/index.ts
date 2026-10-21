@@ -127,7 +127,7 @@ const renderEmailHtml = ({
 }) => {
   const safeUrl = actionUrl ? escapeEmailHtml(actionUrl) : '';
   const safeMessage = escapeEmailHtml(message)
-    .replaceAll(safeUrl, safeUrl ? `<a href="${safeUrl}" style="color:#0F5CC0;text-decoration:underline;">Deinen persönlichen Bereich auf der Karte öffnen</a>` : '')
+    .replaceAll(safeUrl, safeUrl ? `<a href="${safeUrl}" style="color:#0F5CC0;text-decoration:underline;">Ihren persönlichen Bereich auf der Karte öffnen</a>` : '')
     .replace(/\r?\n/g, '<br>');
   return `<!doctype html>
 <html lang="de"><body style="margin:0;padding:0;background:#ffffff;color:#1F2937;font-family:Arial,Helvetica,sans-serif;">
@@ -178,7 +178,7 @@ async function sendUserInviteEmail(user: UserRecord, token: string, inviteUrl: s
     };
     const roleText = roleLabels[user.role] || user.role;
     const subject = `[Zugang] ${eventName} – Einladung zur Streckenplanung`;
-    const message = `Hallo ${user.display_name},\n\nfür dich wurde ein persönlicher Zugang zur Streckenplanung der ${eventName} eingerichtet.\n\nDeine Rolle: ${roleText}\nBenutzername / E-Mail: ${user.email}\n\nBitte klicke auf den folgenden Button, um dein persönliches Passwort festzulegen (mindestens 12 Zeichen) und deinen Zugang zu aktivieren:\n${inviteUrl}\n\nDieser Link ist aus Sicherheitsgründen 48 Stunden gültig.`;
+    const message = `Hallo ${user.display_name},\n\nfür Sie wurde ein persönlicher Zugang zur Streckenplanung der ${eventName} eingerichtet.\n\nIhre Rolle: ${roleText}\nBenutzername / E-Mail: ${user.email}\n\nBitte klicken Sie auf den folgenden Button, um Ihr persönliches Passwort festzulegen (mindestens 12 Zeichen) und Ihren Zugang zu aktivieren:\n${inviteUrl}\n\nDieser Link ist aus Sicherheitsgründen 48 Stunden gültig.`;
     const html = renderEmailHtml({
       eventName,
       heading: 'Willkommen im Planungsteam',
@@ -806,8 +806,8 @@ app.post('/api/mail/helpers', async (req, res) => {
     const { transport, from, settings } = getSmtpTransport();
     const baseUrl = (settings.public_base_url || '').trim().replace(/\/$/, '');
     if (!baseUrl.startsWith('https://')) throw new Error('Bitte zuerst die öffentliche HTTPS-Adresse in den Grundeinstellungen speichern.');
-    const subjectTemplate = settings.mail_subject || '{{event}}: Dein Beleuchtungsbereich';
-    const bodyTemplate = settings.mail_body || 'Hallo {{name}},\n\nhier ist dein persönlicher Bereich für die Lichternacht:\n{{link}}\n\nUmfang: ca. {{meter}} m\n\nVielen Dank für deine Unterstützung!';
+    const subjectTemplate = settings.mail_subject || '{{event}}: Ihr Beleuchtungsbereich';
+    const bodyTemplate = settings.mail_body || 'Hallo {{name}},\n\nhier ist Ihr persönlicher Bereich für die Lichternacht:\n{{link}}\n\nUmfang: ca. {{meter}} m\n\nVielen Dank für Ihre Unterstützung!';
     const helpers = dbService.getHelpers().filter(helper => helper.email && helper.public_token && (!requestedIds || requestedIds.has(helper.id)));
     let sent = 0; let failed = 0;
     for (const helper of helpers) {
@@ -818,7 +818,7 @@ app.post('/api/mail/helpers', async (req, res) => {
       const text = mailTemplate(bodyTemplate.replaceAll('{{event}}', settings.event_name || 'Lichternacht'), helper, link, meters);
       const html = renderEmailHtml({
         eventName: settings.event_name || 'Lichternacht',
-        heading: 'Dein Beleuchtungsbereich',
+        heading: 'Ihr Beleuchtungsbereich',
         message: text,
         actionUrl: link,
         actionLabel: 'Persönlichen Bereich öffnen',
@@ -850,13 +850,13 @@ app.post('/api/mail/helpers/preview', async (_req, res) => {
     const sections = dbService.getPublicHelper(helper.public_token)?.sections || [];
     const meters = sections.reduce((sum, section) => sum + section.length_meters, 0);
     const link = `${baseUrl}/helfer/${helper.public_token}`;
-    const subjectTemplate = settings.mail_subject || '{{event}}: Dein Beleuchtungsbereich';
-    const bodyTemplate = settings.mail_body || 'Hallo {{name}},\n\nhier ist dein persönlicher Bereich für die Lichternacht:\n{{link}}\n\nUmfang: ca. {{meter}} m\n\nVielen Dank für deine Unterstützung!';
+    const subjectTemplate = settings.mail_subject || '{{event}}: Ihr Beleuchtungsbereich';
+    const bodyTemplate = settings.mail_body || 'Hallo {{name}},\n\nhier ist Ihr persönlicher Bereich für die Lichternacht:\n{{link}}\n\nUmfang: ca. {{meter}} m\n\nVielen Dank für Ihre Unterstützung!';
     const subject = `[Vorschau] ${mailTemplate(subjectTemplate.replaceAll('{{event}}', settings.event_name || 'Lichternacht'), helper, link, meters)}`;
     const text = mailTemplate(bodyTemplate.replaceAll('{{event}}', settings.event_name || 'Lichternacht'), helper, link, meters);
     const html = renderEmailHtml({
       eventName: settings.event_name || 'Lichternacht',
-      heading: 'Dein Beleuchtungsbereich',
+      heading: 'Ihr Beleuchtungsbereich',
       message: text,
       actionUrl: link,
       actionLabel: 'Persönlichen Bereich öffnen',
