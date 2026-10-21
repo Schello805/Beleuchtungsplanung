@@ -3,6 +3,7 @@ import * as turf from '@turf/turf';
 import { Printer, ArrowLeft, FileText, Grid, Phone, Scissors, QrCode, Clock, MapPin, CheckSquare, Sparkles, Map as MapIcon } from 'lucide-react';
 import { type Section, type Helper } from '../utils/api';
 import { getSectionEndpoints } from '../utils/sectionEndpoints';
+import { exportStationPdfs } from '../utils/stationPdfExport';
 
 interface PrintViewProps {
   sections: Section[];
@@ -289,6 +290,8 @@ export const PrintView: React.FC<PrintViewProps> = ({
 }) => {
   const [printLayout, setPrintLayout] = useState<'table' | 'assignment-map' | 'overview-map' | 'organization' | 'cards' | 'sheets'>('sheets');
   const [publicUrlInput, setPublicUrlInput] = useState(publicBaseUrl);
+  const [exportProgress, setExportProgress] = useState<number | null>(null);
+  const [exportError, setExportError] = useState('');
   const [meetingTime, setMeetingTime] = useState<string>('17:30 Uhr Materialausgabe • 18:15 Uhr Entzünden');
 
   const totalMeters = sections.reduce((sum, s) => sum + (s.length_meters ?? (s as any).lengthMeters ?? 0), 0);
@@ -638,6 +641,23 @@ export const PrintView: React.FC<PrintViewProps> = ({
             />
           </div>
 
+          {printLayout === 'sheets' && <button type="button" disabled={exportProgress !== null || !helperGroups.length} onClick={async () => {
+            setExportError('');
+            setExportProgress(0);
+            try {
+              const items = helperGroups.map(group => {
+                const element = document.getElementById(`station-sheet-${group.helper.id}`);
+                if (!element) throw new Error('Helfer-Information konnte nicht gefunden werden.');
+                return { element, name: group.helper.name, stationNumber: group.helper.source_station_id || '' };
+              });
+              await exportStationPdfs(items, setExportProgress);
+            } catch (error) {
+              setExportError(error instanceof Error ? error.message : 'Stations-PDFs konnten nicht erstellt werden.');
+            } finally { setExportProgress(null); }
+          }} style={{ padding: '8px 12px', borderRadius: 6, border: '1px solid #94A3B8', background: '#FFFFFF', color: '#0F172A', fontWeight: 700, cursor: 'pointer' }}>
+            {exportProgress === null ? `Einzelne Stations-PDFs (${helperGroups.length}) als ZIP` : `Erstelle PDF ${exportProgress} / ${helperGroups.length} …`}
+          </button>}
+          {exportError && <span role="alert" style={{ color: '#FCA5A5', maxWidth: 350 }}>{exportError}</span>}
           <button
             onClick={() => window.print()}
             style={{
@@ -1088,6 +1108,7 @@ export const PrintView: React.FC<PrintViewProps> = ({
                   <div
                     key={group.helper.id}
                     className="print-card helper-info-sheet"
+                    id={`station-sheet-${group.helper.id}`}
                     style={{
                       border: '2px solid #0F172A',
                       borderRadius: 10,
