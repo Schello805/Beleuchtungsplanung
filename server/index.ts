@@ -146,12 +146,12 @@ const getSmtpTransport = () => {
   const port = Number(settings.smtp_port || 587);
   const user = settings.smtp_user?.trim();
   const password = smtpPasswordOverride || process.env.SMTP_PASSWORD?.trim();
-  const from = settings.smtp_from?.trim();
+  const fromAddress = settings.smtp_from?.trim();
   const configuredSecurity = settings.smtp_security?.trim();
   const security = configuredSecurity === 'ssl' || configuredSecurity === 'starttls' || configuredSecurity === 'none'
     ? configuredSecurity
     : port === 465 ? 'ssl' : 'starttls';
-  if (!host || !Number.isFinite(port) || !user || !password || !from) {
+  if (!host || !Number.isFinite(port) || !user || !password || !fromAddress) {
     throw new Error('SMTP ist noch nicht vollständig eingerichtet (Host, Port, Benutzer, Absender und SMTP_PASSWORD).');
   }
   return {
@@ -162,7 +162,7 @@ const getSmtpTransport = () => {
       ignoreTLS: security === 'none',
       auth: { user, pass: password }
     }),
-    from,
+    from: `"Planung Lichternacht" <${fromAddress}>`,
     settings
   };
 };
