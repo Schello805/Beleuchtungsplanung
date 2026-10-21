@@ -248,7 +248,6 @@ const HelperAreaMap: React.FC<{ sections: Section[]; color?: string; height: num
     ? `https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/${zoom}/${tile.y}/${tile.x}`
     : `https://tile.openstreetmap.org/${zoom}/${tile.x}/${tile.y}.png`;
   const attribution = mapStyle === 'satellite' ? '© Esri, Maxar, Earthstar Geographics' : '© OpenStreetMap-Mitwirkende';
-  const legendWidth = Math.min(width - 16, mapStyle === 'satellite' ? 218 : 330);
   const endpointMarkers = sections.flatMap(section => {
     const codes = endpointCodes(sections, section);
     if (!codes) return [];
@@ -257,7 +256,8 @@ const HelperAreaMap: React.FC<{ sections: Section[]; color?: string; height: num
       { coordinate: codes.endpoints.end, label: codes.end, kind: 'end' }
     ];
   });
-  return <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${mapStyle === 'satellite' ? 'Satellitenbild' : 'Karte'} des zugewiesenen Bereichs`} style={{ width: '100%', height: 'auto', aspectRatio: '2 / 1', display: 'block', borderRadius: 7, border: '1px solid #CBD5E1', background: '#F8FAFC' }}>
+  return <>
+    <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${mapStyle === 'satellite' ? 'Satellitenbild' : 'Karte'} des zugewiesenen Bereichs`} style={{ width: '100%', height: 'auto', aspectRatio: '2 / 1', display: 'block', borderRadius: 7, border: '1px solid #CBD5E1', background: '#F8FAFC' }}>
     {tiles.map(tile => <image key={`${tile.x}-${tile.y}`} href={tileUrl(tile)} x={((tile.x * tileSize - minX) / boundsWidth) * width} y={((tile.y * tileSize - minY) / boundsHeight) * height} width={(tileSize / boundsWidth) * width} height={(tileSize / boundsHeight) * height} preserveAspectRatio="none" />)}
     {geometries.filter(geometry => geometry.type !== 'Point').flatMap((geometry, index) => lightingSvgLines(geometry.section, geometry.coordinates, project).map((points, sideIndex) => <polyline key={`outline-${index}-${sideIndex}`} points={points.map(point => point.join(',')).join(' ')} fill="none" stroke="#FFFFFF" strokeWidth="10" strokeLinecap="round" strokeLinejoin="round" opacity=".95" />))}
     {geometries.filter(geometry => geometry.type !== 'Point').flatMap((geometry, index) => lightingSvgLines(geometry.section, geometry.coordinates, project).map((points, sideIndex) => <polyline key={`line-${index}-${sideIndex}`} points={points.map(point => point.join(',')).join(' ')} fill="none" stroke={color} strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" />))}
@@ -270,8 +270,9 @@ const HelperAreaMap: React.FC<{ sections: Section[]; color?: string; height: num
         <text x={x} y={y + 4} textAnchor="middle" fontSize="10" fontWeight="900" fill={fill}>{marker.label}</text>
       </g>;
     })}
-    <rect x="8" y={height - 25} width={legendWidth} height="18" rx="3" fill="#FFFFFF" opacity=".92" /><text x="14" y={height - 12} fontSize="10" fill="#475569">Farbige Linie(n): dein Bereich · {attribution}</text>
-  </svg>;
+    </svg>
+    <div style={{ marginTop: 2, color: '#64748B', fontSize: 7, lineHeight: 1.1 }}>{attribution}</div>
+  </>;
 };
 
 export const PrintView: React.FC<PrintViewProps> = ({
