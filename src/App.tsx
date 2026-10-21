@@ -6,6 +6,8 @@ import { AutoAssignModal } from './components/AutoAssignModal';
 import { PublicHelperPage } from './components/PublicHelperPage';
 import { AdminSettingsModal } from './components/AdminSettingsModal';
 import { SetPasswordScreen } from './components/SetPasswordScreen';
+import { ProfileModal } from './components/ProfileModal';
+import { PasswordInput } from './components/PasswordInput';
 
 const MapComponent = lazy(() => import('./components/MapComponent').then(module => ({ default: module.MapComponent })));
 const PrintView = lazy(() => import('./components/PrintView').then(module => ({ default: module.PrintView })));
@@ -32,6 +34,7 @@ export const App: React.FC = () => {
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [isMobileCaptureOpen, setIsMobileCaptureOpen] = useState(false);
   const [isUserManagementOpen, setIsUserManagementOpen] = useState(false);
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isAdminSettingsOpen, setIsAdminSettingsOpen] = useState(false);
   const [managedUsers, setManagedUsers] = useState<AuthUser[]>([]);
   const [newUser, setNewUser] = useState({ email: '', displayName: '', password: '', role: 'planner' as AuthUser['role'] });
@@ -1103,6 +1106,7 @@ export const App: React.FC = () => {
         </button>
         {isAccountMenuOpen && <div className="app-user-popover">
           <strong>{currentUser?.display_name}</strong><small>{currentUser?.role === 'admin' ? 'Administrator' : currentUser?.role === 'planner' ? 'Planung' : 'Lesen'}</small>
+          <button onClick={() => { setIsAccountMenuOpen(false); setIsProfileOpen(true); }}>Mein Profil & Passwort</button>
           {currentUser?.role === 'admin' && <>
             <button onClick={() => { setIsAccountMenuOpen(false); setIsAdminSettingsOpen(true); }}>Einstellungen & Anleitung</button>
             <button onClick={() => { setIsAccountMenuOpen(false); openUserManagement(); }}>Benutzer verwalten</button>
@@ -1595,7 +1599,7 @@ export const App: React.FC = () => {
               {!sendInviteMail && (
                 <label>
                   Initiales Passwort (mindestens 8 Zeichen)
-                  <input
+                  <PasswordInput
                     type="password"
                     minLength={8}
                     value={newUser.password}
@@ -1615,6 +1619,7 @@ export const App: React.FC = () => {
           </section>
         </div>
       )}
+      {isProfileOpen && currentUser && <ProfileModal user={currentUser} onSaved={setCurrentUser} onClose={() => setIsProfileOpen(false)} />}
       {currentUser?.role === 'admin' && (
         <AdminSettingsModal
           isOpen={isAdminSettingsOpen}

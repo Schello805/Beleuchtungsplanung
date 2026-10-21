@@ -167,6 +167,13 @@ export const api = {
     await fetch(`${API_BASE}/auth/logout`, { method: 'POST' });
   },
 
+  async updateProfile(input: { displayName: string; email: string; currentPassword: string; newPassword: string }): Promise<AuthUser> {
+    const res = await fetch(`${API_BASE}/auth/profile`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Profil konnte nicht gespeichert werden.');
+    return data;
+  },
+
   async getUsers(): Promise<AuthUser[]> {
     const res = await fetch(`${API_BASE}/users`);
     const data = await res.json().catch(() => ({}));

@@ -251,6 +251,35 @@ app.use('/api', (req, res, next) => {
   next();
 });
 
+app.put('/api/auth/profile', (req, res) => {
+  const identity = (req as AuthenticatedRequest).authUser!;
+  const user = dbService.getUserById(identity.id);
+  if (!user) return res.status(404).json({ error: 'Benutzerkonto nicht gefunden.' });
+  const { displayName, email, currentPassword, newPassword } = req.body || {};
+  if (typeof displayName !== 'string' || !displayName.trim() || typeof email !== 'string' || !/^\S+@\S+\.\S+$/.test(email.trim())) {
+    return res.status(400).json({ error: 'Bitte einen Namen und eine gültige E-Mail-Adresse angeben.' });
+  }
+  const cleanEmail = email.trim().toLowerCase();
+  const passwordChange = newPassword !== undefined && newPassword !== '';
+  if (passwordChange && (typeof newPassword !== 'string' || newPassword.length < MIN_PASSWORD_LENGTH)) {
+    return res.status(400).json({ error: 'Das neue Passwort muss mindestens 8 Zeichen lang sein.' });
+  }
+  if ((passwordChange || cleanEmail !== user.email) && (typeof currentPassword !== 'string' || !passwordMatches(currentPassword, user.password_hash))) {
+    return res.status(400).json({ error: 'Bitte das korrekte aktuelle Passwort eingeben.' });
+  }
+  const duplicate = dbService.getUserByEmail(cleanEmail);
+  if (duplicate && duplicate.id !== user.id) return res.status(409).json({ error: 'Diese E-Mail-Adresse ist bereits vergeben.' });
+  const updated = dbService.updateUser(user.id, { email: cleanEmail, display_name: displayName.trim(), role: user.role })!;
+  if (passwordChange) {
+    dbService.setUserPassword(user.id, passwordHash(newPassword));
+    const sessionId = crypto.randomBytes(32).toString('base64url');
+    const expires = new Date(Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000);
+    dbService.createSession(sessionId, user.id, expires.toISOString());
+    res.cookie(SESSION_COOKIE, sessionId, { httpOnly: true, sameSite: 'strict', secure: req.secure, expires, path: '/' });
+  }
+  res.json(toSafeUser(updated));
+});
+
 app.get('/api/users', (req, res) => {
   const user = (req as AuthenticatedRequest).authUser!;
   if (user.role !== 'admin') return res.status(403).json({ error: 'Nur Administratoren dürfen Benutzer verwalten.' });

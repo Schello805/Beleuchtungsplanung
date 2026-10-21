@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { api } from '../utils/api';
+import { PasswordInput } from './PasswordInput';
 import { Lock, CheckCircle2, AlertCircle, ArrowRight } from 'lucide-react';
 
 interface SetPasswordScreenProps {
@@ -112,7 +113,7 @@ export const SetPasswordScreen: React.FC<SetPasswordScreenProps> = ({ token }) =
               <form onSubmit={handleSubmit} className="auth-form">
                 <label>
                   Neues Passwort (mind. 8 Zeichen)
-                  <input
+                  <PasswordInput
                     type="password"
                     value={password}
                     onChange={e => setPassword(e.target.value)}
@@ -125,7 +126,7 @@ export const SetPasswordScreen: React.FC<SetPasswordScreenProps> = ({ token }) =
 
                 <label>
                   Passwort wiederholen
-                  <input
+                  <PasswordInput
                     type="password"
                     value={passwordRepeat}
                     onChange={e => setPasswordRepeat(e.target.value)}
