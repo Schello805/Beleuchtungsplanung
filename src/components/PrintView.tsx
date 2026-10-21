@@ -259,15 +259,15 @@ const HelperAreaMap: React.FC<{ sections: Section[]; color?: string; height: num
   return <>
     <svg viewBox={`0 0 ${width} ${height}`} role="img" aria-label={`${mapStyle === 'satellite' ? 'Satellitenbild' : 'Karte'} des zugewiesenen Bereichs`} style={{ width: '100%', height: 'auto', aspectRatio: '2 / 1', display: 'block', borderRadius: 7, border: '1px solid #CBD5E1', background: '#F8FAFC' }}>
     {tiles.map(tile => <image key={`${tile.x}-${tile.y}`} href={tileUrl(tile)} x={((tile.x * tileSize - minX) / boundsWidth) * width} y={((tile.y * tileSize - minY) / boundsHeight) * height} width={(tileSize / boundsWidth) * width} height={(tileSize / boundsHeight) * height} preserveAspectRatio="none" />)}
-    {geometries.filter(geometry => geometry.type !== 'Point').flatMap((geometry, index) => lightingSvgLines(geometry.section, geometry.coordinates, project).map((points, sideIndex) => <polyline key={`outline-${index}-${sideIndex}`} points={points.map(point => point.join(',')).join(' ')} fill="none" stroke="#FFFFFF" strokeWidth="7" strokeLinecap="round" strokeLinejoin="round" opacity=".95" />))}
-    {geometries.filter(geometry => geometry.type !== 'Point').flatMap((geometry, index) => lightingSvgLines(geometry.section, geometry.coordinates, project).map((points, sideIndex) => <polyline key={`line-${index}-${sideIndex}`} points={points.map(point => point.join(',')).join(' ')} fill="none" stroke={color} strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />))}
+    {geometries.filter(geometry => geometry.type !== 'Point').flatMap((geometry, index) => lightingSvgLines(geometry.section, geometry.coordinates, project).map((points, sideIndex) => <polyline key={`outline-${index}-${sideIndex}`} points={points.map(point => point.join(',')).join(' ')} fill="none" stroke="#FFFFFF" strokeWidth="5" strokeLinecap="round" strokeLinejoin="round" opacity=".95" />))}
+    {geometries.filter(geometry => geometry.type !== 'Point').flatMap((geometry, index) => lightingSvgLines(geometry.section, geometry.coordinates, project).map((points, sideIndex) => <polyline key={`line-${index}-${sideIndex}`} points={points.map(point => point.join(',')).join(' ')} fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />))}
     {geometries.filter(geometry => geometry.type === 'Point').map((geometry, index) => { const [x, y] = project(geometry.coordinates[0]); return <circle key={`point-${index}`} cx={x} cy={y} r="8" fill={color} stroke="#FFFFFF" strokeWidth="3" />; })}
     {endpointMarkers.map((marker, index) => {
       const [x, y] = project(marker.coordinate);
       const fill = marker.kind === 'start' ? '#15803D' : '#B91C1C';
       return <g key={`${marker.label}-${index}`}>
-        <circle cx={x} cy={y} r="8" fill="#FFFFFF" stroke={fill} strokeWidth="2.5" />
-        <text x={x} y={y + 3} textAnchor="middle" fontSize="8" fontWeight="900" fill={fill}>{marker.label}</text>
+        <circle cx={x} cy={y} r="6" fill="#FFFFFF" stroke={fill} strokeWidth="1.75" />
+        <text x={x} y={y + 2.25} textAnchor="middle" fontSize="6.5" fontWeight="900" fill={fill}>{marker.label}</text>
       </g>;
     })}
     </svg>
