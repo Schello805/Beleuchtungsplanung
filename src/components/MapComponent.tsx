@@ -1,5 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import L from 'leaflet';
+import { safeMapHtml } from '../utils/safeMapHtml';
 import * as turf from '@turf/turf';
 import type { Section, Helper } from '../utils/api';
 import type { GeneratedSection } from '../utils/geo';
@@ -444,7 +445,7 @@ export const MapComponent: React.FC<MapComponentProps> = ({
           iconSize: [22, 22], iconAnchor: [11, 22]
         });
         L.marker([Number(helper.latitude), Number(helper.longitude)], { icon })
-          .bindTooltip(`<strong>${helper.name}</strong>${helper.address ? `<br/>${helper.address}` : ''}<br/><span style="color:#0284C7">Lichternacht-Station</span>`, { direction: 'top' })
+          .bindTooltip(safeMapHtml`<strong>${helper.name}</strong>${helper.address ? `<br/>${helper.address}` : ''}<br/><span style="color:#0284C7">Lichternacht-Station</span>`, { direction: 'top' })
           .addTo(group);
       });
   }, [helpers]);
@@ -493,7 +494,7 @@ export const MapComponent: React.FC<MapComponentProps> = ({
             interactive: false,
             icon: L.divIcon({
               className: 'preview-side-label',
-              html: `<span style="display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:${sec.color};border:2px solid #FFFFFF;color:#FFFFFF;font:800 12px/1 Outfit,Arial,sans-serif;box-shadow:0 1px 5px rgba(15,23,42,.45);">${sideLetter}</span>`,
+              html: safeMapHtml`<span style="display:flex;align-items:center;justify-content:center;width:22px;height:22px;border-radius:50%;background:${sec.color};border:2px solid #FFFFFF;color:#FFFFFF;font:800 12px/1 Outfit,Arial,sans-serif;box-shadow:0 1px 5px rgba(15,23,42,.45);">${sideLetter}</span>`,
               iconSize: [22, 22],
               iconAnchor: [11, 11]
             })
@@ -505,14 +506,14 @@ export const MapComponent: React.FC<MapComponentProps> = ({
         }));
 
         polyline.bindTooltip(
-          `<strong>${sec.label}</strong> (Vorschau)<br/>Länge: <strong>${sec.lengthMeters} m</strong><br/><span style="color:#EF4444; font-size:10px;">Klicken zum Raus-xen</span>`,
+          safeMapHtml`<strong>${sec.label}</strong> (Vorschau)<br/>Länge: <strong>${sec.lengthMeters} m</strong><br/><span style="color:#EF4444; font-size:10px;">Klicken zum Raus-xen</span>`,
           { sticky: true }
         );
 
         const popupDiv = document.createElement('div');
         popupDiv.style.fontFamily = 'Outfit, sans-serif';
         popupDiv.style.minWidth = '220px';
-        popupDiv.innerHTML = `
+        popupDiv.innerHTML = safeMapHtml`
           <div style="margin-bottom: 8px;">
             <div style="display:flex; align-items:center; justify-content:space-between;">
               <strong style="font-size:13px; color:#0F172A;">${sec.label}</strong>
@@ -543,18 +544,18 @@ export const MapComponent: React.FC<MapComponentProps> = ({
 
         const icon = L.divIcon({
           className: 'custom-point-marker',
-          html: `<div style="background:${sec.color}; width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; box-shadow:0 0 15px ${sec.color}; border:2px solid #fff;">📍</div>`,
+          html: safeMapHtml`<div style="background:${sec.color}; width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; box-shadow:0 0 15px ${sec.color}; border:2px solid #fff;">📍</div>`,
           iconSize: [28, 28],
           iconAnchor: [14, 14]
         });
 
         const marker = L.marker([lat, lon], { icon }).addTo(group);
-        marker.bindTooltip(`<strong>${sec.label}</strong> (Punkt-Vorschau)`);
+        marker.bindTooltip(safeMapHtml`<strong>${sec.label}</strong> (Punkt-Vorschau)`);
 
         const popupDiv = document.createElement('div');
         popupDiv.style.fontFamily = 'Outfit, sans-serif';
         popupDiv.style.minWidth = '200px';
-        popupDiv.innerHTML = `
+        popupDiv.innerHTML = safeMapHtml`
           <div style="margin-bottom: 8px;">
             <strong style="font-size:13px; color:#0F172A;">${sec.label}</strong>
             <div style="font-size:11px; color:#64748B; margin-top:2px;">(Punkt-Vorschau)</div>
@@ -703,7 +704,7 @@ export const MapComponent: React.FC<MapComponentProps> = ({
         }));
 
         polyline.bindTooltip(
-          `<div style="font-family: Outfit, sans-serif; font-size:12px;">
+          safeMapHtml`<div style="font-family: Outfit, sans-serif; font-size:12px;">
             <strong style="font-size:13px;">${sec.label}</strong><br/>
             <span>Strecke: <b>${sec.lengthMeters} m</b></span><br/>
             <span>${lightingSideLabel(sec.lighting_side)}</span><br/>
@@ -732,7 +733,7 @@ export const MapComponent: React.FC<MapComponentProps> = ({
         const popupDiv = document.createElement('div');
         popupDiv.style.fontFamily = 'Outfit, sans-serif';
         popupDiv.style.minWidth = '230px';
-        popupDiv.innerHTML = `
+        popupDiv.innerHTML = safeMapHtml`
           <div style="margin-bottom: 8px;">
             <div style="display:flex; align-items:center; justify-content:space-between;">
               <strong style="font-size:14px; color:#0F172A;">${sec.label}</strong>
@@ -906,7 +907,7 @@ export const MapComponent: React.FC<MapComponentProps> = ({
 
         const icon = L.divIcon({
           className: 'custom-point-marker',
-          html: `<div style="background:${lineColor}; width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; box-shadow:0 0 12px ${lineColor}; border:2px solid ${isSelected ? '#FFFFFF' : '#0F172A'}; font-size:14px;">📍</div>`,
+          html: safeMapHtml`<div style="background:${lineColor}; width:28px; height:28px; border-radius:50%; display:flex; align-items:center; justify-content:center; box-shadow:0 0 12px ${lineColor}; border:2px solid ${isSelected ? '#FFFFFF' : '#0F172A'}; font-size:14px;">📍</div>`,
           iconSize: [28, 28],
           iconAnchor: [14, 14]
         });
@@ -917,12 +918,12 @@ export const MapComponent: React.FC<MapComponentProps> = ({
           if (stamped) return;
         });
 
-        marker.bindTooltip(`<strong>${sec.label}</strong> (Punkt)<br/>Helfer: <b>${helperName}</b>`, { sticky: true });
+        marker.bindTooltip(safeMapHtml`<strong>${sec.label}</strong> (Punkt)<br/>Helfer: <b>${helperName}</b>`, { sticky: true });
 
         const popupDiv = document.createElement('div');
         popupDiv.style.fontFamily = 'Outfit, sans-serif';
         popupDiv.style.minWidth = '200px';
-        popupDiv.innerHTML = `
+        popupDiv.innerHTML = safeMapHtml`
           <div style="margin-bottom: 8px;">
             <strong style="font-size:14px; color:#0F172A;">${sec.label}</strong>
             <div style="font-size:11px; color:#64748B;">Einzelner Punkt</div>

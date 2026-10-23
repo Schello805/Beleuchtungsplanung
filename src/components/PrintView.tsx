@@ -4,6 +4,7 @@ import { Printer, ArrowLeft, FileText, Grid, Phone, Scissors, QrCode, Clock, Map
 import { type Section, type Helper } from '../utils/api';
 import { getSectionEndpoints } from '../utils/sectionEndpoints';
 import { exportStationPdfs } from '../utils/stationPdfExport';
+import { LocalQrCode } from './LocalQrCode';
 
 interface PrintViewProps {
   sections: Section[];
@@ -918,7 +919,6 @@ export const PrintView: React.FC<PrintViewProps> = ({
             >
               {helperGroups.map(group => {
                 const publicUrl = getPublicHelperUrl(group.helper.public_token);
-                const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=100x100&margin=2&data=${encodeURIComponent(publicUrl)}`;
 
                 return (
                   <div
@@ -1066,15 +1066,7 @@ export const PrintView: React.FC<PrintViewProps> = ({
                             border: '1px solid #E2E8F0'
                           }}
                         >
-                          <img
-                            src={qrUrl}
-                            alt="QR-Code zur Helfer-Information"
-                            style={{ width: 72, height: 72, borderRadius: 4 }}
-                            onError={(e) => {
-                              // If offline, hide broken image
-                              (e.target as HTMLElement).style.display = 'none';
-                            }}
-                          />
+                          <LocalQrCode value={publicUrl} size={72} />
                           <span style={{ fontSize: 8, fontWeight: 700, color: '#64748B', textAlign: 'center', marginTop: 2 }}>
                             QR-Code zur Info-Seite
                           </span>
@@ -1102,7 +1094,6 @@ export const PrintView: React.FC<PrintViewProps> = ({
               <div className="helper-info-page" key={`helper-page-${pairIndex}`}>
               {pair.map(group => {
                 const publicUrl = getPublicHelperUrl(group.helper.public_token);
-                const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=130x130&margin=2&data=${encodeURIComponent(publicUrl)}`;
 
                 return (
                   <div
@@ -1169,7 +1160,7 @@ export const PrintView: React.FC<PrintViewProps> = ({
                         <div style={{ fontSize: 8, color: '#475569', marginTop: 3, lineHeight: 1.25 }}><b>A</b> markiert den Start und <b>B</b> das Ende. Folge der farbigen Linie genau von A nach B.</div>
                       </div>
                       <div style={{ border: '1px solid #CBD5E1', borderRadius: 7, padding: 5, textAlign: 'center', background: '#F8FAFC' }}>
-                        <img src={qrUrl} alt="QR-Code zur Helfer-Information" style={{ width: 88, height: 88 }} />
+                        <LocalQrCode value={publicUrl} size={88} />
                         <div style={{ fontSize: 8, fontWeight: 800, marginTop: 2 }}>QR-Code zur Info-Seite</div>
                         <div style={{ fontSize: 7, color: '#475569', overflowWrap: 'anywhere', marginTop: 2 }}>{publicUrl}</div>
                       </div>

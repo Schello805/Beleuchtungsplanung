@@ -4,6 +4,8 @@ import path from 'node:path';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 import nodemailer from 'nodemailer';
+import { rateLimit } from 'express-rate-limit';
+import { filterImportedSettings, redactRequestUrl } from './security.ts';
 import { formatMailText, plainMailText } from '../src/utils/mailFormatting.ts';
 import { dbService, type UserRecord, type UserRole } from './db.ts';
 import { getBechhofenStreets, getStreetGeometry } from './overpass.ts';
@@ -63,7 +65,7 @@ app.use(express.json({ limit: '50mb' }));
 
 // Logging middleware
 app.use((req, res, next) => {
-  console.log(`[${new Date().toLocaleTimeString('de-DE')}] ${req.method} ${req.url}`);
+  console.log(`[${new Date().toLocaleTimeString('de-DE')}] ${req.method} ${redactRequestUrl(req.url)}`);
   next();
 });
 
@@ -79,7 +81,9 @@ app.get('/api/auth/session', (req, res) => {
   res.json({ authenticated: Boolean(user), setupRequired: !authReady, user: user ? toSafeUser(user) : null });
 });
 
-app.post('/api/auth/login', (req, res) => {
+const loginLimiter = rateLimit({ windowMs: 15 * 60_000, limit: 20, skipSuccessfulRequests: true, standardHeaders: 'draft-8', legacyHeaders: false, message: { error: 'Zu viele Anmeldeversuche. Bitte in 15 Minuten erneut versuchen.' } });
+const passwordLimiter = rateLimit({ windowMs: 15 * 60_000, limit: 20, skipSuccessfulRequests: true, standardHeaders: 'draft-8', legacyHeaders: false, message: { error: 'Zu viele Passwortversuche. Bitte später erneut versuchen.' } });
+app.post('/api/auth/login', loginLimiter, (req, res) => {
   if (!authReady) return res.status(503).json({ error: 'Kein Admin-Konto eingerichtet. ADMIN_EMAIL und ADMIN_PASSWORD im Server-Environment setzen.' });
   const { email, password } = req.body || {};
   if (typeof email !== 'string' || typeof password !== 'string') return res.status(400).json({ error: 'E-Mail und Passwort sind erforderlich.' });
@@ -225,7 +229,7 @@ app.get('/api/auth/verify-token', (req, res) => {
   });
 });
 
-app.post('/api/auth/set-password', (req, res) => {
+app.post('/api/auth/set-password', passwordLimiter, (req, res) => {
   const { token, password } = req.body || {};
   if (!token || typeof token !== 'string') return res.status(400).json({ error: 'Kein Token angegeben.' });
   if (!password || typeof password !== 'string' || password.length < MIN_PASSWORD_LENGTH) {
@@ -252,7 +256,7 @@ app.use('/api', (req, res, next) => {
   next();
 });
 
-app.put('/api/auth/profile', (req, res) => {
+app.put('/api/auth/profile', passwordLimiter, (req, res) => {
   const identity = (req as AuthenticatedRequest).authUser!;
   const user = dbService.getUserById(identity.id);
   if (!user) return res.status(404).json({ error: 'Benutzerkonto nicht gefunden.' });
@@ -772,7 +776,7 @@ app.get('/api/database/export', (req, res) => {
 
 app.post('/api/database/import', (req, res) => {
   try {
-    const data = req.body;
+    const data = filterImportedSettings(req.body, (req as AuthenticatedRequest).authUser!.role);
     dbService.importDatabase(data);
     res.json({ success: true, message: 'Datenbank erfolgreich wiederhergestellt' });
   } catch (err: any) {
@@ -782,7 +786,7 @@ app.post('/api/database/import', (req, res) => {
 
 app.post('/api/database/migrate-local', (req, res) => {
   try {
-    const data = req.body;
+    const data = filterImportedSettings(req.body, (req as AuthenticatedRequest).authUser!.role);
     const result = dbService.mergeLocalData(data);
     res.json({ success: true, ...result });
   } catch (err: any) {

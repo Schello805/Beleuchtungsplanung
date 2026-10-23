@@ -99,4 +99,13 @@ describe('user invitation and first login', () => {
     const newLogin = await request('/api/auth/login', { method: 'POST', body: JSON.stringify({ email: profile.email, password: profile.newPassword }) });
     expect(newLogin.response.status).toBe(200);
   });
+
+  it('limits repeated failed login attempts', async () => {
+    let status = 0;
+    for (let attempt = 0; attempt < 21; attempt++) {
+      const result = await request('/api/auth/login', { method: 'POST', body: JSON.stringify({ email: 'unknown@example.test', password: 'incorrect' }) });
+      status = result.response.status;
+    }
+    expect(status).toBe(429);
+  });
 });
