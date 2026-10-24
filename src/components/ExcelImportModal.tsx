@@ -82,6 +82,9 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
   // Pure helpers list from file
   const [fileHelpers, setFileHelpers] = useState<Array<{ name: string; phone: string; email?: string }>>([]);
   const [stationRows, setStationRows] = useState<ParsedStationItem[]>([]);
+  const [stationReview, setStationReview] = useState<Awaited<ReturnType<typeof api.reconcileStations>> | null>(null);
+  const [archiveMissing, setArchiveMissing] = useState(false);
+  const [stationsImported, setStationsImported] = useState(false);
 
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -316,15 +319,21 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
     }
   };
 
-  const handleExecuteStationImport = async () => {
+  const handleExecuteStationImport = async (confirmed = false) => {
     if (!stationRows.length) return;
     setIsProcessing(true);
     setErrorMessage(null);
     try {
-      const result = await api.importStations(stationRows);
+      if (!confirmed) {
+        setStationReview(await api.reconcileStations(stationRows));
+        setArchiveMissing(false);
+        setStationsImported(false);
+        return;
+      }
+      const result = await api.importStations(stationRows, archiveMissing);
       await onRefreshData?.();
-      alert(`✅ ${result.imported} Lichternacht-Stationen übernommen.\n${result.created} neu, ${result.updated} aktualisiert.\n\nBestehende Abschnittszuweisungen bleiben unverändert.`);
-      onClose();
+      setStationsImported(true);
+      alert(`${result.imported} Stationen übernommen: ${result.created} neu, ${result.updated} aktualisiert.\n${archiveMissing ? 'Fehlende Stationen archiviert; deren Abschnitte sind jetzt frei.' : 'Bestehende Zuweisungen bleiben erhalten.'}`);
     } catch (err: any) {
       setErrorMessage(`Stationsimport fehlgeschlagen: ${err.message}`);
     } finally {
@@ -399,6 +408,37 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
   };
 
   if (!isOpen) return null;
+
+  if (stationReview) return <div className="user-modal-backdrop"><section className="user-modal" style={{ width: 'min(95vw, 800px)' }}>
+    <h2>Stationsliste abgleichen</h2>
+    <p>Der Vereins-/Stationsname bestimmt die Identität. Groß-/Kleinschreibung und zusätzliche Leerzeichen werden ignoriert. Geänderte Namen gelten als neue Stationen.</p>
+    {errorMessage && <p role="alert" className="auth-error">{errorMessage}</p>}
+    <h3>Fehlt in der neuen Liste ({stationReview.missing.length})</h3>
+    <p>{stationReview.missing.map(helper => helper.name).join(' · ') || 'Keine fehlenden Stationen.'}</p>
+    {!stationsImported && stationReview.missing.length > 0 && <label style={{ display: 'flex', gap: 8, marginTop: 12 }}><input type="checkbox" checked={archiveMissing} onChange={event => setArchiveMissing(event.target.checked)} />Diese Stationen archivieren. Bisherige Abschnitte werden als Historie gespeichert und für die aktuelle Planung freigegeben.</label>}
+    <h3>Wieder dabei ({stationReview.returning.length})</h3>
+    {stationReview.returning.map(helper => <div key={helper.id} style={{ padding: 12, marginTop: 8, border: '1px solid var(--border-subtle)', borderRadius: 7 }}>
+      <strong>{helper.name}</strong>
+      <p style={{ fontSize: 12 }}>Früherer Stand: {helper.recordedAt ? new Date(helper.recordedAt).toLocaleDateString('de-DE') : 'Keine Historie'}</p>
+      {helper.sections.map(section => <div key={section.id} style={{ marginTop: 8 }}>
+        <span>{section.label} · {Math.round(section.meters)} m — {section.exists ? section.currentHelperName ? `aktuell: ${section.currentHelperName}` : 'aktuell frei' : 'Abschnitt nicht mehr vorhanden; manuell auf der Karte prüfen'}</span>
+        {stationsImported && section.exists && <button type="button" disabled={isProcessing} style={{ marginLeft: 8 }} onClick={async () => {
+          if (!window.confirm(`${section.label} wieder ${helper.name} zuweisen?${section.currentHelperName ? ` Die Zuweisung an ${section.currentHelperName} wird ersetzt.` : ''}`)) return;
+          setIsProcessing(true);
+          try {
+            await onApplyAssignments([{ sectionId: section.id, helperId: helper.id, helperName: helper.name }]);
+            setStationReview(current => current ? { ...current, returning: current.returning.map(item => ({ ...item, sections: item.sections.map(entry => entry.id === section.id ? { ...entry, currentHelperId: helper.id, currentHelperName: helper.name } : entry) })) } : null);
+          } catch (error) { setErrorMessage(error instanceof Error ? error.message : 'Zuweisung fehlgeschlagen.'); }
+          finally { setIsProcessing(false); }
+        }}>Wieder zuweisen</button>}
+      </div>)}
+    </div>)}
+    <p style={{ marginTop: 12 }}>Die Historie bezieht sich auf gespeicherte Abschnitte. Geteilte, gelöschte oder neu gezeichnete Strecken müssen auf der Karte geprüft werden.</p>
+    <div style={{ display: 'flex', gap: 10, marginTop: 16 }}>
+      <button type="button" disabled={isProcessing} onClick={() => { setStationReview(null); if (stationsImported) onClose(); }}>{stationsImported ? 'Fertig' : 'Zurück'}</button>
+      {!stationsImported && <button type="button" disabled={isProcessing} onClick={() => handleExecuteStationImport(true)}>{isProcessing ? 'Importiert …' : 'Abgleich übernehmen'}</button>}
+    </div>
+  </section></div>;
 
   return (
     <div
@@ -1189,7 +1229,7 @@ export const ExcelImportModal: React.FC<ExcelImportModalProps> = ({
           {activeMainTab === 'helpers' ? (
             <button
               type="button"
-              onClick={stationRows.length > 0 && helperInputMethod === 'file' ? handleExecuteStationImport : handleExecuteHelperImport}
+              onClick={stationRows.length > 0 && helperInputMethod === 'file' ? () => handleExecuteStationImport() : handleExecuteHelperImport}
               disabled={isProcessing || (stationRows.length === 0 && currentHelpersToImport.length === 0)}
               style={{
                 padding: '9px 22px',

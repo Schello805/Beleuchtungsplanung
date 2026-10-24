@@ -100,6 +100,23 @@ describe('user invitation and first login', () => {
     expect(newLogin.response.status).toBe(200);
   });
 
+  it('matches station names across changed numbers and preserves archived assignments for returning clubs', async () => {
+    const { dbService, db } = await import('./db.ts');
+    const station = (stationId: string, name: string) => ({ stationId, name, latitude: 49.1, longitude: 10.5 });
+    dbService.importStations([station('1', 'Verein Alpha'), station('2', 'Verein Beta')]);
+    const alpha = dbService.getHelpers().find(helper => helper.name === 'Verein Alpha')!;
+    dbService.importStations([station('2', 'Verein Alpha'), station('1', 'Verein Beta')]);
+    expect(dbService.getHelpers().find(helper => helper.name === 'Verein Alpha')!.id).toBe(alpha.id);
+    dbService.importStations([station('1', 'Verein Beta')], true);
+    expect(dbService.getHelpers().some(helper => helper.id === alpha.id)).toBe(false);
+    expect(dbService.getPublicHelper(alpha.public_token!)).toBeUndefined();
+    expect(dbService.getStationReconciliation([station('99', 'verein alpha')]).returning[0].id).toBe(alpha.id);
+    expect((db.prepare('SELECT COUNT(*) AS count FROM station_history WHERE helper_id = ?').get(alpha.id) as { count: number }).count).toBe(1);
+    dbService.importStations([station('99', 'Verein Alpha'), station('1', 'Verein Beta')]);
+    expect(dbService.getHelpers().find(helper => helper.name === 'Verein Alpha')!.id).toBe(alpha.id);
+    expect(dbService.getPublicHelper(alpha.public_token!)).toBeDefined();
+  });
+
   it('limits repeated failed login attempts', async () => {
     let status = 0;
     for (let attempt = 0; attempt < 21; attempt++) {

@@ -144,6 +144,12 @@ addHelperColumn('latitude', 'REAL');
 addHelperColumn('longitude', 'REAL');
 addHelperColumn('public_token', 'TEXT');
 addHelperColumn('email', 'TEXT');
+addHelperColumn('archived_at', 'TEXT');
+addHelperColumn('is_station', 'INTEGER NOT NULL DEFAULT 0');
+db.exec('UPDATE helpers SET is_station = 1 WHERE source_station_id IS NOT NULL');
+db.exec(`CREATE TABLE IF NOT EXISTS station_history (
+  id TEXT PRIMARY KEY, helper_id TEXT NOT NULL, recorded_at TEXT NOT NULL, sections_json TEXT NOT NULL
+)`);
 const sectionColumns = db.prepare('PRAGMA table_info(sections)').all() as Array<{ name: string }>;
 if (!sectionColumns.some(column => column.name === 'lighting_side')) {
   // Existing plans deliberately default to both sides, so no route disappears
@@ -167,6 +173,8 @@ export interface HelperRecord {
   latitude?: number | null;
   longitude?: number | null;
   public_token?: string | null;
+  archived_at?: string | null;
+  is_station?: number;
   created_at: string;
 }
 
@@ -344,11 +352,28 @@ export const dbService = {
   },
 
   getHelpers(): HelperRecord[] {
-    return db.prepare('SELECT * FROM helpers ORDER BY name ASC').all() as unknown as HelperRecord[];
+    return db.prepare('SELECT * FROM helpers WHERE archived_at IS NULL ORDER BY name ASC').all() as unknown as HelperRecord[];
+  },
+
+  getStationReconciliation(stations: Array<{ name: string }>) {
+    const key = (name: string) => name.trim().normalize('NFKC').toLocaleLowerCase('de-DE').replace(/\s+/g, ' ');
+    const all = db.prepare('SELECT * FROM helpers').all() as unknown as Array<HelperRecord & { archived_at: string | null; is_station: number }>;
+    const names = new Set(stations.map(station => key(station.name)));
+    return {
+      missing: all.filter(helper => !helper.archived_at && helper.is_station && !names.has(key(helper.name))).map(helper => ({ id: helper.id, name: helper.name })),
+      returning: all.filter(helper => helper.archived_at && names.has(key(helper.name))).map(helper => {
+        const history = db.prepare('SELECT recorded_at, sections_json FROM station_history WHERE helper_id = ? ORDER BY recorded_at DESC LIMIT 1').get(helper.id) as { recorded_at: string; sections_json: string } | undefined;
+        const previous = history ? JSON.parse(history.sections_json) as SectionRecord[] : [];
+        return { id: helper.id, name: helper.name, recordedAt: history?.recorded_at, sections: previous.map(section => {
+          const current = db.prepare('SELECT assigned_helper_id, assigned_helper_name FROM sections WHERE id = ?').get(section.id) as { assigned_helper_id: string | null; assigned_helper_name: string | null } | undefined;
+          return { id: section.id, label: section.label, meters: section.length_meters, exists: !!current, currentHelperId: current?.assigned_helper_id, currentHelperName: current?.assigned_helper_name };
+        }) };
+      })
+    };
   },
 
   getPublicHelper(token: string): { name: string; sections: Array<Pick<SectionRecord, 'id' | 'street_name' | 'label' | 'length_meters' | 'type' | 'lighting_side' | 'geojson'>> } | undefined {
-    const helper = db.prepare('SELECT id, name FROM helpers WHERE public_token = ?').get(token) as { id: string; name: string } | undefined;
+    const helper = db.prepare('SELECT id, name FROM helpers WHERE public_token = ? AND archived_at IS NULL').get(token) as { id: string; name: string } | undefined;
     if (!helper) return undefined;
     const sections = db.prepare(`SELECT id, street_name, label, length_meters, type, lighting_side, geojson FROM sections
       WHERE assigned_helper_id = ? ORDER BY street_name ASC, section_index ASC`).all(helper.id) as Array<Pick<SectionRecord, 'id' | 'street_name' | 'label' | 'length_meters' | 'type' | 'lighting_side' | 'geojson'>>;
@@ -449,7 +474,7 @@ export const dbService = {
     }
   },
 
-  importStations(stations: Array<{ stationId: string; name: string; address?: string; email?: string; latitude: number; longitude: number }>) {
+  importStations(stations: Array<{ stationId: string; name: string; address?: string; email?: string; latitude: number; longitude: number }>, archiveMissing = false) {
     createBackup('before_import_stations');
     const valid = stations.filter(station =>
       station.stationId && station.name?.trim() && Number.isFinite(station.latitude) && Number.isFinite(station.longitude) &&
@@ -461,10 +486,23 @@ export const dbService = {
     let updated = 0;
     db.exec('BEGIN TRANSACTION');
     try {
-      const byStationId = db.prepare('SELECT id FROM helpers WHERE source_station_id = ?');
-      const byNameWithoutStation = db.prepare('SELECT id FROM helpers WHERE name = ? AND source_station_id IS NULL');
+      const key = (name: string) => name.trim().normalize('NFKC').toLocaleLowerCase('de-DE').replace(/\s+/g, ' ');
+      const all = db.prepare('SELECT * FROM helpers').all() as unknown as HelperRecord[];
+      const incomingNames = valid.map(station => key(station.name));
+      if (new Set(incomingNames).size !== incomingNames.length) throw new Error('Die Stationsliste enthält doppelte Namen. Bitte vor dem Import bereinigen.');
+      if (archiveMissing) {
+        const missing = this.getStationReconciliation(valid).missing;
+        for (const helper of missing) {
+          const previous = db.prepare('SELECT * FROM sections WHERE assigned_helper_id = ?').all(helper.id);
+          db.prepare('INSERT INTO station_history VALUES (?, ?, ?, ?)').run(crypto.randomUUID(), helper.id, new Date().toISOString(), JSON.stringify(previous));
+          db.prepare('UPDATE helpers SET archived_at = ?, source_station_id = NULL WHERE id = ?').run(new Date().toISOString(), helper.id);
+          db.prepare('UPDATE sections SET assigned_helper_id = NULL, assigned_helper_name = NULL WHERE assigned_helper_id = ?').run(helper.id);
+        }
+      }
+      // Numbers belong to this year's list; identity follows the organization name.
+      db.prepare('UPDATE helpers SET source_station_id = NULL WHERE source_station_id IS NOT NULL').run();
       const update = db.prepare(`UPDATE helpers
-        SET name = ?, source_station_id = ?, address = ?, latitude = ?, longitude = ?,
+        SET is_station = 1, archived_at = NULL, name = ?, source_station_id = ?, address = ?, latitude = ?, longitude = ?,
             email = CASE WHEN ? != '' THEN ? ELSE email END WHERE id = ?`);
       const insert = db.prepare(`INSERT INTO helpers
         (id, name, color, phone, email, source_station_id, address, latitude, longitude, created_at)
@@ -472,15 +510,18 @@ export const dbService = {
 
       valid.forEach((station, index) => {
         const stationId = String(station.stationId);
-        const existing = (byStationId.get(stationId) || byNameWithoutStation.get(station.name.trim())) as { id: string } | undefined;
+        const matches = all.filter(helper => key(helper.name) === key(station.name));
+        if (matches.length > 1) throw new Error(`Mehrdeutiger Stationsname: ${station.name}`);
+        const existing = matches[0];
         if (existing) {
           const email = station.email?.trim().toLowerCase() || '';
           update.run(station.name.trim(), stationId, station.address?.trim() || '', station.latitude, station.longitude, email, email, existing.id);
           db.prepare('UPDATE sections SET assigned_helper_name = ? WHERE assigned_helper_id = ?').run(station.name.trim(), existing.id);
           updated++;
         } else {
-          const id = `station-${stationId}`;
+          const id = `station-${crypto.randomUUID()}`;
           insert.run(id, station.name.trim(), colors[index % colors.length], station.email?.trim().toLowerCase() || '', stationId, station.address?.trim() || '', station.latitude, station.longitude, new Date().toISOString());
+          db.prepare('UPDATE helpers SET is_station = 1, public_token = ? WHERE id = ?').run(crypto.randomBytes(24).toString('base64url'), id);
           created++;
         }
       });
@@ -704,14 +745,15 @@ export const dbService = {
   exportDatabase() {
     return {
       exportedAt: new Date().toISOString(),
-      helpers: this.getHelpers(),
+      helpers: db.prepare('SELECT * FROM helpers ORDER BY name ASC').all() as unknown as HelperRecord[],
+      stationHistory: db.prepare('SELECT * FROM station_history').all(),
       streets: this.getStreets(),
       sections: this.getSections(),
       settings: this.getAllSettings()
     };
   },
 
-  importDatabase(data: { helpers?: HelperRecord[]; streets?: StreetRecord[]; sections?: SectionRecord[]; settings?: Record<string, string> }) {
+  importDatabase(data: { helpers?: HelperRecord[]; streets?: StreetRecord[]; sections?: SectionRecord[]; settings?: Record<string, string>; stationHistory?: Array<{ id: string; helper_id: string; recorded_at: string; sections_json: string }> }) {
     createBackup('before_import_database');
     if (data.settings && typeof data.settings === 'object') {
       for (const [k, v] of Object.entries(data.settings)) {
@@ -723,6 +765,11 @@ export const dbService = {
       const insertH = db.prepare('INSERT INTO helpers (id, name, color, phone, email, created_at) VALUES (?, ?, ?, ?, ?, ?)');
       for (const h of data.helpers) {
         insertH.run(h.id, h.name, h.color || '#3B82F6', h.phone || '', h.email || '', h.created_at || new Date().toISOString());
+        db.prepare('UPDATE helpers SET archived_at = ?, is_station = ?, source_station_id = ?, address = ?, latitude = ?, longitude = ?, public_token = ? WHERE id = ?').run(h.archived_at || null, h.is_station || (h.source_station_id ? 1 : 0), h.source_station_id || null, h.address || '', h.latitude ?? null, h.longitude ?? null, h.public_token || crypto.randomBytes(24).toString('base64url'), h.id);
+      }
+      db.prepare('DELETE FROM station_history').run();
+      for (const entry of data.stationHistory || []) {
+        db.prepare('INSERT INTO station_history VALUES (?, ?, ?, ?)').run(entry.id, entry.helper_id, entry.recorded_at, entry.sections_json);
       }
     }
 

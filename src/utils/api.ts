@@ -332,11 +332,18 @@ export const api = {
     return data.count;
   },
 
-  async importStations(stations: Array<{ stationId: string; name: string; address?: string; latitude: number; longitude: number }>): Promise<{ imported: number; created: number; updated: number }> {
+  async reconcileStations(stations: Array<{ name: string }>): Promise<{ missing: Array<{ id: string; name: string }>; returning: Array<{ id: string; name: string; recordedAt?: string; sections: Array<{ id: string; label: string; meters: number; exists: boolean; currentHelperId?: string | null; currentHelperName?: string | null }> }> }> {
+    const res = await fetch(`${API_BASE}/helpers/reconcile-stations`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ stations }) });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Abgleich fehlgeschlagen.');
+    return data;
+  },
+
+  async importStations(stations: Array<{ stationId: string; name: string; address?: string; latitude: number; longitude: number }>, archiveMissing = false): Promise<{ imported: number; created: number; updated: number }> {
     const res = await fetch(`${API_BASE}/helpers/import-stations`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ stations })
+      body: JSON.stringify({ stations, archiveMissing })
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({}));

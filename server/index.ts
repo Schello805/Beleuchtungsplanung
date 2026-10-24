@@ -529,11 +529,16 @@ app.post('/api/helpers/import', (req, res) => {
   }
 });
 
+app.post('/api/helpers/reconcile-stations', (req, res) => {
+  if (!Array.isArray(req.body?.stations) || !req.body.stations.every((station: any) => typeof station.name === 'string')) return res.status(400).json({ error: 'Ungültige Stationsliste' });
+  res.json(dbService.getStationReconciliation(req.body.stations));
+});
+
 app.post('/api/helpers/import-stations', (req, res) => {
   try {
     const { stations } = req.body;
     if (!Array.isArray(stations)) return res.status(400).json({ error: 'Ungültige Stationsliste' });
-    const result = dbService.importStations(stations);
+    const result = dbService.importStations(stations, req.body.archiveMissing === true);
     res.json({ success: true, ...result });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
