@@ -3,9 +3,9 @@ export const stationPdfFilename = (stationNumber: string, name: string, index: n
   return `Station_${clean(stationNumber || `H${String(index + 1).padStart(2, '0')}`)}_${clean(name)}.pdf`;
 };
 
-// Roughly 220 dpi for the printable A5 area, independent of screen/device zoom.
+// Roughly 390 dpi for the printable A5 area: keep small print and QR codes crisp.
 export const stationPdfPixelRatio = (width: number, height: number) =>
-  Math.min(3, 1680 / Math.max(width, height, 1));
+  3000 / Math.max(width, height, 1);
 
 export const MAX_STATION_PDF_BYTES = 3_000_000;
 
@@ -26,7 +26,7 @@ export async function exportStationPdfs(items: Array<{ element: HTMLElement; sta
     let pdfBytes: ArrayBuffer | undefined;
     // JPEG avoids embedding the entire page as a large lossless RGB bitmap.
     // Check actual PDF bytes, including its metadata, before adding it to the ZIP.
-    for (const quality of [0.9, 0.8, 0.7]) {
+    for (const quality of [0.98, 0.95, 0.92, 0.88]) {
       const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a5', compress: true });
       pdf.setFontSize(9);
       pdf.text(`Station ${item.stationNumber || `H${String(index + 1).padStart(2, '0')}`}`, 8, 8);
