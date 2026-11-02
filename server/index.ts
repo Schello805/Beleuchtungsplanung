@@ -4,6 +4,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 import nodemailer from 'nodemailer';
+import { sendCheckedMail } from './mailDelivery.ts';
 import { rateLimit } from 'express-rate-limit';
 import { filterImportedSettings, redactRequestUrl } from './security.ts';
 import { formatMailText, plainMailText } from '../src/utils/mailFormatting.ts';
@@ -192,7 +193,7 @@ async function sendUserInviteEmail(user: UserRecord, token: string, inviteUrl: s
       actionUrl: inviteUrl,
       actionLabel: 'Passwort jetzt erstellen & aktivieren'
     });
-    await transport.sendMail({ from, to: user.email, cc: settings.smtp_cc?.trim() || undefined, subject, text: `${message}\n\n${inviteUrl}`, html });
+    await sendCheckedMail(transport, { from, to: user.email, cc: settings.smtp_cc?.trim() || undefined, subject, text: `${message}\n\n${inviteUrl}`, html });
     dbService.addMailLog({ recipient: user.email, subject, status: 'sent' });
     return { success: true };
   } catch (err: any) {
@@ -825,7 +826,7 @@ app.post('/api/mail/test', async (req, res) => {
     const subject = `[Test] ${settings.event_name || 'Lichternacht'} – Versand eingerichtet`;
     const text = 'Dies ist eine Test-E-Mail des Lichternacht-Streckenplaners. Der SMTP-Versand ist erreichbar.';
     const html = renderEmailHtml({ eventName: settings.event_name || 'Lichternacht', heading: 'SMTP-Test erfolgreich', message: text });
-    await transport.sendMail({ from, to: recipient, cc: settings.smtp_cc?.trim() || undefined, subject, text, html });
+    await sendCheckedMail(transport, { from, to: recipient, cc: settings.smtp_cc?.trim() || undefined, subject, text, html });
     dbService.addMailLog({ recipient, subject, status: 'test' });
     res.json({ success: true });
   } catch (err: any) {
@@ -859,7 +860,7 @@ app.post('/api/mail/helpers', async (req, res) => {
         actionLabel: 'Persönlichen Bereich öffnen',
       });
       try {
-        await transport.sendMail({ from, to: helper.email, cc: settings.smtp_cc?.trim() || undefined, subject, text: plainMailText(text), html });
+        await sendCheckedMail(transport, { from, to: helper.email, cc: settings.smtp_cc?.trim() || undefined, subject, text: plainMailText(text), html });
         dbService.addMailLog({ helperId: helper.id, recipient: helper.email, subject, status: 'sent' }); sent++;
       } catch (err: any) {
         dbService.addMailLog({ helperId: helper.id, recipient: helper.email, subject, status: 'failed', errorMessage: err.message }); failed++;
@@ -896,10 +897,11 @@ app.post('/api/mail/helpers/preview', async (_req, res) => {
       actionUrl: link,
       actionLabel: 'Persönlichen Bereich öffnen',
     });
-    await transport.sendMail({ from, to: recipient, subject, text: plainMailText(text), html });
+    await sendCheckedMail(transport, { from, to: recipient, subject, text: plainMailText(text), html });
     dbService.addMailLog({ helperId: helper.id, recipient, subject, status: 'test' });
     res.json({ success: true, helperName: helper.name, recipient });
   } catch (err: any) {
+    dbService.addMailLog({ recipient: dbService.getAllSettings().smtp_cc || '', subject: '[Vorschau] Rundmail', status: 'failed', errorMessage: err.message });
     res.status(500).json({ error: err.message });
   }
 });
