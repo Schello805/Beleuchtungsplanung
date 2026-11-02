@@ -662,7 +662,7 @@ out body geom;`;
   },
 
   async getMailQueue(): Promise<{ nextAt: number; deliveries: Array<{ id: string; helper_name: string; recipient: string; status: string; error: string | null }> }> {
-    const res = await fetch(`${API_BASE}/mail/queue`);
+    const res = await fetch(`${API_BASE}/mail/queue`, { cache: 'no-store' });
     if (!res.ok) throw new Error('Versandstatus konnte nicht geladen werden.');
     return res.json();
   },

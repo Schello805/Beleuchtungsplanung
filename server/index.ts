@@ -837,7 +837,7 @@ app.post('/api/mail/test', async (req, res) => {
   }
 });
 
-app.get('/api/mail/queue', (_req, res) => res.json(queueStatus()));
+app.get('/api/mail/queue', (_req, res) => { res.setHeader('Cache-Control', 'no-store'); res.json(queueStatus()); });
 app.post('/api/mail/queue/:id/retry', (req, res) => { retryUnknown(req.params.id); res.json(queueStatus()); });
 
 app.post('/api/mail/helpers', async (req, res) => {

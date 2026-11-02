@@ -89,6 +89,9 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({ isOpen, 
   const [isSendingAll, setIsSendingAll] = useState(false);
   const [queue, setQueue] = useState<Awaited<ReturnType<typeof api.getMailQueue>> | null>(null);
   const [recoverPrevious, setRecoverPrevious] = useState(true);
+  const [queueLoadedAt, setQueueLoadedAt] = useState<Date | null>(null);
+  const [queueLoadError, setQueueLoadError] = useState('');
+  const [queueRefresh, setQueueRefresh] = useState(0);
   const [mailStatus, setMailStatus] = useState<string | null>(null);
   const [mailStatusKind, setMailStatusKind] = useState<'success' | 'error' | null>(null);
   const [mailLog, setMailLog] = useState<Awaited<ReturnType<typeof api.getMailLog>>>([]);
@@ -98,11 +101,27 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({ isOpen, 
     api.getSettings().then(settings => setValues({ ...defaults, ...settings }));
     setSmtpPassword('');
     api.getMailLog().then(setMailLog).catch(() => setMailLog([]));
-    const refresh = () => api.getMailQueue().then(setQueue).catch(() => {});
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    let active = true;
+    let loading = false;
+    const refresh = async () => {
+      if (loading) return;
+      loading = true;
+      try {
+        const status = await api.getMailQueue();
+        if (active) { setQueue(status); setQueueLoadedAt(new Date()); setQueueLoadError(''); }
+      } catch (error) {
+        if (active) setQueueLoadError(error instanceof Error ? error.message : 'Verbindung zum Server unterbrochen.');
+      } finally { loading = false; }
+    };
     void refresh();
     const timer = window.setInterval(refresh, 5000);
-    return () => window.clearInterval(timer);
-  }, [isOpen]);
+    window.addEventListener('focus', refresh);
+    return () => { active = false; window.clearInterval(timer); window.removeEventListener('focus', refresh); };
+  }, [isOpen, queueRefresh]);
 
   if (!isOpen) return null;
 
@@ -277,6 +296,10 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({ isOpen, 
           <label><input type="checkbox" checked={recoverPrevious} onChange={e => setRecoverPrevious(e.target.checked)} /> Bisheriges Versandprotokoll übernehmen (gleiche Rundmail fortsetzen)</label>
           {queue && queue.deliveries.length > 0 && <div className="admin-mail-log">
             <strong>Versandauftrag · eine Empfängeradresse alle 30 Sekunden</strong>
+            <span role="status">Letzte Statusabfrage: {queueLoadedAt ? queueLoadedAt.toLocaleTimeString('de-DE') : 'lädt …'} · automatisch alle 5 Sekunden</span>
+            <button type="button" onClick={() => setQueueRefresh(value => value + 1)}>Versandstatus jetzt aktualisieren</button>
+            {queueLoadError && <span role="alert" style={{ color: '#FCA5A5' }}>Aktualisierung fehlgeschlagen: {queueLoadError} Angezeigter Stand ist möglicherweise veraltet.</span>}
+            {queue.deliveries.some(item => item.status === 'sending') && <span>SMTP-Verbindung läuft für {queue.deliveries.filter(item => item.status === 'sending').map(item => item.recipient).join(', ')}. Währenddessen warten die übrigen Adressen.</span>}
             <span>{queue.deliveries.filter(item => item.status === 'sent').length} angenommen · {queue.deliveries.filter(item => item.status === 'pending').length} wartend · {queue.deliveries.filter(item => item.status === 'failed').length} fehlerhaft · {queue.deliveries.filter(item => item.status === 'unknown').length} unklar</span>
             <span>Nächster Versuch frühestens: {new Date(queue.nextAt).toLocaleString('de-DE')}</span>
             <div style={{ maxHeight: 300, overflowY: 'auto', display: 'grid', gap: 9 }}>{queue.deliveries.map(item => <div key={item.id}>
