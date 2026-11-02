@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import crypto from 'node:crypto';
 import nodemailer from 'nodemailer';
 import { sendCheckedMail } from './mailDelivery.ts';
+import { enqueueCampaign, queueStatus, retryUnknown, processMailQueue } from './mailQueue.ts';
 import { rateLimit } from 'express-rate-limit';
 import { filterImportedSettings, redactRequestUrl } from './security.ts';
 import { formatMailText, plainMailText } from '../src/utils/mailFormatting.ts';
@@ -836,6 +837,9 @@ app.post('/api/mail/test', async (req, res) => {
   }
 });
 
+app.get('/api/mail/queue', (_req, res) => res.json(queueStatus()));
+app.post('/api/mail/queue/:id/retry', (req, res) => { retryUnknown(req.params.id); res.json(queueStatus()); });
+
 app.post('/api/mail/helpers', async (req, res) => {
   const requestedIds = Array.isArray(req.body?.helperIds) ? new Set(req.body.helperIds.map(String)) : null;
   try {
@@ -845,7 +849,7 @@ app.post('/api/mail/helpers', async (req, res) => {
     const subjectTemplate = settings.mail_subject || '{{event}}: Ihr Beleuchtungsbereich';
     const bodyTemplate = settings.mail_body || 'Hallo {{name}},\n\nhier ist Ihr persönlicher Bereich für die Lichternacht:\n{{link}}\n\nUmfang: ca. {{meter}} m\n\nVielen Dank für Ihre Unterstützung!';
     const helpers = dbService.getHelpers().filter(helper => helper.email && helper.public_token && (!requestedIds || requestedIds.has(helper.id)));
-    let sent = 0; let failed = 0;
+    const items = [];
     for (const helper of helpers) {
       const sections = dbService.getPublicHelper(helper.public_token!)?.sections || [];
       const meters = sections.reduce((sum, section) => sum + section.length_meters, 0);
@@ -859,14 +863,10 @@ app.post('/api/mail/helpers', async (req, res) => {
         actionUrl: link,
         actionLabel: 'Persönlichen Bereich öffnen',
       });
-      try {
-        await sendCheckedMail(transport, { from, to: helper.email, cc: settings.smtp_cc?.trim() || undefined, subject, text: plainMailText(text), html });
-        dbService.addMailLog({ helperId: helper.id, recipient: helper.email, subject, status: 'sent' }); sent++;
-      } catch (err: any) {
-        dbService.addMailLog({ helperId: helper.id, recipient: helper.email, subject, status: 'failed', errorMessage: err.message }); failed++;
-      }
+      items.push({ helperId: helper.id, helperName: helper.name, to: helper.email!, cc: settings.smtp_cc || '', subject, text: plainMailText(text), html });
     }
-    res.json({ success: true, sent, failed, eligible: helpers.length });
+    const campaignId = crypto.createHash('sha256').update(JSON.stringify(items)).digest('hex');
+    res.json({ success: true, sent: 0, failed: 0, eligible: helpers.length, ...enqueueCampaign(campaignId, items, req.body?.recoverPrevious === true) });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }
@@ -970,6 +970,10 @@ if (AUTH_REQUIRED && !authReady) {
 export { app };
 
 if (process.env.NODE_ENV !== 'test') {
+  setInterval(() => { void processMailQueue(async item => {
+    const { transport, from } = getSmtpTransport();
+    return transport.sendMail({ from, to: item.recipient, subject: item.subject, text: item.text, html: item.html });
+  }).catch(error => console.error('Versandwarteschlange:', error.message)); }, 5000).unref();
   app.listen(PORT, HOST, () => {
     console.log(`Lichternacht Backend Server läuft auf ${HOST}:${PORT}`);
   });

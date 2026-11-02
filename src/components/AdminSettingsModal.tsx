@@ -87,6 +87,8 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({ isOpen, 
   const [isSendingTest, setIsSendingTest] = useState(false);
   const [isSendingPreview, setIsSendingPreview] = useState(false);
   const [isSendingAll, setIsSendingAll] = useState(false);
+  const [queue, setQueue] = useState<Awaited<ReturnType<typeof api.getMailQueue>> | null>(null);
+  const [recoverPrevious, setRecoverPrevious] = useState(true);
   const [mailStatus, setMailStatus] = useState<string | null>(null);
   const [mailStatusKind, setMailStatusKind] = useState<'success' | 'error' | null>(null);
   const [mailLog, setMailLog] = useState<Awaited<ReturnType<typeof api.getMailLog>>>([]);
@@ -96,6 +98,10 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({ isOpen, 
     api.getSettings().then(settings => setValues({ ...defaults, ...settings }));
     setSmtpPassword('');
     api.getMailLog().then(setMailLog).catch(() => setMailLog([]));
+    const refresh = () => api.getMailQueue().then(setQueue).catch(() => {});
+    void refresh();
+    const timer = window.setInterval(refresh, 5000);
+    return () => window.clearInterval(timer);
   }, [isOpen]);
 
   if (!isOpen) return null;
@@ -133,10 +139,11 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({ isOpen, 
     setMailStatusKind(null);
     try {
       await persistValues();
-      const result = await api.sendHelperMails();
+      const result = await api.sendHelperMails(recoverPrevious);
       setMailStatus(result.eligible === 0
         ? 'Keine E-Mails versendet: Es wurden keine Stationen mit E-Mail-Adresse und persönlichem Link gefunden.'
-        : `Versand abgeschlossen: ${result.sent} von ${result.eligible} Stationsmails vom Mailserver angenommen, ${result.failed} fehlgeschlagen.`);
+        : `Versandauftrag gespeichert. ${result.eligible} Stationen werden gedrosselt verarbeitet. Status aktualisiert sich automatisch; das Fenster darf geschlossen werden.`);
+      setQueue(await api.getMailQueue());
       setMailStatusKind(result.failed || !result.eligible ? 'error' : 'success');
       await api.getMailLog().then(setMailLog).catch(() => {});
     }
@@ -267,6 +274,22 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({ isOpen, 
           <p>Platzhalter: <code>{'{{event}}'}</code>, <code>{'{{name}}'}</code>, <code>{'{{meter}}'}</code> und <code>{'{{link}}'}</code>.</p>
           <label className="admin-template-field">Betreff<input value={values.mail_subject || ''} onChange={event => change('mail_subject', event.target.value)} /></label>
           <div className="admin-template-field">Nachricht<MailTextEditor value={values.mail_body || ''} onChange={value => change('mail_body', value)} /></div>
+          <label><input type="checkbox" checked={recoverPrevious} onChange={e => setRecoverPrevious(e.target.checked)} /> Bisheriges Versandprotokoll übernehmen (gleiche Rundmail fortsetzen)</label>
+          {queue && queue.deliveries.length > 0 && <div className="admin-mail-log">
+            <strong>Versandauftrag · eine Empfängeradresse alle 30 Sekunden</strong>
+            <span>{queue.deliveries.filter(item => item.status === 'sent').length} angenommen · {queue.deliveries.filter(item => item.status === 'pending').length} wartend · {queue.deliveries.filter(item => item.status === 'failed').length} fehlerhaft · {queue.deliveries.filter(item => item.status === 'unknown').length} unklar</span>
+            <span>Nächster Versuch frühestens: {new Date(queue.nextAt).toLocaleString('de-DE')}</span>
+            <div style={{ maxHeight: 300, overflowY: 'auto', display: 'grid', gap: 9 }}>{queue.deliveries.map(item => <div key={item.id}>
+              <strong>{item.helper_name}</strong> · {item.recipient}<br />
+              {{ sent: 'Angenommen', pending: 'Wartend', sending: 'Wird gesendet', failed: 'Fehlerhaft', unknown: 'Unklar – bitte prüfen' }[item.status] || item.status}
+              {item.error && <div>{item.error}</div>}
+              {item.status === 'unknown' && <button type="button" onClick={async () => {
+                if (!window.confirm(`Annahme von ${item.recipient} ist unklar. Erneuter Versand kann eine doppelte Mail erzeugen. Nach Prüfung trotzdem freigeben?`)) return;
+                try { await api.retryUnclearMail(item.id); setQueue(await api.getMailQueue()); }
+                catch (error) { setMailStatus(error instanceof Error ? error.message : 'Freigabe fehlgeschlagen.'); }
+              }}>Nach Prüfung erneut senden</button>}
+            </div>)}</div>
+          </div>}
           <div className="admin-mail-actions">
             <button type="button" onClick={sendHelperMailPreview} disabled={isSendingPreview}><Mail size={15} /> {isSendingPreview ? 'Vorschau wird gesendet …' : 'Rundmail-Vorschau an Admin'}</button>
             <button type="button" className="admin-send-all" onClick={sendAll} disabled={isSendingAll}><Send size={15} /> {isSendingAll ? 'E-Mails werden versendet …' : 'Alle Helfer informieren'}</button>

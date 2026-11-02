@@ -661,8 +661,17 @@ out body geom;`;
     if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Test-E-Mail konnte nicht gesendet werden.');
   },
 
-  async sendHelperMails(): Promise<{ sent: number; failed: number; eligible: number }> {
-    const res = await fetch(`${API_BASE}/mail/helpers`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) });
+  async getMailQueue(): Promise<{ nextAt: number; deliveries: Array<{ id: string; helper_name: string; recipient: string; status: string; error: string | null }> }> {
+    const res = await fetch(`${API_BASE}/mail/queue`);
+    if (!res.ok) throw new Error('Versandstatus konnte nicht geladen werden.');
+    return res.json();
+  },
+  async retryUnclearMail(id: string) {
+    const res = await fetch(`${API_BASE}/mail/queue/${encodeURIComponent(id)}/retry`, { method: 'POST' });
+    if (!res.ok) throw new Error('Freigabe fehlgeschlagen.');
+  },
+  async sendHelperMails(recoverPrevious = false): Promise<{ sent: number; failed: number; eligible: number }> {
+    const res = await fetch(`${API_BASE}/mail/helpers`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ recoverPrevious }) });
     if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Helfer-E-Mails konnten nicht gesendet werden.');
     return await res.json();
   },
