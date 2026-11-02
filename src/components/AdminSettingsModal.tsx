@@ -89,7 +89,7 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({ isOpen, 
   const [isSendingAll, setIsSendingAll] = useState(false);
   const [mailStatus, setMailStatus] = useState<string | null>(null);
   const [mailStatusKind, setMailStatusKind] = useState<'success' | 'error' | null>(null);
-  const [mailLog, setMailLog] = useState<Array<{ id: string; helper_name?: string; recipient: string; subject: string; status: string; created_at: string }>>([]);
+  const [mailLog, setMailLog] = useState<Awaited<ReturnType<typeof api.getMailLog>>>([]);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -129,9 +129,17 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({ isOpen, 
     if (isSendingAll) return;
     if (!window.confirm('Jetzt an alle Helfer mit E-Mail-Adresse und persönlichem Link senden?')) return;
     setIsSendingAll(true);
-    setMailStatus(null);
+    setMailStatus('Rundmail-Versand läuft. Bitte warten …');
     setMailStatusKind(null);
-    try { await persistValues(); const result = await api.sendHelperMails(); setMailStatus(`${result.sent} E-Mails versendet${result.failed ? `, ${result.failed} fehlgeschlagen` : ''}.`); setMailStatusKind(result.failed ? 'error' : 'success'); setMailLog(await api.getMailLog()); }
+    try {
+      await persistValues();
+      const result = await api.sendHelperMails();
+      setMailStatus(result.eligible === 0
+        ? 'Keine E-Mails versendet: Es wurden keine Stationen mit E-Mail-Adresse und persönlichem Link gefunden.'
+        : `Versand abgeschlossen: ${result.sent} von ${result.eligible} Stationsmails vom Mailserver angenommen, ${result.failed} fehlgeschlagen.`);
+      setMailStatusKind(result.failed || !result.eligible ? 'error' : 'success');
+      await api.getMailLog().then(setMailLog).catch(() => {});
+    }
     catch (err: any) { setMailStatus(err.message); setMailStatusKind('error'); }
     finally { setIsSendingAll(false); }
   };
@@ -263,7 +271,22 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({ isOpen, 
             <button type="button" onClick={sendHelperMailPreview} disabled={isSendingPreview}><Mail size={15} /> {isSendingPreview ? 'Vorschau wird gesendet …' : 'Rundmail-Vorschau an Admin'}</button>
             <button type="button" className="admin-send-all" onClick={sendAll} disabled={isSendingAll}><Send size={15} /> {isSendingAll ? 'E-Mails werden versendet …' : 'Alle Helfer informieren'}</button>
           </div>
-          {mailLog.length > 0 && <div className="admin-mail-log"><strong>Letzte Versandvorgänge</strong>{mailLog.slice(0, 5).map(entry => <span key={entry.id}>{entry.status === 'failed' ? '✕' : '✓'} {entry.recipient} · {entry.status === 'test' ? 'Test' : entry.helper_name || entry.subject}</span>)}</div>}
+          {mailStatus && <p role="status" aria-live="polite" style={{ marginTop: 10, padding: 12, borderRadius: 6, background: 'var(--bg-input)', border: `1px solid ${mailStatusKind === 'error' ? '#EF4444' : '#10B981'}`, color: 'var(--text-main)', fontSize: 13, fontWeight: 700, overflowWrap: 'anywhere' }}>{mailStatus}</p>}
+          <div className="admin-mail-log">
+            <strong>Letzte {mailLog.length} Versandvorgänge</strong>
+            <button type="button" onClick={async () => {
+              try { setMailLog(await api.getMailLog()); }
+              catch (err) { setMailStatus(err instanceof Error ? err.message : 'Protokoll konnte nicht geladen werden.'); setMailStatusKind('error'); }
+            }}>Versandprotokoll aktualisieren</button>
+            <div style={{ display: 'grid', gap: 8, maxHeight: 280, overflowY: 'auto' }}>
+              {mailLog.map(entry => <div key={entry.id} style={{ overflowWrap: 'anywhere' }}>
+                <span>{entry.status === 'failed' ? '✕ Fehlgeschlagen' : '✓ Vom Mailserver angenommen'} · {new Date(entry.created_at).toLocaleString('de-DE')}</span>
+                <div>{entry.recipient} · {entry.status === 'test' ? 'Test' : entry.helper_name || entry.subject}</div>
+                {entry.error_message && <div style={{ color: '#FCA5A5' }}>{entry.error_message}</div>}
+              </div>)}
+              {!mailLog.length && <span>Noch keine Versandvorgänge protokolliert.</span>}
+            </div>
+          </div>
         </section>
 
         <div className="admin-settings-footer">
