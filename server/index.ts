@@ -213,6 +213,7 @@ app.get('/api/public/helpers/:token', (req, res) => {
   if (!result) return res.status(404).json({ error: 'Dieser Helfer-Link ist nicht mehr gültig.' });
   res.json({
     name: result.name,
+    stationNumber: result.stationNumber,
     sections: result.sections.map(section => ({
       ...section,
       geojson: typeof section.geojson === 'string' ? JSON.parse(section.geojson) : section.geojson

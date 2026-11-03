@@ -9,11 +9,12 @@ export const stationPdfPixelRatio = (width: number, height: number) =>
 
 export const MAX_STATION_PDF_BYTES = 3_000_000;
 
-export async function exportStationPdfs(items: Array<{ element: HTMLElement; stationNumber: string; name: string }>, onProgress: (done: number) => void) {
+export async function exportStationPdfs(items: Array<{ element: HTMLElement; stationNumber: string; name: string }>, onProgress: (done: number) => void, singlePdf = false) {
   const [{ toCanvas }, { jsPDF }, { default: JSZip }] = await Promise.all([
     import('html-to-image'), import('jspdf'), import('jszip')
   ]);
   const zip = new JSZip();
+  let singleBytes: ArrayBuffer | undefined;
   await document.fonts.ready;
   for (const [index, item] of items.entries()) {
     const width = item.element.offsetWidth;
@@ -41,12 +42,13 @@ export async function exportStationPdfs(items: Array<{ element: HTMLElement; sta
     }
     // Prefix with sequence to prevent equal station numbers/names overwriting files.
     zip.file(`${String(index + 1).padStart(3, '0')}_${stationPdfFilename(item.stationNumber, item.name, index)}`, pdfBytes);
+    singleBytes = pdfBytes;
     onProgress(index + 1);
   }
-  const url = URL.createObjectURL(await zip.generateAsync({ type: 'blob' }));
+  const url = URL.createObjectURL(singlePdf && singleBytes ? new Blob([singleBytes], { type: 'application/pdf' }) : await zip.generateAsync({ type: 'blob' }));
   const anchor = document.createElement('a');
   anchor.href = url;
-  anchor.download = 'Lichternacht_Stations-PDFs.zip';
+  anchor.download = singlePdf ? stationPdfFilename(items[0].stationNumber, items[0].name, 0) : 'Lichternacht_Stations-PDFs.zip';
   anchor.click();
   window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
 }

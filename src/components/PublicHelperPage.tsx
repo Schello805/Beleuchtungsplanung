@@ -4,6 +4,7 @@ import * as turf from '@turf/turf';
 import { Crosshair, MapPin, Route } from 'lucide-react';
 import type { PublicHelperInfo } from '../utils/api';
 import { getSectionEndpoints } from '../utils/sectionEndpoints';
+import { PublicPdfDownload } from './PublicPdfDownload';
 
 interface Props {
   info: PublicHelperInfo;
@@ -169,6 +170,7 @@ export const PublicHelperPage: React.FC<Props> = ({ info }) => {
         <p className="auth-kicker">LICHTERNACHT BECHHOFEN</p>
         <h1>Dein Bereich</h1>
         <h2>{info.name}</h2>
+        <PublicPdfDownload info={info} />
         <div className="public-helper-distance">{Math.round(meters)} Meter</div>
         <p className="public-helper-intro">Bitte schmücke die folgenden Straßenabschnitte. Die farbige Linie führt jeweils eindeutig von <b>A (Start)</b> nach <b>B (Ende)</b>. Lichter und benötigtes Material bringst du selbst mit.</p>
         <div className="public-helper-sections">

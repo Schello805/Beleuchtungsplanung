@@ -190,7 +190,7 @@ const endpointCodes = (sections: Section[], section: Section) => {
   return { start: `A${suffix}`, end: `B${suffix}`, endpoints };
 };
 
-const HelperAreaMap: React.FC<{ sections: Section[]; color?: string; height: number; mapStyle?: 'street' | 'satellite' }> = ({ sections, color = '#D97706', height, mapStyle = 'street' }) => {
+export const HelperAreaMap: React.FC<{ sections: Section[]; color?: string; height: number; mapStyle?: 'street' | 'satellite' }> = ({ sections, color = '#D97706', height, mapStyle = 'street' }) => {
   const geometries = sections.flatMap(section => {
     const geometry = section.geojson?.geometry;
     if (!geometry) return [] as Array<{ section: Section; type: string; coordinates: number[][] }>;

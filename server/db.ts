@@ -372,12 +372,13 @@ export const dbService = {
     };
   },
 
-  getPublicHelper(token: string): { name: string; sections: Array<Pick<SectionRecord, 'id' | 'street_name' | 'label' | 'length_meters' | 'type' | 'lighting_side' | 'geojson'>> } | undefined {
+  getPublicHelper(token: string): { name: string; stationNumber?: string | null; sections: Array<Pick<SectionRecord, 'id' | 'street_name' | 'label' | 'length_meters' | 'type' | 'lighting_side' | 'geojson' | 'notes'>> } | undefined {
     const helper = db.prepare('SELECT id, name FROM helpers WHERE public_token = ? AND archived_at IS NULL').get(token) as { id: string; name: string } | undefined;
     if (!helper) return undefined;
-    const sections = db.prepare(`SELECT id, street_name, label, length_meters, type, lighting_side, geojson FROM sections
+    const station = db.prepare('SELECT source_station_id FROM helpers WHERE id = ?').get(helper.id) as { source_station_id: string | null };
+    const sections = db.prepare(`SELECT id, street_name, label, length_meters, type, lighting_side, geojson, notes FROM sections
       WHERE assigned_helper_id = ? ORDER BY street_name ASC, section_index ASC`).all(helper.id) as Array<Pick<SectionRecord, 'id' | 'street_name' | 'label' | 'length_meters' | 'type' | 'lighting_side' | 'geojson'>>;
-    return { name: helper.name, sections };
+    return { name: helper.name, stationNumber: station.source_station_id, sections };
   },
 
   addHelper(name: string, color?: string, phone?: string, email?: string): HelperRecord {

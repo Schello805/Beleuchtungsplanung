@@ -52,8 +52,9 @@ export interface AuthUser {
 }
 
 export interface PublicHelperInfo {
+  stationNumber?: string | null;
   name: string;
-  sections: Array<Pick<Section, 'id' | 'street_name' | 'label' | 'length_meters' | 'type' | 'lighting_side' | 'geojson'>>;
+  sections: Array<Pick<Section, 'id' | 'street_name' | 'label' | 'length_meters' | 'type' | 'lighting_side' | 'geojson' | 'notes'>>;
 }
 
 const API_BASE = '/api';
