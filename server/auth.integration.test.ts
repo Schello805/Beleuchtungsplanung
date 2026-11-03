@@ -137,6 +137,19 @@ describe('user invitation and first login', () => {
     enqueueCampaign('test-campaign', items, false);
     await processMailQueue(send, now + 93_000);
     expect(sent).toHaveLength(3);
+    const { isSafeConnectionFailure } = await import('./mailQueue.ts');
+    expect(isSafeConnectionFailure({ message: 'Connection timeout' })).toBe(true);
+    expect(isSafeConnectionFailure({ message: 'TLS handshake timed out' })).toBe(true);
+    expect(isSafeConnectionFailure({ message: 'Timeout', command: 'DATA' })).toBe(false);
+    enqueueCampaign('connection-retry', [{ ...items[0], to: 'retry@example.test', cc: '' }], false);
+    await processMailQueue(async () => { throw new Error('Connection timeout'); }, now + 120_000);
+    expect(queueStatus().deliveries[0]).toMatchObject({ status: 'pending', error: 'Connection timeout' });
+    const retryClock = queueStatus().nextAt;
+    await processMailQueue(send, retryClock - 1);
+    expect(sent).toHaveLength(3);
+    await processMailQueue(send, retryClock + 1);
+    expect(sent).toHaveLength(4);
+    expect(queueStatus().deliveries[0]).toMatchObject({ status: 'sent' });
   });
 
   it('limits repeated failed login attempts', async () => {

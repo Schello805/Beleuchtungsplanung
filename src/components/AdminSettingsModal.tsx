@@ -296,6 +296,8 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({ isOpen, 
           <label><input type="checkbox" checked={recoverPrevious} onChange={e => setRecoverPrevious(e.target.checked)} /> Bisheriges Versandprotokoll übernehmen (gleiche Rundmail fortsetzen)</label>
           {queue && queue.deliveries.length > 0 && <div className="admin-mail-log">
             <strong>Versandauftrag · eine Empfängeradresse alle 30 Sekunden</strong>
+            <span>Versandprozess: {queue.lastTickAt ? `zuletzt aktiv ${new Date(queue.lastTickAt).toLocaleTimeString('de-DE')}` : 'Kein Lebenszeichen vom Versandprozess – Serverstart prüfen.'}</span>
+            {queue.lastWorkerError && <span role="alert">Fehler im Versandprozess: {queue.lastWorkerError}</span>}
             <span role="status">Letzte Statusabfrage: {queueLoadedAt ? queueLoadedAt.toLocaleTimeString('de-DE') : 'lädt …'} · automatisch alle 5 Sekunden</span>
             <button type="button" onClick={() => setQueueRefresh(value => value + 1)}>Versandstatus jetzt aktualisieren</button>
             {queueLoadError && <span role="alert" style={{ color: '#FCA5A5' }}>Aktualisierung fehlgeschlagen: {queueLoadError} Angezeigter Stand ist möglicherweise veraltet.</span>}

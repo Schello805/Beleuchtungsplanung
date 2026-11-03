@@ -10,6 +10,17 @@ CREATE TABLE IF NOT EXISTS mail_deliveries (
 CREATE TABLE IF NOT EXISTS mail_queue_clock (id INTEGER PRIMARY KEY, next_at INTEGER NOT NULL);
 INSERT OR IGNORE INTO mail_queue_clock VALUES (1, 0);`);
 db.prepare("UPDATE mail_deliveries SET status = 'unknown', error = 'Server während Versand neu gestartet. Annahme unklar; bitte prüfen.' WHERE status = 'sending'").run();
+// These errors occur before SMTP can transmit a message, so retrying is safe.
+db.prepare("UPDATE mail_deliveries SET status = 'pending' WHERE status = 'unknown' AND error IN ('Connection timeout', 'TLS handshake timed out', 'Greeting never received')").run();
+
+export function isSafeConnectionFailure(error: { message?: string; command?: string; code?: string }) {
+  return /^(Connection timeout|TLS handshake timed out|Greeting never received)$/i.test(error.message || '')
+    || ['EDNS', 'ECONNECTION', 'ECONNREFUSED', 'ENETUNREACH', 'EHOSTUNREACH'].includes(error.code || '')
+    || (error.command === 'CONN' && /timeout|timed out/i.test(error.message || ''));
+}
+let lastTickAt = 0;
+let busySince = 0;
+let lastWorkerError: string | null = null;
 
 export type Delivery = { id: string; campaign_id: string; helper_id: string; helper_name: string; recipient: string; subject: string; text: string; html: string; status: string; error: string | null; updated_at: string };
 export const splitRecipients = (value: string) => [...new Set(value.split(/[,;\n]+/).map(address => address.trim().toLowerCase()).filter(Boolean))];
@@ -51,7 +62,7 @@ export function enqueueCampaign(id: string, items: Array<{ helperId: string; hel
 
 export function queueStatus() {
   const latest = db.prepare('SELECT id FROM mail_campaigns ORDER BY created_at DESC LIMIT 1').get() as { id: string } | undefined;
-  return { campaignId: latest?.id, nextAt: (db.prepare('SELECT next_at FROM mail_queue_clock WHERE id = 1').get() as { next_at: number }).next_at,
+  return { campaignId: latest?.id, lastTickAt, busySince, lastWorkerError, serverNow: Date.now(), nextAt: (db.prepare('SELECT next_at FROM mail_queue_clock WHERE id = 1').get() as { next_at: number }).next_at,
     deliveries: latest ? db.prepare('SELECT id, helper_name, recipient, status, error, updated_at FROM mail_deliveries WHERE campaign_id = ? ORDER BY helper_name, recipient').all(latest.id) : [] };
 }
 
@@ -61,13 +72,16 @@ export function retryUnknown(id: string) {
 
 let busy = false;
 export async function processMailQueue(send: (item: Delivery) => Promise<any>, now = Date.now()) {
+  lastTickAt = Date.now();
   if (busy) return;
   busy = true;
+  busySince = Date.now();
   try {
     const clock = db.prepare('SELECT next_at FROM mail_queue_clock WHERE id = 1').get() as { next_at: number };
     if (clock.next_at > now) return;
     const item = db.prepare("SELECT * FROM mail_deliveries WHERE status = 'pending' ORDER BY updated_at, id LIMIT 1").get() as Delivery | undefined;
     if (!item) return;
+    console.info(`[Mailqueue] Versandstart ${item.id} (${item.helper_name})`);
     db.prepare("UPDATE mail_deliveries SET status = 'sending' WHERE id = ? AND status = 'pending'").run(item.id);
     db.prepare('UPDATE mail_queue_clock SET next_at = ? WHERE id = 1').run(now + 30_000);
     let status = 'sent', error: string | null = null;
@@ -82,10 +96,18 @@ export async function processMailQueue(send: (item: Delivery) => Promise<any>, n
       if (/limit|too many|rate.?limit|throttl/i.test(error!)) {
         status = 'pending';
         db.prepare('UPDATE mail_queue_clock SET next_at = ? WHERE id = 1').run(now + 11 * 60_000);
+      } else if (isSafeConnectionFailure(err)) {
+        status = 'pending';
+        db.prepare('UPDATE mail_queue_clock SET next_at = ? WHERE id = 1').run(now + 2 * 60_000);
       } else status = /timeout|timed out|ECONNRESET|socket|connection closed/i.test(error!) ? 'unknown' : 'failed';
     }
     db.prepare('UPDATE mail_deliveries SET status = ?, error = ?, updated_at = ? WHERE id = ?').run(status, error, new Date().toISOString(), item.id);
     const helperExists = db.prepare('SELECT id FROM helpers WHERE id = ?').get(item.helper_id);
     dbService.addMailLog({ helperId: helperExists ? item.helper_id : null, recipient: item.recipient, subject: item.subject, status: status === 'sent' ? 'sent' : 'failed', errorMessage: error });
-  } finally { busy = false; }
+    lastWorkerError = null;
+    console.info(`[Mailqueue] ${item.id}: ${status}${error ? ` – ${error}` : ''}`);
+  } catch (error) {
+    lastWorkerError = error instanceof Error ? error.message : String(error);
+    throw error;
+  } finally { busy = false; busySince = 0; }
 }

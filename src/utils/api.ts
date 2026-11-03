@@ -661,7 +661,7 @@ out body geom;`;
     if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Test-E-Mail konnte nicht gesendet werden.');
   },
 
-  async getMailQueue(): Promise<{ nextAt: number; deliveries: Array<{ id: string; helper_name: string; recipient: string; status: string; error: string | null }> }> {
+  async getMailQueue(): Promise<{ nextAt: number; lastTickAt?: number; busySince?: number; lastWorkerError?: string | null; serverNow?: number; deliveries: Array<{ id: string; helper_name: string; recipient: string; status: string; error: string | null }> }> {
     const res = await fetch(`${API_BASE}/mail/queue`, { cache: 'no-store' });
     if (!res.ok) throw new Error('Versandstatus konnte nicht geladen werden.');
     return res.json();

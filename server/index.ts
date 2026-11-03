@@ -168,7 +168,10 @@ const getSmtpTransport = () => {
       secure: security === 'ssl',
       requireTLS: security === 'starttls',
       ignoreTLS: security === 'none',
-      auth: { user, pass: password }
+      auth: { user, pass: password },
+      connectionTimeout: 20_000,
+      greetingTimeout: 20_000,
+      socketTimeout: 60_000
     }),
     from: `"Planung Lichternacht" <${fromAddress}>`,
     settings
