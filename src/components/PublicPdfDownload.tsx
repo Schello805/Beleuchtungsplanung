@@ -24,7 +24,7 @@ export function PublicPdfDownload({ info }: { info: PublicHelperInfo }) {
     finally { setBusy(false); setRenderCard(false); }
   };
   return <>
-    <button type="button" disabled={busy} onClick={download} style={{ padding: '12px 16px', border: 0, borderRadius: 7, background: 'var(--accent-gold)', color: '#172033', fontWeight: 800, cursor: 'pointer' }}>{busy ? 'PDF wird erstellt …' : 'Bereich als PDF herunterladen'}</button>
+    <button className="public-helper-pdf-button" type="button" disabled={busy} onClick={download} style={{ padding: '12px 16px', border: 0, borderRadius: 7, background: 'var(--accent-gold)', color: '#172033', fontWeight: 800, cursor: 'pointer' }}>{busy ? 'PDF wird erstellt …' : 'Bereich als PDF herunterladen'}</button>
     {error && <p role="alert" className="auth-error">{error}</p>}
     {renderCard && <div aria-hidden="true" style={{ position: 'fixed', left: -10000, top: 0, pointerEvents: 'none' }}>
       <div ref={card} style={{ width: 960, padding: 24, background: '#FFFFFF', color: '#172033', fontFamily: 'Arial, sans-serif', fontSize: 13 }}>

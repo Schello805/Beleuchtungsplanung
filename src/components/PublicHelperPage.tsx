@@ -101,7 +101,10 @@ const PublicAreaMap: React.FC<{ info: PublicHelperInfo }> = ({ info }) => {
     }
     else map.setView([49.174, 10.56], 14);
     window.setTimeout(() => map.invalidateSize(), 0);
+    const resizeObserver = new ResizeObserver(() => map.invalidateSize({ pan: false }));
+    resizeObserver.observe(container);
     return () => {
+      resizeObserver.disconnect();
       map.remove();
       mapRef.current = null;
       tileLayerRef.current = null;
@@ -168,11 +171,11 @@ export const PublicHelperPage: React.FC<Props> = ({ info }) => {
     <main className="public-helper-page">
       <section className="public-helper-card">
         <p className="auth-kicker">LICHTERNACHT BECHHOFEN</p>
-        <h1>Dein Bereich</h1>
+        <h1>Ihr Bereich</h1>
         <h2>{info.name}</h2>
-        <PublicPdfDownload info={info} />
-        <div className="public-helper-distance">{Math.round(meters)} Meter</div>
-        <p className="public-helper-intro">Bitte schmücke die folgenden Straßenabschnitte. Die farbige Linie führt jeweils eindeutig von <b>A (Start)</b> nach <b>B (Ende)</b>. Lichter und benötigtes Material bringst du selbst mit.</p>
+        <div className="public-helper-summary"><div className="public-helper-distance">{Math.round(meters)} Meter</div><PublicPdfDownload info={info} /></div>
+        <p className="public-helper-intro">Bitte schmücken Sie die folgenden Straßenabschnitte. Die farbige Linie führt jeweils eindeutig von <b>A (Start)</b> nach <b>B (Ende)</b>. Lichter und benötigtes Material bringen Sie selbst mit.</p>
+        <div className="public-helper-layout">
         <div className="public-helper-sections">
           {info.sections.map((section, index) => {
             const endpoints = getSectionEndpoints(section);
@@ -181,12 +184,14 @@ export const PublicHelperPage: React.FC<Props> = ({ info }) => {
               <MapPin size={16} /><span><strong>{section.label}</strong><small>{section.street_name} · {Math.round(section.length_meters)} m</small>
                 <small><b>Beleuchtung:</b> {lightingSideText(section.lighting_side)}</small>
                 {endpoints && <small><b>Start A{suffix}</b> → <b>Ende B{suffix}</b> · auf der Karte markiert</small>}
+                {section.notes && <small style={{ whiteSpace: 'pre-wrap' }}><b>Hinweis:</b> {section.notes}</small>}
               </span>
             </div>;
           })}
         </div>
         <PublicAreaMap info={info} />
-        <p className="public-helper-footnote">Dieser Link zeigt ausschließlich deinen persönlichen Aufgabenbereich.</p>
+        </div>
+        <p className="public-helper-footnote">Dieser Link zeigt ausschließlich Ihren persönlichen Aufgabenbereich.</p>
       </section>
     </main>
   );
