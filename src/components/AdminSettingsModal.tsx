@@ -61,7 +61,7 @@ const fieldLabels: Record<string, string> = {
   smtp_security: 'Verschlüsselung',
   smtp_user: 'SMTP-Benutzer',
   smtp_from: 'Absender-Adresse',
-  smtp_cc: 'Admin-Kopie (CC)'
+  smtp_cc: 'Admin-Kopie (BCC)'
 };
 
 const Field: React.FC<{ name: string; values: SettingValues; onChange: (name: string, value: string) => void; placeholder?: string; type?: string; inputMode?: React.HTMLAttributes<HTMLInputElement>['inputMode'] }> = ({ name, values, onChange, placeholder, type = 'text', inputMode }) => (
@@ -295,7 +295,7 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({ isOpen, 
           <div className="admin-template-field">Nachricht<MailTextEditor value={values.mail_body || ''} onChange={value => change('mail_body', value)} /></div>
           <label><input type="checkbox" checked={recoverPrevious} onChange={e => setRecoverPrevious(e.target.checked)} /> Bisheriges Versandprotokoll übernehmen (gleiche Rundmail fortsetzen)</label>
           {queue && queue.deliveries.length > 0 && <div className="admin-mail-log">
-            <strong>Versandauftrag · eine Empfängeradresse alle 30 Sekunden</strong>
+            <strong>Versandauftrag · eine Helfer-Mail inklusive Admin-BCC alle 30 Sekunden</strong>
             <span>Versandprozess: {queue.lastTickAt ? `zuletzt aktiv ${new Date(queue.lastTickAt).toLocaleTimeString('de-DE')}` : 'Kein Lebenszeichen vom Versandprozess – Serverstart prüfen.'}</span>
             {queue.lastWorkerError && <span role="alert">Fehler im Versandprozess: {queue.lastWorkerError}</span>}
             <span role="status">Letzte Statusabfrage: {queueLoadedAt ? queueLoadedAt.toLocaleTimeString('de-DE') : 'lädt …'} · automatisch alle 5 Sekunden</span>

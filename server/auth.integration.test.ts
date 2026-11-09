@@ -118,13 +118,13 @@ describe('user invitation and first login', () => {
   });
 
   it('persists recipient progress and never resends accepted addresses when continuing a campaign', async () => {
-    const { enqueueCampaign, processMailQueue, legacyDeliveryStatus, queueStatus } = await import('./mailQueue.ts');
+    const { enqueueCampaign, processMailQueue, legacyDeliveryStatus, queueStatus, splitRecipients } = await import('./mailQueue.ts');
     expect(legacyDeliveryStatus({ status: 'failed', error_message: 'Connection timeout' }, 'a@example.test').status).toBe('unknown');
     expect(legacyDeliveryStatus({ status: 'failed', error_message: 'Mailserver hat abgelehnt: admin@example.test. Bereits angenommen: a@example.test. Bitte nicht erneut senden' }, 'a@example.test').status).toBe('sent');
     const items = [{ helperId: 'test', helperName: 'Test', to: 'a@example.test, b@example.test', cc: 'admin@example.test', subject: 'Test', text: 'Test', html: '<p>Test</p>' }];
     enqueueCampaign('test-campaign', items, false);
     const sent: string[] = [];
-    const send = async (item: any) => { sent.push(item.recipient); return { accepted: [item.recipient], rejected: [] }; };
+    const send = async (item: any) => { sent.push(item.recipient); return { accepted: [item.recipient, ...splitRecipients(item.cc || '')], rejected: [] }; };
     const now = Date.now() + 1000;
     await processMailQueue(send, now);
     await processMailQueue(send, now + 1000);
@@ -132,11 +132,11 @@ describe('user invitation and first login', () => {
     enqueueCampaign('test-campaign', items, false);
     await processMailQueue(send, now + 31_000);
     await processMailQueue(send, now + 62_000);
-    expect(new Set(sent).size).toBe(3);
-    expect(queueStatus().deliveries.filter((item: any) => item.status === 'sent')).toHaveLength(3);
+    expect(new Set(sent).size).toBe(2);
+    expect(queueStatus().deliveries.filter((item: any) => item.status === 'sent')).toHaveLength(2);
     enqueueCampaign('test-campaign', items, false);
     await processMailQueue(send, now + 93_000);
-    expect(sent).toHaveLength(3);
+    expect(sent).toHaveLength(2);
     const { isSafeConnectionFailure } = await import('./mailQueue.ts');
     expect(isSafeConnectionFailure({ message: 'Connection timeout' })).toBe(true);
     expect(isSafeConnectionFailure({ message: 'TLS handshake timed out' })).toBe(true);
@@ -146,10 +146,18 @@ describe('user invitation and first login', () => {
     expect(queueStatus().deliveries[0]).toMatchObject({ status: 'pending', error: 'Connection timeout' });
     const retryClock = queueStatus().nextAt;
     await processMailQueue(send, retryClock - 1);
-    expect(sent).toHaveLength(3);
+    expect(sent).toHaveLength(2);
     await processMailQueue(send, retryClock + 1);
-    expect(sent).toHaveLength(4);
+    expect(sent).toHaveLength(3);
     expect(queueStatus().deliveries[0]).toMatchObject({ status: 'sent' });
+    enqueueCampaign('bcc-rejected', [{ ...items[0], to: 'accepted@example.test' }], false);
+    await processMailQueue(async () => ({ accepted: ['accepted@example.test'], rejected: ['admin@example.test'] }), retryClock + 31_001);
+    expect(queueStatus().deliveries[0]).toMatchObject({ status: 'sent', error: 'Admin-BCC nicht bestätigt: admin@example.test.' });
+    enqueueCampaign('bcc-rejected', [{ ...items[0], to: 'accepted@example.test' }], false);
+    const { vi } = await import('vitest');
+    const noDuplicate = vi.fn();
+    await processMailQueue(noDuplicate, retryClock + 62_001);
+    expect(noDuplicate).not.toHaveBeenCalled();
   });
 
   it('previews and queues only the selected helper, with idempotent retries and explicit resending', async () => {
@@ -171,11 +179,12 @@ describe('user invitation and first login', () => {
       const sent = await request('/api/mail/helpers', { method: 'POST', headers, body: JSON.stringify(payload) });
       expect(sent.response.status).toBe(200);
     }
-    expect(db.prepare('SELECT recipient FROM mail_deliveries ORDER BY recipient').all()).toEqual([{ recipient: 'copy@example.test' }, { recipient: 'selected@example.test' }]);
+    expect(db.prepare('SELECT recipient FROM mail_deliveries ORDER BY recipient').all()).toEqual([{ recipient: 'selected@example.test' }]);
+    expect(db.prepare('SELECT cc FROM mail_deliveries').get()).toEqual({ cc: 'copy@example.test' });
     db.exec("UPDATE mail_deliveries SET status = 'sent'");
     const resend = await request('/api/mail/helpers', { method: 'POST', headers, body: JSON.stringify({ ...payload, requestId: '22222222-2222-4222-8222-222222222222' }) });
     expect(resend.response.status).toBe(200);
-    expect(db.prepare('SELECT * FROM mail_deliveries').all()).toHaveLength(4);
+    expect(db.prepare('SELECT * FROM mail_deliveries').all()).toHaveLength(2);
     const invalid = await request('/api/mail/helpers', { method: 'POST', headers, body: JSON.stringify({ single: true, requestId: payload.requestId }) });
     expect(invalid.response.status).toBe(400);
   });

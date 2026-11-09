@@ -197,7 +197,7 @@ async function sendUserInviteEmail(user: UserRecord, token: string, inviteUrl: s
       actionUrl: inviteUrl,
       actionLabel: 'Passwort jetzt erstellen & aktivieren'
     });
-    await sendCheckedMail(transport, { from, to: user.email, cc: settings.smtp_cc?.trim() || undefined, subject, text: `${message}\n\n${inviteUrl}`, html });
+    await sendCheckedMail(transport, { from, to: user.email, bcc: settings.smtp_cc?.trim() || undefined, subject, text: `${message}\n\n${inviteUrl}`, html });
     dbService.addMailLog({ recipient: user.email, subject, status: 'sent' });
     return { success: true };
   } catch (err: any) {
@@ -831,7 +831,7 @@ app.post('/api/mail/test', async (req, res) => {
     const subject = `[Test] ${settings.event_name || 'Lichternacht'} – Versand eingerichtet`;
     const text = 'Dies ist eine Test-E-Mail des Lichternacht-Streckenplaners. Der SMTP-Versand ist erreichbar.';
     const html = renderEmailHtml({ eventName: settings.event_name || 'Lichternacht', heading: 'SMTP-Test erfolgreich', message: text });
-    await sendCheckedMail(transport, { from, to: recipient, cc: settings.smtp_cc?.trim() || undefined, subject, text, html });
+    await sendCheckedMail(transport, { from, to: recipient, bcc: settings.smtp_cc?.trim() || undefined, subject, text, html });
     dbService.addMailLog({ recipient, subject, status: 'test' });
     res.json({ success: true });
   } catch (err: any) {
@@ -889,7 +889,7 @@ app.post('/api/mail/helpers/preview', async (_req, res) => {
     const { transport, from, settings } = getSmtpTransport();
     const recipient = settings.smtp_cc?.trim().toLowerCase();
     if (!recipient || !/^\S+@\S+\.\S+$/.test(recipient)) {
-      throw new Error('Bitte zuerst unter „Admin-Kopie (CC)“ eine gültige Admin-E-Mail-Adresse speichern.');
+      throw new Error('Bitte zuerst unter „Admin-Kopie (BCC)“ eine gültige Admin-E-Mail-Adresse speichern.');
     }
     const baseUrl = (settings.public_base_url || '').trim().replace(/\/$/, '');
     if (!baseUrl.startsWith('https://')) throw new Error('Bitte zuerst die öffentliche HTTPS-Adresse in den Grundeinstellungen speichern.');
@@ -984,7 +984,7 @@ export { app };
 if (process.env.NODE_ENV !== 'test') {
   setInterval(() => { void processMailQueue(async item => {
     const { transport, from } = getSmtpTransport();
-    return transport.sendMail({ from, to: item.recipient, subject: item.subject, text: item.text, html: item.html });
+    return transport.sendMail({ from, to: item.recipient, bcc: item.cc || undefined, subject: item.subject, text: item.text, html: item.html });
   }).catch(error => console.error('Versandwarteschlange:', error.message)); }, 5000).unref();
   app.listen(PORT, HOST, () => {
     console.log(`Lichternacht Backend Server läuft auf ${HOST}:${PORT}`);

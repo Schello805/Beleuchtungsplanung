@@ -29,7 +29,7 @@ export function SingleHelperMailModal({ helper, onClose }: { helper: Helper; onC
     <section className="single-mail-dialog" role="dialog" aria-modal="true" aria-labelledby="single-mail-title" onClick={event => event.stopPropagation()}>
       <h2 id="single-mail-title">E-Mail an {helper.name}</h2>
       {preview ? <>
-        <p><strong>An:</strong> {preview.to}<br /><strong>Admin-Kopie:</strong> {preview.cc || 'Keine Adresse eingestellt'}<br /><strong>Betreff:</strong> {preview.subject}</p>
+        <p><strong>An:</strong> {preview.to}<br /><strong>Admin-Blindkopie (BCC):</strong> {preview.cc || 'Keine Adresse eingestellt'}<br /><strong>Betreff:</strong> {preview.subject}</p>
         <iframe title="E-Mail-Vorschau" sandbox="" srcDoc={preview.html} />
         <p>Nur dieser Helfer wird angeschrieben. Verwendet wird die gespeicherte Mailvorlage mit seinem persönlichen Bereich.</p>
       </> : !error && <p>Vorschau wird geladen …</p>}

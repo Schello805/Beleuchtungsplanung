@@ -9,6 +9,10 @@ CREATE TABLE IF NOT EXISTS mail_deliveries (
  UNIQUE(campaign_id, helper_id, recipient));
 CREATE TABLE IF NOT EXISTS mail_queue_clock (id INTEGER PRIMARY KEY, next_at INTEGER NOT NULL);
 INSERT OR IGNORE INTO mail_queue_clock VALUES (1, 0);`);
+if (!(db.prepare('PRAGMA table_info(mail_deliveries)').all() as Array<{ name: string }>).some(column => column.name === 'cc')) {
+  // Keep the legacy setting/column name; copies are sent via SMTP BCC.
+  db.exec("ALTER TABLE mail_deliveries ADD COLUMN cc TEXT NOT NULL DEFAULT ''");
+}
 db.prepare("UPDATE mail_deliveries SET status = 'unknown', error = 'Server während Versand neu gestartet. Annahme unklar; bitte prüfen.' WHERE status = 'sending'").run();
 // These errors occur before SMTP can transmit a message, so retrying is safe.
 db.prepare("UPDATE mail_deliveries SET status = 'pending' WHERE status = 'unknown' AND error IN ('Connection timeout', 'TLS handshake timed out', 'Greeting never received')").run();
@@ -22,7 +26,7 @@ let lastTickAt = 0;
 let busySince = 0;
 let lastWorkerError: string | null = null;
 
-export type Delivery = { id: string; campaign_id: string; helper_id: string; helper_name: string; recipient: string; subject: string; text: string; html: string; status: string; error: string | null; updated_at: string };
+export type Delivery = { id: string; campaign_id: string; helper_id: string; helper_name: string; recipient: string; cc: string; subject: string; text: string; html: string; status: string; error: string | null; updated_at: string };
 export const splitRecipients = (value: string) => [...new Set(value.split(/[,;\n]+/).map(address => address.trim().toLowerCase()).filter(Boolean))];
 
 export function legacyDeliveryStatus(log: { status: string; error_message?: string | null } | undefined, address: string): { status: string; error: string | null } {
@@ -43,12 +47,13 @@ export function enqueueCampaign(id: string, items: Array<{ helperId: string; hel
       if (db.prepare("SELECT id FROM mail_deliveries WHERE status IN ('pending', 'sending', 'unknown') LIMIT 1").get()) throw new Error('Es besteht bereits ein Versandauftrag mit offenen oder unklaren Empfängern. Bitte zuerst diesen Auftrag prüfen und abschließen.');
       db.prepare('INSERT INTO mail_campaigns VALUES (?, ?)').run(id, new Date().toISOString());
       for (const item of items) {
-        const addresses = splitRecipients(`${item.to},${item.cc}`);
-        if (!addresses.length || addresses.some(address => !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(address))) throw new Error(`Ungültige E-Mail-Adresse bei ${item.helperName}`);
+        const addresses = splitRecipients(item.to);
+        const copies = splitRecipients(item.cc);
+        if (!addresses.length || [...addresses, ...copies].some(address => !/^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/.test(address))) throw new Error(`Ungültige E-Mail-Adresse bei ${item.helperName}`);
         const log = recover ? db.prepare("SELECT status, error_message FROM mail_log WHERE helper_id = ? AND subject = ? AND status != 'test' ORDER BY created_at DESC LIMIT 1").get(item.helperId, item.subject) as { status: string; error_message?: string | null } | undefined : undefined;
         for (const recipient of addresses) {
           const prior = legacyDeliveryStatus(log, recipient);
-          db.prepare('INSERT INTO mail_deliveries VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(crypto.randomUUID(), id, item.helperId, item.helperName, recipient, item.subject, item.text, item.html, prior.status, prior.error, new Date().toISOString());
+          db.prepare('INSERT INTO mail_deliveries (id, campaign_id, helper_id, helper_name, recipient, subject, text, html, status, error, updated_at, cc) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(crypto.randomUUID(), id, item.helperId, item.helperName, recipient, item.subject, item.text, item.html, prior.status, prior.error, new Date().toISOString(), copies.filter(address => address !== recipient).join(', '));
         }
       }
     }
@@ -87,9 +92,14 @@ export async function processMailQueue(send: (item: Delivery) => Promise<any>, n
     let status = 'sent', error: string | null = null;
     try {
       const info = await send(item);
-      if (!(info.accepted || []).some((address: any) => String(typeof address === 'string' ? address : address.address).toLowerCase() === item.recipient)) {
+      const accepted = (info.accepted || []).map((address: any) => String(typeof address === 'string' ? address : address.address).toLowerCase());
+      // Never send the main message again just because a BCC address was rejected.
+      const missingCopies = splitRecipients(item.cc).filter(address => !accepted.includes(address));
+      if (missingCopies.length) error = `Admin-BCC nicht bestätigt: ${missingCopies.join(', ')}.`;
+      if (!accepted.includes(item.recipient)) {
         status = (info.rejected || []).length ? 'failed' : 'unknown';
         error = 'Mailserver hat diese Adresse nicht als angenommen bestätigt.';
+        db.prepare('UPDATE mail_deliveries SET cc = ? WHERE id = ?').run(missingCopies.join(', '), item.id);
       }
     } catch (err: any) {
       error = err.message || String(err);
