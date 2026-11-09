@@ -152,6 +152,34 @@ describe('user invitation and first login', () => {
     expect(queueStatus().deliveries[0]).toMatchObject({ status: 'sent' });
   });
 
+  it('previews and queues only the selected helper, with idempotent retries and explicit resending', async () => {
+    const { db, dbService } = await import('./db.ts');
+    db.exec('DELETE FROM mail_deliveries; DELETE FROM mail_campaigns;');
+    process.env.SMTP_PASSWORD = 'test-only';
+    for (const [key, value] of Object.entries({ smtp_host: 'smtp.example.test', smtp_user: 'admin@example.test', smtp_from: 'admin@example.test', smtp_cc: 'copy@example.test', public_base_url: 'https://example.test' })) dbService.setSetting(key, value);
+    const selected = dbService.addHelper('Einzelversand Test', undefined, undefined, 'selected@example.test');
+    dbService.addHelper('Nicht anschreiben', undefined, undefined, 'other@example.test');
+    const login = await request('/api/auth/login', { method: 'POST', body: JSON.stringify({ email: 'admin@example.test', password: 'AdminPasswort8' }) });
+    const headers = { Cookie: login.response.headers.get('set-cookie')!.split(';')[0] };
+    const preview = await request('/api/mail/helpers', { method: 'POST', headers, body: JSON.stringify({ helperIds: [selected.id], preview: true }) });
+    expect(preview.response.status, JSON.stringify(preview.body)).toBe(200);
+    expect(preview.body.to).toBe('selected@example.test');
+    expect(preview.body.html).toContain('Einzelversand Test');
+    expect(db.prepare('SELECT * FROM mail_deliveries').all()).toHaveLength(0);
+    const payload = { single: true, helperIds: [selected.id], requestId: '11111111-1111-4111-8111-111111111111' };
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const sent = await request('/api/mail/helpers', { method: 'POST', headers, body: JSON.stringify(payload) });
+      expect(sent.response.status).toBe(200);
+    }
+    expect(db.prepare('SELECT recipient FROM mail_deliveries ORDER BY recipient').all()).toEqual([{ recipient: 'copy@example.test' }, { recipient: 'selected@example.test' }]);
+    db.exec("UPDATE mail_deliveries SET status = 'sent'");
+    const resend = await request('/api/mail/helpers', { method: 'POST', headers, body: JSON.stringify({ ...payload, requestId: '22222222-2222-4222-8222-222222222222' }) });
+    expect(resend.response.status).toBe(200);
+    expect(db.prepare('SELECT * FROM mail_deliveries').all()).toHaveLength(4);
+    const invalid = await request('/api/mail/helpers', { method: 'POST', headers, body: JSON.stringify({ single: true, requestId: payload.requestId }) });
+    expect(invalid.response.status).toBe(400);
+  });
+
   it('limits repeated failed login attempts', async () => {
     let status = 0;
     for (let attempt = 0; attempt < 21; attempt++) {

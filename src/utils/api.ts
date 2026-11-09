@@ -671,8 +671,13 @@ out body geom;`;
     const res = await fetch(`${API_BASE}/mail/queue/${encodeURIComponent(id)}/retry`, { method: 'POST' });
     if (!res.ok) throw new Error('Freigabe fehlgeschlagen.');
   },
-  async sendHelperMails(recoverPrevious = false): Promise<{ sent: number; failed: number; eligible: number }> {
-    const res = await fetch(`${API_BASE}/mail/helpers`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ recoverPrevious }) });
+  async previewSingleHelperMail(helperId: string): Promise<{ helperName: string; to: string; cc: string; subject: string; html: string }> {
+    const res = await fetch(`${API_BASE}/mail/helpers`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ helperIds: [helperId], preview: true }) });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Vorschau konnte nicht geladen werden.');
+    return res.json();
+  },
+  async sendHelperMails(recoverPrevious = false, single?: { helperId: string; requestId: string }): Promise<{ sent: number; failed: number; eligible: number }> {
+    const res = await fetch(`${API_BASE}/mail/helpers`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ recoverPrevious: single ? false : recoverPrevious, ...(single ? { single: true, helperIds: [single.helperId], requestId: single.requestId } : {}) }) });
     if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Helfer-E-Mails konnten nicht gesendet werden.');
     return await res.json();
   },

@@ -384,8 +384,8 @@ export const dbService = {
   addHelper(name: string, color?: string, phone?: string, email?: string): HelperRecord {
     const id = 'h-' + Date.now() + '-' + Math.random().toString(36).substring(2, 6);
     const created_at = new Date().toISOString();
-    db.prepare('INSERT INTO helpers (id, name, color, phone, email, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-      .run(id, name.trim(), color || '#3B82F6', phone || '', email?.trim().toLowerCase() || '', created_at);
+    db.prepare('INSERT INTO helpers (id, name, color, phone, email, created_at, public_token) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .run(id, name.trim(), color || '#3B82F6', phone || '', email?.trim().toLowerCase() || '', created_at, crypto.randomBytes(24).toString('base64url'));
     return { id, name: name.trim(), color, phone, email, created_at };
   },
 

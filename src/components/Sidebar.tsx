@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import {
   Users,
+  Mail,
   MapPin,
   BarChart3,
   Printer,
@@ -30,6 +31,7 @@ import {
   Zap
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import { SingleHelperMailModal } from './SingleHelperMailModal';
 import type { Section, Helper, Street } from '../utils/api';
 import { exportSectionsToExcel, exportHelpersToExcel, exportSectionsToCSV, exportSectionsToGeoJSON, exportSectionsToGPX } from '../utils/export';
 import { calculateStationFirstAssignment, DEFAULT_FAIRNESS_RULES } from '../utils/fairness';
@@ -115,6 +117,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [newHelperName, setNewHelperName] = useState<string>('');
   const [editingHelperId, setEditingHelperId] = useState<string | null>(null);
   const [editHelperName, setEditHelperName] = useState<string>('');
+  const [mailHelper, setMailHelper] = useState<Helper | null>(null);
 
   // Auto assign dialog state
   const [isAutoAssigning, setIsAutoAssigning] = useState<boolean>(false);
@@ -1293,6 +1296,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         {assignedMeters > 0 ? `${assignedMeters} m (~${Math.max(1, Math.round(assignedMeters / candleSpacing))} 🕯️)` : '0 m'}
                       </span>
 
+                      <button type="button" onClick={() => setMailHelper(h)} disabled={!h.email}
+                        title={h.email ? `E-Mail an ${h.name} senden` : 'Keine E-Mail-Adresse hinterlegt'}
+                        aria-label={`E-Mail an ${h.name} senden`}
+                        style={{ background: 'transparent', border: '1px solid var(--border-subtle)', color: 'var(--accent-gold)', borderRadius: 4, padding: 5, cursor: h.email ? 'pointer' : 'not-allowed', opacity: h.email ? 1 : 0.4 }}>
+                        <Mail size={14} />
+                      </button>
                       {onSelectStampHelper && (
                         <button
                           type="button"
@@ -1910,6 +1919,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </div>}
       </div>
 
+      {mailHelper && <SingleHelperMailModal helper={mailHelper} onClose={() => setMailHelper(null)} />}
     </aside>
   );
 };

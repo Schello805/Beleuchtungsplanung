@@ -846,6 +846,8 @@ app.post('/api/mail/queue/:id/retry', (req, res) => { retryUnknown(req.params.id
 
 app.post('/api/mail/helpers', async (req, res) => {
   const requestedIds = Array.isArray(req.body?.helperIds) ? new Set(req.body.helperIds.map(String)) : null;
+  if (requestedIds && requestedIds.size !== 1) return res.status(400).json({ error: 'Bitte genau einen Helfer auswählen.' });
+  if (req.body?.single && (!requestedIds || typeof req.body.requestId !== 'string' || !/^[a-f0-9-]{36}$/i.test(req.body.requestId))) return res.status(400).json({ error: 'Ungültiger Einzelversand.' });
   try {
     const { transport, from, settings } = getSmtpTransport();
     const baseUrl = (settings.public_base_url || '').trim().replace(/\/$/, '');
@@ -869,7 +871,13 @@ app.post('/api/mail/helpers', async (req, res) => {
       });
       items.push({ helperId: helper.id, helperName: helper.name, to: helper.email!, cc: settings.smtp_cc || '', subject, text: plainMailText(text), html });
     }
-    const campaignId = crypto.createHash('sha256').update(JSON.stringify(items)).digest('hex');
+    if (requestedIds && items.length !== 1) throw new Error('Helfer nicht gefunden oder keine E-Mail-Adresse hinterlegt.');
+    if (req.body?.preview === true) {
+      if (!requestedIds) throw new Error('Bitte einen Helfer für die Vorschau auswählen.');
+      const { helperName, to, cc, subject, html } = items[0];
+      return res.json({ helperName, to, cc, subject, html });
+    }
+    const campaignId = crypto.createHash('sha256').update(JSON.stringify(items) + (req.body?.single ? req.body.requestId : '')).digest('hex');
     res.json({ success: true, sent: 0, failed: 0, eligible: helpers.length, ...enqueueCampaign(campaignId, items, req.body?.recoverPrevious === true) });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
