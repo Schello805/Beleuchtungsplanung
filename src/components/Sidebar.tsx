@@ -32,6 +32,7 @@ import {
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { SingleHelperMailModal } from './SingleHelperMailModal';
+import { SectionOverlapCheck } from './SectionOverlapCheck';
 import type { Section, Helper, Street } from '../utils/api';
 import { exportSectionsToExcel, exportHelpersToExcel, exportSectionsToCSV, exportSectionsToGeoJSON, exportSectionsToGPX } from '../utils/export';
 import { calculateStationFirstAssignment, DEFAULT_FAIRNESS_RULES } from '../utils/fairness';
@@ -1372,6 +1373,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* TAB 3: FAIRNESS & STATISTIK */}
         {activeTab === 'stats' && (
           <div>
+            <SectionOverlapCheck sections={sections} onSelect={id => { onSelectSection(id); onFocusSection?.(id); }} />
             <div style={{ padding: '11px 13px', borderRadius: 'var(--radius-md)', background: 'rgba(56,189,248,.09)', border: '1px solid rgba(56,189,248,.28)', marginBottom: 14 }}>
               <div style={{ fontWeight: 800, color: 'var(--text-main)', fontSize: 14 }}>Prüfen & nachbessern</div>
               <div style={{ marginTop: 3, color: 'var(--text-muted)', fontSize: 11, lineHeight: 1.4 }}>Klicke einen Helfer oder Abschnitt an, um ihn auf der Karte hervorzuheben. Offene und unfaire Bereiche werden hier zuerst sichtbar.</div>
