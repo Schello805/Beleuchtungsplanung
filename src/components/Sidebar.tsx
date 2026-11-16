@@ -1221,6 +1221,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       <input
                         type="text"
                         value={editHelperName}
+                        data-planning-editor="true"
                         onChange={e => setEditHelperName(e.target.value)}
                         autoFocus
                         style={{

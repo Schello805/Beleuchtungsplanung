@@ -6,6 +6,7 @@ import crypto from 'node:crypto';
 import nodemailer from 'nodemailer';
 import { sendCheckedMail } from './mailDelivery.ts';
 import { enqueueCampaign, queueStatus, retryUnknown, processMailQueue } from './mailQueue.ts';
+import { planningEvents, planningChanges } from './liveUpdates.ts';
 import { rateLimit } from 'express-rate-limit';
 import { filterImportedSettings, redactRequestUrl } from './security.ts';
 import { formatMailText, plainMailText } from '../src/utils/mailFormatting.ts';
@@ -208,6 +209,10 @@ async function sendUserInviteEmail(user: UserRecord, token: string, inviteUrl: s
 
 // Public helper links deliberately expose only the assigned work package. They
 // do not grant access to helpers, stations, planning data, or administration.
+app.get('/api/public/helpers/:token/events', (req, res) => {
+  if (!dbService.getPublicHelper(req.params.token)) return res.status(404).json({ error: 'Helfer-Link nicht verfügbar.' });
+  planningEvents(req, res);
+});
 app.get('/api/public/helpers/:token', (req, res) => {
   const result = dbService.getPublicHelper(req.params.token);
   if (!result) return res.status(404).json({ error: 'Dieser Helfer-Link ist nicht mehr gültig.' });
@@ -261,6 +266,9 @@ app.use('/api', (req, res, next) => {
   (req as AuthenticatedRequest).authUser = toSafeUser(user);
   next();
 });
+
+app.get('/api/events', planningEvents);
+app.use('/api', planningChanges);
 
 app.put('/api/auth/profile', passwordLimiter, (req, res) => {
   const identity = (req as AuthenticatedRequest).authUser!;

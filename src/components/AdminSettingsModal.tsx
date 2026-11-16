@@ -127,7 +127,7 @@ export const AdminSettingsModal: React.FC<AdminSettingsModalProps> = ({ isOpen, 
 
   const change = (name: string, value: string) => setValues(current => ({ ...current, [name]: value }));
   const persistValues = async () => {
-    await Promise.all(Object.entries(values).map(([key, value]) => api.setSetting(key, value.trim())));
+    for (const [key, value] of Object.entries(values)) await api.setSetting(key, value.trim());
     if (smtpPassword) await api.setSmtpPassword(smtpPassword);
     await onSaved();
   };

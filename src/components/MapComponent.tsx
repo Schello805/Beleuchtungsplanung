@@ -602,10 +602,12 @@ export const MapComponent: React.FC<MapComponentProps> = ({
 
   // Sidebar drilldowns deliberately move the map. Regular clicks directly on
   // the map do not set this request, so editing never unexpectedly re-centres.
+  const lastFocusRequest = useRef<typeof focusSectionRequest>(null);
   useEffect(() => {
-    if (!focusSectionRequest || !mapRef.current) return;
+    if (!focusSectionRequest || !mapRef.current || lastFocusRequest.current === focusSectionRequest) return;
     const section = sections.find(item => item.id === focusSectionRequest.id);
     if (!section?.geojson?.geometry) return;
+    lastFocusRequest.current = focusSectionRequest;
     const geometry = section.geojson.geometry;
     if (geometry.type === 'Point') {
       const [lon, lat] = geometry.coordinates;

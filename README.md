@@ -122,3 +122,9 @@ Für E-Mails werden SMTP-Host, Port, Benutzer und Absender unter **Admin → Ein
 
 Für die echte Internetfreigabe zusätzlich einen Reverse Proxy mit HTTPS (z. B. Caddy oder Nginx) und eine Firewall einsetzen. Port 3000 sollte dabei nicht direkt aus dem Internet erreichbar sein.
 
+### Automatische Aktualisierung
+
+Geöffnete Planungs- und Helferseiten erhalten Änderungen über Server-Sent Events. Zoom, Kartenausschnitt und die GPS-Anzeige bleiben erhalten. Während einer Bearbeitung werden fremde Aktualisierungen zurückgestellt. Veraltete Speicheranfragen werden vorsichtshalber bei zwischenzeitlichen Planänderungen mit einem Konflikthinweis abgelehnt; dann die Bearbeitung schließen, den aktualisierten Stand prüfen und erneut bearbeiten. Nach fremden Aktualisierungen wird die lokale Rückgängig-Historie verworfen, damit sie keine fremden Änderungen zurücksetzt.
+
+Der Reverse Proxy muss SSE-Verbindungen durchlassen (kein Puffern für `/api/events` und `/api/public/helpers/*/events`). Die Anwendung sendet `X-Accel-Buffering: no` und alle 25 Sekunden einen Heartbeat; der Browser verbindet sich bei Verbindungsabbruch automatisch erneut. Die Änderungsverteilung setzt einen einzelnen Node-Serverprozess voraus.
+

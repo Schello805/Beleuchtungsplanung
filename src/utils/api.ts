@@ -1,3 +1,4 @@
+import { planningFetch } from './liveUpdates';
 import * as turf from '@turf/turf';
 
 export interface Helper {
@@ -150,13 +151,13 @@ function clientStitchWays(ways: Array<{ geometry: Array<{ lat: number; lon: numb
 
 export const api = {
   async getSession(): Promise<{ authenticated: boolean; setupRequired?: boolean; user: AuthUser | null }> {
-    const res = await fetch(`${API_BASE}/auth/session`);
+    const res = await planningFetch(`${API_BASE}/auth/session`);
     if (!res.ok) throw new Error('Anmeldestatus konnte nicht geprüft werden.');
     return await res.json();
   },
 
   async login(email: string, password: string): Promise<AuthUser> {
-    const res = await fetch(`${API_BASE}/auth/login`, {
+    const res = await planningFetch(`${API_BASE}/auth/login`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email, password })
     });
     const data = await res.json().catch(() => ({}));
@@ -165,18 +166,18 @@ export const api = {
   },
 
   async logout(): Promise<void> {
-    await fetch(`${API_BASE}/auth/logout`, { method: 'POST' });
+    await planningFetch(`${API_BASE}/auth/logout`, { method: 'POST' });
   },
 
   async updateProfile(input: { displayName: string; email: string; currentPassword: string; newPassword: string }): Promise<AuthUser> {
-    const res = await fetch(`${API_BASE}/auth/profile`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
+    const res = await planningFetch(`${API_BASE}/auth/profile`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(input) });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Profil konnte nicht gespeichert werden.');
     return data;
   },
 
   async getUsers(): Promise<AuthUser[]> {
-    const res = await fetch(`${API_BASE}/users`);
+    const res = await planningFetch(`${API_BASE}/users`);
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || 'Benutzer konnten nicht geladen werden.');
     return data;
@@ -189,7 +190,7 @@ export const api = {
     role: UserRole;
     sendInviteMail?: boolean;
   }): Promise<{ user: AuthUser; mailSent: boolean; mailError?: string; inviteUrl?: string }> {
-    const res = await fetch(`${API_BASE}/users`, {
+    const res = await planningFetch(`${API_BASE}/users`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(input)
@@ -200,14 +201,14 @@ export const api = {
   },
 
   async reinviteUser(id: string): Promise<{ success: boolean; mailSent: boolean; mailError?: string; inviteUrl?: string }> {
-    const res = await fetch(`${API_BASE}/users/${encodeURIComponent(id)}/invite`, { method: 'POST' });
+    const res = await planningFetch(`${API_BASE}/users/${encodeURIComponent(id)}/invite`, { method: 'POST' });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || 'Einladung konnte nicht gesendet werden.');
     return data;
   },
 
   async updateUser(id: string, input: { email: string; displayName: string; role: UserRole }): Promise<AuthUser> {
-    const res = await fetch(`${API_BASE}/users/${encodeURIComponent(id)}`, {
+    const res = await planningFetch(`${API_BASE}/users/${encodeURIComponent(id)}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(input)
@@ -218,20 +219,20 @@ export const api = {
   },
 
   async deleteUser(id: string): Promise<void> {
-    const res = await fetch(`${API_BASE}/users/${encodeURIComponent(id)}`, { method: 'DELETE' });
+    const res = await planningFetch(`${API_BASE}/users/${encodeURIComponent(id)}`, { method: 'DELETE' });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || 'Benutzer konnte nicht gelöscht werden.');
   },
 
   async verifyResetToken(token: string): Promise<{ valid: boolean; email: string; displayName: string; role: UserRole }> {
-    const res = await fetch(`${API_BASE}/auth/verify-token?token=${encodeURIComponent(token)}`);
+    const res = await planningFetch(`${API_BASE}/auth/verify-token?token=${encodeURIComponent(token)}`);
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || 'Dieser Link ist ungültig oder abgelaufen.');
     return data;
   },
 
   async setPassword(token: string, password: string): Promise<AuthUser> {
-    const res = await fetch(`${API_BASE}/auth/set-password`, {
+    const res = await planningFetch(`${API_BASE}/auth/set-password`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ token, password })
@@ -242,7 +243,7 @@ export const api = {
   },
 
   async getPublicHelper(token: string): Promise<PublicHelperInfo> {
-    const res = await fetch(`${API_BASE}/public/helpers/${encodeURIComponent(token)}`);
+    const res = await planningFetch(`${API_BASE}/public/helpers/${encodeURIComponent(token)}`);
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || 'Helfer-Link konnte nicht geladen werden.');
     return data;
@@ -255,7 +256,7 @@ export const api = {
       const localSecs = localDB.getSections();
       if (localStreets.length > 0 || localSecs.length > 0) {
         console.log(`[Migration] Lokale Daten gefunden: ${localStreets.length} Straßen, ${localSecs.length} Abschnitte. Übertrage in zentrale SQLite-DB...`);
-        const res = await fetch(`${API_BASE}/database/migrate-local`, {
+        const res = await planningFetch(`${API_BASE}/database/migrate-local`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ streets: localStreets, sections: localSecs })
@@ -277,21 +278,21 @@ export const api = {
 
   // Database Status
   async getStatus(): Promise<{ status: string; database: string; helpersCount: number; streetsCount: number; sectionsCount: number }> {
-    const res = await fetch(`${API_BASE}/status`);
+    const res = await planningFetch(`${API_BASE}/status`);
     if (!res.ok) throw new Error('Backend nicht erreichbar');
     return await res.json();
   },
 
   // HELPERS (Zentral in SQLite)
   async getHelpers(): Promise<Helper[]> {
-    const res = await fetch(`${API_BASE}/helpers`);
+    const res = await planningFetch(`${API_BASE}/helpers`);
     if (!res.ok) throw new Error('Fehler beim Laden der Helfer aus SQLite');
     const data = await res.json();
     return data;
   },
 
   async addHelper(name: string, color?: string, phone?: string, email?: string): Promise<Helper> {
-    const res = await fetch(`${API_BASE}/helpers`, {
+    const res = await planningFetch(`${API_BASE}/helpers`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, color, phone, email })
@@ -301,7 +302,7 @@ export const api = {
   },
 
   async updateHelper(id: string, name: string, color?: string, phone?: string, email?: string): Promise<void> {
-    const res = await fetch(`${API_BASE}/helpers/${id}`, {
+    const res = await planningFetch(`${API_BASE}/helpers/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ name, color, phone, email })
@@ -310,17 +311,17 @@ export const api = {
   },
 
   async deleteHelper(id: string): Promise<void> {
-    const res = await fetch(`${API_BASE}/helpers/${id}`, { method: 'DELETE' });
+    const res = await planningFetch(`${API_BASE}/helpers/${id}`, { method: 'DELETE' });
     if (!res.ok) throw new Error('Fehler beim Löschen des Helfers in SQLite');
   },
 
   async deleteAllHelpers(): Promise<void> {
-    const res = await fetch(`${API_BASE}/helpers/all`, { method: 'DELETE' });
+    const res = await planningFetch(`${API_BASE}/helpers/all`, { method: 'DELETE' });
     if (!res.ok) throw new Error('Fehler beim Löschen aller Helfer in SQLite');
   },
 
   async importHelpers(helpers: Array<{ name: string; phone?: string; email?: string; color?: string }>, mode: 'replace' | 'append' | 'sync' = 'replace'): Promise<number> {
-    const res = await fetch(`${API_BASE}/helpers/import`, {
+    const res = await planningFetch(`${API_BASE}/helpers/import`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ helpers, mode })
@@ -334,14 +335,14 @@ export const api = {
   },
 
   async reconcileStations(stations: Array<{ name: string }>): Promise<{ missing: Array<{ id: string; name: string }>; returning: Array<{ id: string; name: string; recordedAt?: string; sections: Array<{ id: string; label: string; meters: number; exists: boolean; currentHelperId?: string | null; currentHelperName?: string | null }> }> }> {
-    const res = await fetch(`${API_BASE}/helpers/reconcile-stations`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ stations }) });
+    const res = await planningFetch(`${API_BASE}/helpers/reconcile-stations`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ stations }) });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || 'Abgleich fehlgeschlagen.');
     return data;
   },
 
   async importStations(stations: Array<{ stationId: string; name: string; address?: string; latitude: number; longitude: number }>, archiveMissing = false): Promise<{ imported: number; created: number; updated: number }> {
-    const res = await fetch(`${API_BASE}/helpers/import-stations`, {
+    const res = await planningFetch(`${API_BASE}/helpers/import-stations`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ stations, archiveMissing })
@@ -355,18 +356,18 @@ export const api = {
 
   // STREETS (Zentral in SQLite)
   async getStreets(): Promise<Street[]> {
-    const res = await fetch(`${API_BASE}/streets`);
+    const res = await planningFetch(`${API_BASE}/streets`);
     if (!res.ok) throw new Error('Fehler beim Laden der Straßen aus SQLite');
     return await res.json();
   },
 
   async deleteStreet(id: string): Promise<void> {
-    const res = await fetch(`${API_BASE}/streets/${id}`, { method: 'DELETE' });
+    const res = await planningFetch(`${API_BASE}/streets/${id}`, { method: 'DELETE' });
     if (!res.ok) throw new Error('Fehler beim Löschen der Straße in SQLite');
   },
 
   async getSections(): Promise<Section[]> {
-    const res = await fetch(`${API_BASE}/sections`);
+    const res = await planningFetch(`${API_BASE}/sections`);
     if (!res.ok) throw new Error('Fehler beim Laden der Abschnitte aus SQLite');
     const data: Section[] = await res.json();
     return data.map(s => ({
@@ -377,7 +378,7 @@ export const api = {
   },
 
   async updateSection(id: string, updates: { assigned_helper_id?: string | null; assigned_helper_name?: string | null; notes?: string; geojson?: GeoJSON.Feature<GeoJSON.LineString>; length_meters?: number; lighting_side?: 'both' | 'left' | 'right' }): Promise<void> {
-    const res = await fetch(`${API_BASE}/sections/${id}`, {
+    const res = await planningFetch(`${API_BASE}/sections/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(updates)
@@ -386,7 +387,7 @@ export const api = {
   },
 
   async batchAssignHelpers(assignments: Array<{ sectionId: string; helperId: string | null; helperName: string | null }>): Promise<void> {
-    const res = await fetch(`${API_BASE}/sections/batch-assign`, {
+    const res = await planningFetch(`${API_BASE}/sections/batch-assign`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ assignments })
@@ -395,12 +396,12 @@ export const api = {
   },
 
   async deleteSection(id: string): Promise<void> {
-    const res = await fetch(`${API_BASE}/sections/${id}`, { method: 'DELETE' });
+    const res = await planningFetch(`${API_BASE}/sections/${id}`, { method: 'DELETE' });
     if (!res.ok) throw new Error('Fehler beim Löschen des Abschnitts in SQLite');
   },
 
   async saveStreetWithSections(street: any, sections: any[]): Promise<void> {
-    const res = await fetch(`${API_BASE}/streets/save-with-sections`, {
+    const res = await planningFetch(`${API_BASE}/streets/save-with-sections`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ street, sections })
@@ -412,7 +413,7 @@ export const api = {
   },
 
   async saveBatchStreetsWithSections(batch: Array<{ street: any; sections: any[] }>): Promise<void> {
-    const res = await fetch(`${API_BASE}/streets/save-batch`, {
+    const res = await planningFetch(`${API_BASE}/streets/save-batch`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ batch })
@@ -424,7 +425,7 @@ export const api = {
   },
 
   async replaceAllSections(sections: any[]): Promise<void> {
-    const res = await fetch(`${API_BASE}/sections/replace-all`, {
+    const res = await planningFetch(`${API_BASE}/sections/replace-all`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ sections })
@@ -441,7 +442,7 @@ export const api = {
       const params = new URLSearchParams();
       if (searchArea?.city) params.set('city', searchArea.city);
       if (searchArea?.postalCode) params.set('postalCode', searchArea.postalCode);
-      const res = await fetch(`${API_BASE}/overpass/streets${params.size ? `?${params}` : ''}`);
+      const res = await planningFetch(`${API_BASE}/overpass/streets${params.size ? `?${params}` : ''}`);
       if (res.ok) return await res.json();
     } catch {}
 
@@ -449,7 +450,7 @@ export const api = {
 
     // Fallback: load pre-compiled local Bechhofen streets dataset
     try {
-      const res = await fetch('/data/bechhofen_streets_osm.json');
+      const res = await planningFetch('/data/bechhofen_streets_osm.json');
       if (res.ok) {
         const data = await res.json();
         return Object.keys(data).sort((a, b) => a.localeCompare(b, 'de'));
@@ -470,7 +471,7 @@ export const api = {
       const params = new URLSearchParams({ name: streetName });
       if (searchArea?.city) params.set('city', searchArea.city);
       if (searchArea?.postalCode) params.set('postalCode', searchArea.postalCode);
-      const res = await fetch(`${API_BASE}/overpass/street-geometry?${params}`);
+      const res = await planningFetch(`${API_BASE}/overpass/street-geometry?${params}`);
       if (res.ok) return await res.json();
     } catch {}
 
@@ -483,7 +484,7 @@ export const api = {
 
     // 2. Direct client fallback: load pre-compiled local Bechhofen street dataset
     try {
-      const localRes = await fetch('/data/bechhofen_streets_osm.json');
+      const localRes = await planningFetch('/data/bechhofen_streets_osm.json');
       if (localRes.ok) {
         const localData = await localRes.json();
         const normalize = (s: string) => s.trim().toLowerCase()
@@ -535,7 +536,7 @@ out body geom;`;
 
     for (const ep of endpoints) {
       try {
-        const res = await fetch(ep, {
+        const res = await planningFetch(ep, {
           method: 'POST',
           headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
           body: 'data=' + encodeURIComponent(q)
@@ -562,14 +563,14 @@ out body geom;`;
   // ROUTING (Foot / Pedestrian)
   async getFootRoute(startLon: number, startLat: number, endLon: number, endLat: number): Promise<{ distanceMeters: number; geometry: GeoJSON.LineString }> {
     try {
-      const res = await fetch(`${API_BASE}/routing/foot?startLon=${startLon}&startLat=${startLat}&endLon=${endLon}&endLat=${endLat}`);
+      const res = await planningFetch(`${API_BASE}/routing/foot?startLon=${startLon}&startLat=${startLat}&endLon=${endLon}&endLat=${endLat}`);
       if (res.ok) return await res.json();
     } catch {}
 
     // Direct browser OSRM query
     try {
       const url = `https://routing.openstreetmap.de/routed-foot/route/v1/foot/${startLon},${startLat};${endLon},${endLat}?overview=full&geometries=geojson`;
-      const res = await fetch(url);
+      const res = await planningFetch(url);
       if (res.ok) {
         const data = await res.json();
         if (data.code === 'Ok' && data.routes?.length > 0) {
@@ -590,7 +591,7 @@ out body geom;`;
   // EXPORT & IMPORT
   async exportDatabase(): Promise<Blob> {
     try {
-      const res = await fetch(`${API_BASE}/database/export`);
+      const res = await planningFetch(`${API_BASE}/database/export`);
       if (res.ok) return await res.blob();
     } catch {}
 
@@ -605,7 +606,7 @@ out body geom;`;
 
   async importDatabase(jsonData: any): Promise<void> {
     try {
-      const res = await fetch(`${API_BASE}/database/import`, {
+      const res = await planningFetch(`${API_BASE}/database/import`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(jsonData)
@@ -620,7 +621,7 @@ out body geom;`;
 
   async resetDatabase(): Promise<void> {
     try {
-      const res = await fetch(`${API_BASE}/database/reset`, { method: 'POST' });
+      const res = await planningFetch(`${API_BASE}/database/reset`, { method: 'POST' });
       if (res.ok) return;
     } catch {}
 
@@ -631,24 +632,23 @@ out body geom;`;
 
   async getSettings(): Promise<Record<string, string>> {
     try {
-      const res = await fetch(`${API_BASE}/settings`);
+      const res = await planningFetch(`${API_BASE}/settings`);
       if (res.ok) return await res.json();
     } catch {}
     return {};
   },
 
   async setSetting(key: string, value: string): Promise<void> {
-    try {
-      await fetch(`${API_BASE}/settings/${key}`, {
+      const res = await planningFetch(`${API_BASE}/settings/${key}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ value })
       });
-    } catch {}
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Einstellung konnte nicht gespeichert werden.');
   },
 
   async setSmtpPassword(password: string): Promise<void> {
-    const res = await fetch(`${API_BASE}/settings/smtp-password`, {
+    const res = await planningFetch(`${API_BASE}/settings/smtp-password`, {
       method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ password })
     });
     if (!res.ok) {
@@ -658,38 +658,38 @@ out body geom;`;
   },
 
   async sendTestMail(to: string): Promise<void> {
-    const res = await fetch(`${API_BASE}/mail/test`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to }) });
+    const res = await planningFetch(`${API_BASE}/mail/test`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ to }) });
     if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Test-E-Mail konnte nicht gesendet werden.');
   },
 
   async getMailQueue(): Promise<{ nextAt: number; lastTickAt?: number; busySince?: number; lastWorkerError?: string | null; serverNow?: number; deliveries: Array<{ id: string; helper_name: string; recipient: string; status: string; error: string | null }> }> {
-    const res = await fetch(`${API_BASE}/mail/queue`, { cache: 'no-store' });
+    const res = await planningFetch(`${API_BASE}/mail/queue`, { cache: 'no-store' });
     if (!res.ok) throw new Error('Versandstatus konnte nicht geladen werden.');
     return res.json();
   },
   async retryUnclearMail(id: string) {
-    const res = await fetch(`${API_BASE}/mail/queue/${encodeURIComponent(id)}/retry`, { method: 'POST' });
+    const res = await planningFetch(`${API_BASE}/mail/queue/${encodeURIComponent(id)}/retry`, { method: 'POST' });
     if (!res.ok) throw new Error('Freigabe fehlgeschlagen.');
   },
   async previewSingleHelperMail(helperId: string): Promise<{ helperName: string; to: string; cc: string; subject: string; html: string }> {
-    const res = await fetch(`${API_BASE}/mail/helpers`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ helperIds: [helperId], preview: true }) });
+    const res = await planningFetch(`${API_BASE}/mail/helpers`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ helperIds: [helperId], preview: true }) });
     if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Vorschau konnte nicht geladen werden.');
     return res.json();
   },
   async sendHelperMails(recoverPrevious = false, single?: { helperId: string; requestId: string }): Promise<{ sent: number; failed: number; eligible: number }> {
-    const res = await fetch(`${API_BASE}/mail/helpers`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ recoverPrevious: single ? false : recoverPrevious, ...(single ? { single: true, helperIds: [single.helperId], requestId: single.requestId } : {}) }) });
+    const res = await planningFetch(`${API_BASE}/mail/helpers`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ recoverPrevious: single ? false : recoverPrevious, ...(single ? { single: true, helperIds: [single.helperId], requestId: single.requestId } : {}) }) });
     if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Helfer-E-Mails konnten nicht gesendet werden.');
     return await res.json();
   },
 
   async sendHelperMailPreview(): Promise<{ helperName: string; recipient: string }> {
-    const res = await fetch(`${API_BASE}/mail/helpers/preview`, { method: 'POST' });
+    const res = await planningFetch(`${API_BASE}/mail/helpers/preview`, { method: 'POST' });
     if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Rundmail-Vorschau konnte nicht gesendet werden.');
     return await res.json();
   },
 
   async getMailLog(): Promise<Array<{ id: string; helper_name?: string; recipient: string; subject: string; status: string; error_message?: string; created_at: string }>> {
-    const res = await fetch(`${API_BASE}/mail/log`);
+    const res = await planningFetch(`${API_BASE}/mail/log`);
     if (!res.ok) throw new Error('Versandprotokoll konnte nicht geladen werden.');
     return await res.json();
   }

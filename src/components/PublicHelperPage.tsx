@@ -8,6 +8,7 @@ import { PublicPdfDownload } from './PublicPdfDownload';
 
 interface Props {
   info: PublicHelperInfo;
+  notice?: string;
 }
 
 const lightingSideText = (side?: 'both' | 'left' | 'right') => side === 'left'
@@ -58,6 +59,8 @@ const PublicAreaMap: React.FC<{ info: PublicHelperInfo }> = ({ info }) => {
   const tileLayerRef = useRef<L.TileLayer | null>(null);
   const locationLayerRef = useRef<L.LayerGroup | null>(null);
   const areaBoundsRef = useRef<L.LatLngBounds | null>(null);
+  const areaLayerRef = useRef<L.FeatureGroup | null>(null);
+  const initiallyFitted = useRef(false);
   const [locationMessage, setLocationMessage] = useState('');
   const [mapStyle, setMapStyle] = useState<'street' | 'satellite'>('street');
 
@@ -68,7 +71,21 @@ const PublicAreaMap: React.FC<{ info: PublicHelperInfo }> = ({ info }) => {
     mapRef.current = map;
     const tiles = publicTileConfig('street');
     tileLayerRef.current = L.tileLayer(tiles.url, { maxZoom: tiles.maxZoom, attribution: tiles.attribution }).addTo(map);
-    const group = L.featureGroup().addTo(map);
+    areaLayerRef.current = L.featureGroup().addTo(map);
+    map.setView([49.174, 10.56], 14);
+    const resizeObserver = new ResizeObserver(() => map.invalidateSize({ pan: false }));
+    resizeObserver.observe(container);
+    return () => {
+      resizeObserver.disconnect(); map.remove(); mapRef.current = null;
+      tileLayerRef.current = null; locationLayerRef.current = null; areaBoundsRef.current = null;
+      areaLayerRef.current = null; initiallyFitted.current = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    const map = mapRef.current, group = areaLayerRef.current;
+    if (!map || !group) return;
+    group.clearLayers();
     const endpointCount = info.sections.filter(section => section.geojson?.geometry?.type !== 'Point').length;
 
     info.sections.forEach((section, index) => {
@@ -97,20 +114,12 @@ const PublicAreaMap: React.FC<{ info: PublicHelperInfo }> = ({ info }) => {
     if (group.getLayers().length) {
       const bounds = group.getBounds();
       areaBoundsRef.current = bounds;
-      map.fitBounds(bounds, { padding: [32, 32], maxZoom: 18 });
+      if (!initiallyFitted.current) {
+        map.fitBounds(bounds, { padding: [32, 32], maxZoom: 18 });
+        initiallyFitted.current = true;
+      }
     }
-    else map.setView([49.174, 10.56], 14);
-    window.setTimeout(() => map.invalidateSize(), 0);
-    const resizeObserver = new ResizeObserver(() => map.invalidateSize({ pan: false }));
-    resizeObserver.observe(container);
-    return () => {
-      resizeObserver.disconnect();
-      map.remove();
-      mapRef.current = null;
-      tileLayerRef.current = null;
-      locationLayerRef.current = null;
-      areaBoundsRef.current = null;
-    };
+    else areaBoundsRef.current = null;
   }, [info]);
 
   useEffect(() => {
@@ -164,12 +173,13 @@ const PublicAreaMap: React.FC<{ info: PublicHelperInfo }> = ({ info }) => {
   </section>;
 };
 
-export const PublicHelperPage: React.FC<Props> = ({ info }) => {
+export const PublicHelperPage: React.FC<Props> = ({ info, notice }) => {
   const meters = info.sections.reduce((sum, section) => sum + (section.length_meters || 0), 0);
 
   return (
     <main className="public-helper-page">
       <section className="public-helper-card">
+        {notice && <p role="status" style={{ color: 'var(--accent-gold)', fontSize: 13 }}>{notice}</p>}
         <p className="auth-kicker">LICHTERNACHT BECHHOFEN</p>
         <h1>Ihr Bereich</h1>
         <h2>{info.name}</h2>

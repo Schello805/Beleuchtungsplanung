@@ -189,6 +189,34 @@ describe('user invitation and first login', () => {
     expect(invalid.response.status).toBe(400);
   });
 
+  it('streams planning changes and rejects stale writes without overwriting data', async () => {
+    const { getPlanningRevision } = await import('./liveUpdates.ts');
+    const { db, dbService } = await import('./db.ts');
+    const login = await request('/api/auth/login', { method: 'POST', body: JSON.stringify({ email: 'admin@example.test', password: 'AdminPasswort8' }) });
+    const cookie = login.response.headers.get('set-cookie')!.split(';')[0];
+    expect((await request('/api/events')).response.status).toBe(401);
+    expect((await request('/api/public/helpers/invalid/events')).response.status).toBe(404);
+    const helper = dbService.addHelper('Live Test', undefined, undefined, 'live@example.test');
+    const token = (db.prepare('SELECT public_token FROM helpers WHERE id = ?').get(helper.id) as { public_token: string }).public_token;
+    const controller = new AbortController();
+    const stream = await fetch(`${baseUrl}/api/public/helpers/${token}/events`, { signal: controller.signal });
+    expect(stream.headers.get('content-type')).toContain('text/event-stream');
+    const reader = stream.body!.getReader();
+    const first = new TextDecoder().decode((await reader.read()).value);
+    const baseline = getPlanningRevision();
+    expect(first).toContain(baseline);
+    const changed = await request(`/api/helpers/${helper.id}`, { method: 'PUT', headers: { Cookie: cookie, 'X-Planning-Revision': baseline }, body: JSON.stringify({ name: 'Geändert', email: 'live@example.test' }) });
+    expect(changed.response.status).toBe(200);
+    expect(changed.response.headers.get('x-planning-revision')).not.toBe(baseline);
+    const update = new TextDecoder().decode((await reader.read()).value);
+    expect(update).toContain(getPlanningRevision());
+    const stale = await request(`/api/helpers/${helper.id}`, { method: 'PUT', headers: { Cookie: cookie, 'X-Planning-Revision': baseline }, body: JSON.stringify({ name: 'Veraltete Eingabe' }) });
+    expect(stale.response.status).toBe(409);
+    expect(dbService.getHelpers().find(item => item.id === helper.id)?.name).toBe('Geändert');
+    controller.abort();
+    await reader.cancel().catch(() => {});
+  });
+
   it('limits repeated failed login attempts', async () => {
     let status = 0;
     for (let attempt = 0; attempt < 21; attempt++) {

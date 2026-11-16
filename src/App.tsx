@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback, Suspense, lazy } from 'react';
+import React, { useState, useEffect, useCallback, useRef, Suspense, lazy } from 'react';
+import { acceptPlanningRevision, currentPlanningRevision, planningEditorOpen } from './utils/liveUpdates';
 import { Sidebar } from './components/Sidebar';
 import { CapturePanel } from './components/CapturePanel';
 import { RedistributeModal } from './components/RedistributeModal';
@@ -127,6 +128,19 @@ export const App: React.FC = () => {
     sectionsCount: number;
   } | null>(null);
   const [migrationNotice, setMigrationNotice] = useState<string | null>(null);
+  const [liveNotice, setLiveNotice] = useState('');
+  const editorOpen = useRef(false);
+  editorOpen.current = isPrintOpen || isRedistributeOpen || isAutoAssignOpen || isExcelImportOpen || isAdminSettingsOpen || isProfileOpen || isUserManagementOpen || !!extensionSectionId || !!splitSectionId || captureMode !== 'none' || isSaving;
+  useEffect(() => {
+    const conflict = (event: Event) => setLiveNotice((event as CustomEvent<string>).detail || 'Die Planung wurde inzwischen geändert. Bitte den aktuellen Stand prüfen.');
+    window.addEventListener('planning-conflict', conflict);
+    return () => window.removeEventListener('planning-conflict', conflict);
+  }, []);
+  useEffect(() => {
+    if (liveNotice !== 'Die Planung wurde aktualisiert.') return;
+    const timer = window.setTimeout(() => setLiveNotice(''), 6000);
+    return () => window.clearTimeout(timer);
+  }, [liveNotice]);
   const [copiedUrl, setCopiedUrl] = useState<boolean>(false);
   const [lastAssignmentUndo, setLastAssignmentUndo] = useState<{
     label: string;
@@ -218,8 +232,10 @@ export const App: React.FC = () => {
         maxDifferenceMeters: parseInt(settings.distribution_max_difference_meters, 10) || 15,
         assignmentMode: settings.distribution_assignment_mode === 'meters_only' ? 'meters_only' : 'station_first'
       });
+      return true;
     } catch (err) {
       console.error('Failed to load data from database:', err);
+      return false;
     }
   }, []);
 
@@ -244,6 +260,41 @@ export const App: React.FC = () => {
   }, [publicToken]);
 
   useEffect(() => {
+    if (!publicToken && authState !== 'authenticated') return;
+    const events = new EventSource(publicToken ? `/api/public/helpers/${encodeURIComponent(publicToken)}/events` : '/api/events');
+    let pending: string | null = null;
+    let refreshing = false;
+    let closed = false;
+    const refresh = async () => {
+      if (!publicToken && pending === currentPlanningRevision()) { pending = null; return; }
+      if (!pending || refreshing || (!publicToken && (editorOpen.current || planningEditorOpen()))) return;
+      const next = pending; pending = null; refreshing = true;
+      try {
+        if (publicToken) {
+          const info = await api.getPublicHelper(publicToken);
+          if (!closed) setPublicHelperInfo(info);
+        } else {
+          if (!await loadData()) throw new Error('Aktualisierung fehlgeschlagen');
+          acceptPlanningRevision(next);
+          setLastAssignmentUndo(null);
+          setLastGeometryUndo(null);
+        }
+        if (!closed) setLiveNotice('Die Planung wurde aktualisiert.');
+      } catch { pending = next; }
+      finally { refreshing = false; }
+    };
+    events.onmessage = event => {
+      const next = JSON.parse(event.data).revision as string;
+      if (!publicToken && next === currentPlanningRevision()) { pending = null; return; }
+      pending = next;
+      if (!publicToken && (editorOpen.current || planningEditorOpen())) setLiveNotice('Die Planung wurde geändert. Ihre offene Bearbeitung bleibt erhalten; nach dem Schließen wird aktualisiert.');
+      void refresh();
+    };
+    const timer = window.setInterval(() => { void refresh(); }, 1000);
+    return () => { closed = true; events.close(); window.clearInterval(timer); };
+  }, [authState, publicToken, loadData]);
+
+  useEffect(() => {
     if (authState === 'authenticated') loadData();
   }, [authState, loadData]);
 
@@ -252,7 +303,7 @@ export const App: React.FC = () => {
   useEffect(() => {
     if (authState !== 'authenticated') return;
     const handleFocus = () => {
-      loadData();
+      if (!editorOpen.current && !planningEditorOpen()) loadData();
     };
     window.addEventListener('focus', handleFocus);
 
@@ -1066,7 +1117,7 @@ export const App: React.FC = () => {
   }
 
   if (publicToken) {
-    if (publicHelperInfo) return <PublicHelperPage info={publicHelperInfo} />;
+    if (publicHelperInfo) return <PublicHelperPage info={publicHelperInfo} notice={liveNotice} />;
     return <main className="auth-screen"><section className="auth-card"><p className="auth-kicker">LICHTERNACHT BECHHOFEN</p><h1>Helfer-Information</h1><p>{publicHelperError || 'Dein persönlicher Bereich wird geladen …'}</p></section></main>;
   }
 
@@ -1286,6 +1337,7 @@ export const App: React.FC = () => {
         </div>}
 
         {/* Migration notice banner */}
+        {liveNotice && <div role="status" style={{ position: 'fixed', bottom: 18, left: '50%', transform: 'translateX(-50%)', zIndex: 2500, maxWidth: '90vw', background: 'var(--bg-secondary)', color: 'var(--text-main)', padding: '10px 16px', border: '1px solid var(--accent-gold)', borderRadius: 8 }} onClick={() => setLiveNotice('')}>{liveNotice}</div>}
         {migrationNotice && (
           <div
             className="no-print"
@@ -1413,7 +1465,7 @@ export const App: React.FC = () => {
           helpers={helpers}
           onApplyAssignments={handleBatchAssign}
           onImportHelpers={handleImportHelpers}
-          onRefreshData={loadData}
+          onRefreshData={async () => { await loadData(); }}
           onDeleteAllHelpers={handleDeleteAllHelpers}
         />
       </Suspense>
@@ -1624,7 +1676,7 @@ export const App: React.FC = () => {
         <AdminSettingsModal
           isOpen={isAdminSettingsOpen}
           onClose={() => setIsAdminSettingsOpen(false)}
-          onSaved={loadData}
+          onSaved={async () => { await loadData(); }}
         />
       )}
     </div>
