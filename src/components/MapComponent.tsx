@@ -135,6 +135,7 @@ export const MapComponent: React.FC<MapComponentProps> = ({
   // The selected helper is a map focus, not an assignment tool.
   const [internalStampHelperId, setInternalStampHelperId] = useState<string | null>(null);
   const [showLayerMenu, setShowLayerMenu] = useState<boolean>(false);
+  const [toolsCollapsed, setToolsCollapsed] = useState(false);
   const [areaAssignmentSide, setAreaAssignmentSide] = useState<'left' | 'right' | 'both'>('both');
   const [isLocating, setIsLocating] = useState(false);
 
@@ -978,6 +979,10 @@ export const MapComponent: React.FC<MapComponentProps> = ({
       <div ref={mapContainerRef} style={{ width: '100%', height: '100%' }} />
 
       {/* Map controls stay compact until they are explicitly needed. */}
+      <section className="no-print map-tools-dock" aria-label="Kartenbedienung">
+      <button type="button" className="map-tools-heading" onClick={() => setToolsCollapsed(value => !value)} aria-expanded={!toolsCollapsed} aria-controls="map-tools-content">Karte & Orientierung <span>{toolsCollapsed ? 'Öffnen ▾' : 'Einklappen ▴'}</span></button>
+      <div id="map-tools-content" className="map-tools-content" hidden={toolsCollapsed}>
+      <div className="map-tools-actions">
       <button
         className="no-print map-gps-button"
         onClick={locateCurrentPosition}
@@ -990,11 +995,15 @@ export const MapComponent: React.FC<MapComponentProps> = ({
       <button
         className="no-print map-controls-toggle"
         onClick={() => setShowLayerMenu(open => !open)}
+        aria-expanded={showLayerMenu}
+        aria-controls="planner-map-layers"
         title="Kartenansicht und API-Einstellungen"
       >
         <Settings size={15} /> Karte
       </button>
+      </div>
       <div
+        id="planner-map-layers"
         className="no-print map-layer-menu"
         style={{
           position: 'absolute',
@@ -1276,6 +1285,8 @@ export const MapComponent: React.FC<MapComponentProps> = ({
 
         </div>
       )}
+      </div>
+      </section>
 
       {/* Crosshair instruction overlay */}
       {(captureMode !== 'none' || extensionSectionId || splitSectionId) && (

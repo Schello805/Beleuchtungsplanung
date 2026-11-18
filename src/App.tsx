@@ -1203,7 +1203,7 @@ export const App: React.FC = () => {
       {isMobileSidebarOpen && <button type="button" className="no-print mobile-sidebar-scrim" aria-label="Planungsmenü schließen" onClick={() => setIsMobileSidebarOpen(false)} />}
 
       {/* MAP & CAPTURE AREA */}
-      <main style={{ flex: 1, position: 'relative', height: '100%' }}>
+      <main className="planner-map-workspace" style={{ flex: 1, minWidth: 0, position: 'relative', height: '100%' }}>
         <button
           type="button"
           className="no-print mobile-map-tools-toggle"
