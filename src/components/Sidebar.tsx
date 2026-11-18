@@ -283,7 +283,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
     <aside
       className={`no-print planner-sidebar${mobileOpen ? ' mobile-open' : ''}`}
       style={{
-        width: 400,
+        width: 460,
+        flexShrink: 0,
         height: '100vh',
         display: 'flex',
         flexDirection: 'column',
