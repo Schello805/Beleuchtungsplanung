@@ -15,7 +15,7 @@ const PrintView = lazy(() => import('./components/PrintView').then(module => ({ 
 const ExcelImportModal = lazy(() => import('./components/ExcelImportModal').then(module => ({ default: module.ExcelImportModal })));
 import { api, type Section, type Helper, type Street, type AuthUser, type PublicHelperInfo } from './utils/api';
 import { splitSectionAtPoint, splitSectionInHalf, type GeneratedSection } from './utils/geo';
-import { Check, X, UserRound, ChevronDown, Menu, Wrench, Mail, Trash2, Copy, Send, Pencil } from 'lucide-react';
+import { Check, X, UserRound, ChevronDown, Menu, Wrench, Mail, Trash2, Copy, Send, Pencil, Database, Undo2, Wifi } from 'lucide-react';
 import * as turf from '@turf/turf';
 
 export const App: React.FC = () => {
@@ -1225,6 +1225,14 @@ export const App: React.FC = () => {
             overflowY: 'auto'
           }}
         >
+          <div className="capture-undo-toolbar" aria-label="Änderungen rückgängig machen">
+            <button type="button" onClick={handleUndoLastGeometry} disabled={!lastGeometryUndo || isUndoingGeometry}
+              aria-busy={isUndoingGeometry} title={lastGeometryUndo ? `Rückgängig: ${lastGeometryUndo.label}` : 'Noch keine Verlängerung zum Rückgängigmachen'}>
+              <Undo2 size={15} /> {isUndoingGeometry ? 'Wird zurückgenommen …' : 'Verlängerung rückgängig'}
+            </button>
+            {lastAssignmentUndo && <button type="button" onClick={handleUndoLastAssignment} disabled={isUndoingAssignment} aria-busy={isUndoingAssignment}
+              title={`Rückgängig: ${lastAssignmentUndo.label}`}><Undo2 size={15} /> {isUndoingAssignment ? 'Wird zurückgenommen …' : 'Zuweisung rückgängig'}</button>}
+          </div>
           <CapturePanel
             streetSearchArea={streetSearchArea}
             onPreviewGenerated={handlePreviewGenerated}
@@ -1382,9 +1390,6 @@ export const App: React.FC = () => {
             extensionSectionId={extensionSectionId}
             onStartExtension={(sectionId) => { setSelectedSectionId(sectionId); setSplitSectionId(null); setExtensionSectionId(sectionId); }}
             onExtendToNearestSection={handleExtendToNearestSection}
-            undoLabel={lastGeometryUndo?.label || null}
-            onUndo={lastGeometryUndo ? handleUndoLastGeometry : undefined}
-            isUndoing={isUndoingGeometry}
             onExtensionTarget={handleExtendSection}
             onCancelExtension={() => setExtensionSectionId(null)}
             splitSectionId={splitSectionId}
