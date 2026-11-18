@@ -158,13 +158,23 @@ describe('user invitation and first login', () => {
     const noDuplicate = vi.fn();
     await processMailQueue(noDuplicate, retryClock + 62_001);
     expect(noDuplicate).not.toHaveBeenCalled();
+    enqueueCampaign('cc-rejected', [{ ...items[0], to: 'accepted@example.test', visibleCc: 'orga@example.test' }], false);
+    await processMailQueue(async item => {
+      expect(item.visible_cc).toBe('orga@example.test');
+      expect(item.cc).toBe('admin@example.test');
+      return { accepted: ['accepted@example.test', 'admin@example.test'], rejected: ['orga@example.test'] };
+    }, retryClock + 93_001);
+    expect(queueStatus().deliveries[0]).toMatchObject({ status: 'sent', error: 'CC nicht bestätigt: orga@example.test.' });
+    enqueueCampaign('cc-rejected', [{ ...items[0], to: 'accepted@example.test', visibleCc: 'orga@example.test' }], false);
+    await processMailQueue(noDuplicate, retryClock + 124_001);
+    expect(noDuplicate).not.toHaveBeenCalled();
   });
 
   it('previews and queues only the selected helper, with idempotent retries and explicit resending', async () => {
     const { db, dbService } = await import('./db.ts');
     db.exec('DELETE FROM mail_deliveries; DELETE FROM mail_campaigns;');
     process.env.SMTP_PASSWORD = 'test-only';
-    for (const [key, value] of Object.entries({ smtp_host: 'smtp.example.test', smtp_user: 'admin@example.test', smtp_from: 'admin@example.test', smtp_cc: 'copy@example.test', public_base_url: 'https://example.test' })) dbService.setSetting(key, value);
+    for (const [key, value] of Object.entries({ smtp_host: 'smtp.example.test', smtp_user: 'admin@example.test', smtp_from: 'admin@example.test', smtp_cc: 'copy@example.test', smtp_additional_cc: 'orga@example.test', public_base_url: 'https://example.test' })) dbService.setSetting(key, value);
     const selected = dbService.addHelper('Einzelversand Test', undefined, undefined, 'selected@example.test');
     dbService.addHelper('Nicht anschreiben', undefined, undefined, 'other@example.test');
     const login = await request('/api/auth/login', { method: 'POST', body: JSON.stringify({ email: 'admin@example.test', password: 'AdminPasswort8' }) });
@@ -172,6 +182,7 @@ describe('user invitation and first login', () => {
     const preview = await request('/api/mail/helpers', { method: 'POST', headers, body: JSON.stringify({ helperIds: [selected.id], preview: true }) });
     expect(preview.response.status, JSON.stringify(preview.body)).toBe(200);
     expect(preview.body.to).toBe('selected@example.test');
+    expect(preview.body.visibleCc).toBe('orga@example.test');
     expect(preview.body.html).toContain('Einzelversand Test');
     expect(db.prepare('SELECT * FROM mail_deliveries').all()).toHaveLength(0);
     const payload = { single: true, helperIds: [selected.id], requestId: '11111111-1111-4111-8111-111111111111' };
@@ -180,7 +191,7 @@ describe('user invitation and first login', () => {
       expect(sent.response.status).toBe(200);
     }
     expect(db.prepare('SELECT recipient FROM mail_deliveries ORDER BY recipient').all()).toEqual([{ recipient: 'selected@example.test' }]);
-    expect(db.prepare('SELECT cc FROM mail_deliveries').get()).toEqual({ cc: 'copy@example.test' });
+    expect(db.prepare('SELECT cc, visible_cc FROM mail_deliveries').get()).toEqual({ cc: 'copy@example.test', visible_cc: 'orga@example.test' });
     db.exec("UPDATE mail_deliveries SET status = 'sent'");
     const resend = await request('/api/mail/helpers', { method: 'POST', headers, body: JSON.stringify({ ...payload, requestId: '22222222-2222-4222-8222-222222222222' }) });
     expect(resend.response.status).toBe(200);

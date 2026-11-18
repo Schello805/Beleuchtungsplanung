@@ -4,7 +4,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import crypto from 'node:crypto';
 import nodemailer from 'nodemailer';
-import { sendCheckedMail } from './mailDelivery.ts';
+import { sendCheckedMail, mailCopies } from './mailDelivery.ts';
 import { enqueueCampaign, queueStatus, retryUnknown, processMailQueue } from './mailQueue.ts';
 import { planningEvents, planningChanges } from './liveUpdates.ts';
 import { rateLimit } from 'express-rate-limit';
@@ -198,7 +198,7 @@ async function sendUserInviteEmail(user: UserRecord, token: string, inviteUrl: s
       actionUrl: inviteUrl,
       actionLabel: 'Passwort jetzt erstellen & aktivieren'
     });
-    await sendCheckedMail(transport, { from, to: user.email, bcc: settings.smtp_cc?.trim() || undefined, subject, text: `${message}\n\n${inviteUrl}`, html });
+    await sendCheckedMail(transport, { from, to: user.email, ...mailCopies(settings, user.email), subject, text: `${message}\n\n${inviteUrl}`, html });
     dbService.addMailLog({ recipient: user.email, subject, status: 'sent' });
     return { success: true };
   } catch (err: any) {
@@ -839,7 +839,7 @@ app.post('/api/mail/test', async (req, res) => {
     const subject = `[Test] ${settings.event_name || 'Lichternacht'} – Versand eingerichtet`;
     const text = 'Dies ist eine Test-E-Mail des Lichternacht-Streckenplaners. Der SMTP-Versand ist erreichbar.';
     const html = renderEmailHtml({ eventName: settings.event_name || 'Lichternacht', heading: 'SMTP-Test erfolgreich', message: text });
-    await sendCheckedMail(transport, { from, to: recipient, bcc: settings.smtp_cc?.trim() || undefined, subject, text, html });
+    await sendCheckedMail(transport, { from, to: recipient, ...mailCopies(settings, recipient), subject, text, html });
     dbService.addMailLog({ recipient, subject, status: 'test' });
     res.json({ success: true });
   } catch (err: any) {
@@ -877,13 +877,14 @@ app.post('/api/mail/helpers', async (req, res) => {
         actionUrl: link,
         actionLabel: 'Persönlichen Bereich öffnen',
       });
-      items.push({ helperId: helper.id, helperName: helper.name, to: helper.email!, cc: settings.smtp_cc || '', subject, text: plainMailText(text), html });
+      items.push({ helperId: helper.id, helperName: helper.name, to: helper.email!, cc: settings.smtp_cc || '', visibleCc: settings.smtp_additional_cc || '', subject, text: plainMailText(text), html });
     }
     if (requestedIds && items.length !== 1) throw new Error('Helfer nicht gefunden oder keine E-Mail-Adresse hinterlegt.');
     if (req.body?.preview === true) {
       if (!requestedIds) throw new Error('Bitte einen Helfer für die Vorschau auswählen.');
-      const { helperName, to, cc, subject, html } = items[0];
-      return res.json({ helperName, to, cc, subject, html });
+      const { helperName, to, subject, html } = items[0];
+      const copies = mailCopies(settings, to);
+      return res.json({ helperName, to, cc: copies.bcc || '', visibleCc: copies.cc || '', subject, html });
     }
     const campaignId = crypto.createHash('sha256').update(JSON.stringify(items) + (req.body?.single ? req.body.requestId : '')).digest('hex');
     res.json({ success: true, sent: 0, failed: 0, eligible: helpers.length, ...enqueueCampaign(campaignId, items, req.body?.recoverPrevious === true) });
@@ -940,6 +941,9 @@ app.put('/api/settings/:key', (req, res) => {
   try {
     const { key } = req.params;
     const { value } = req.body;
+    if (key === 'smtp_additional_cc' && String(value || '').trim() && !/^[^\s@<>,;]+@[^\s@<>,;]+\.[^\s@<>,;]+$/.test(String(value).trim())) {
+      return res.status(400).json({ error: 'Bitte eine gültige E-Mail-Adresse für die zusätzliche CC-Kopie eingeben.' });
+    }
     dbService.setSetting(key, String(value ?? ''));
     res.json({ success: true });
   } catch (err: any) {
@@ -992,7 +996,7 @@ export { app };
 if (process.env.NODE_ENV !== 'test') {
   setInterval(() => { void processMailQueue(async item => {
     const { transport, from } = getSmtpTransport();
-    return transport.sendMail({ from, to: item.recipient, bcc: item.cc || undefined, subject: item.subject, text: item.text, html: item.html });
+    return transport.sendMail({ from, to: item.recipient, bcc: item.cc || undefined, cc: item.visible_cc || undefined, subject: item.subject, text: item.text, html: item.html });
   }).catch(error => console.error('Versandwarteschlange:', error.message)); }, 5000).unref();
   app.listen(PORT, HOST, () => {
     console.log(`Lichternacht Backend Server läuft auf ${HOST}:${PORT}`);

@@ -671,7 +671,7 @@ out body geom;`;
     const res = await planningFetch(`${API_BASE}/mail/queue/${encodeURIComponent(id)}/retry`, { method: 'POST' });
     if (!res.ok) throw new Error('Freigabe fehlgeschlagen.');
   },
-  async previewSingleHelperMail(helperId: string): Promise<{ helperName: string; to: string; cc: string; subject: string; html: string }> {
+  async previewSingleHelperMail(helperId: string): Promise<{ helperName: string; to: string; cc: string; visibleCc: string; subject: string; html: string }> {
     const res = await planningFetch(`${API_BASE}/mail/helpers`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ helperIds: [helperId], preview: true }) });
     if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || 'Vorschau konnte nicht geladen werden.');
     return res.json();

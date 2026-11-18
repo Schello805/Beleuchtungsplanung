@@ -1,5 +1,13 @@
 import type { SendMailOptions, SentMessageInfo } from 'nodemailer';
 
+export function mailCopies(settings: Record<string, string>, to: string) {
+  const addresses = (value: string) => [...new Set(value.split(/[,;\n]+/).map(address => address.trim().toLowerCase()).filter(Boolean))];
+  const recipients = addresses(to);
+  const hidden = addresses(settings.smtp_cc || '').filter(address => !recipients.includes(address));
+  const visible = addresses(settings.smtp_additional_cc || '').filter(address => !recipients.includes(address) && !hidden.includes(address));
+  return { bcc: hidden.join(', ') || undefined, cc: visible.join(', ') || undefined };
+}
+
 const addressText = (value: unknown): string => typeof value === 'string' ? value
   : value && typeof value === 'object' && 'address' in value ? String(value.address) : '';
 

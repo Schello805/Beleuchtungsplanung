@@ -1,9 +1,14 @@
 import { describe, expect, it, vi } from 'vitest';
-import { sendCheckedMail } from './mailDelivery';
+import { sendCheckedMail, mailCopies } from './mailDelivery';
 import nodemailer from 'nodemailer';
 
 describe('SMTP recipient acceptance', () => {
-  const options = { from: 'sender@example.test', to: 'one@example.test, two@example.test', bcc: 'admin@example.test', html: '<p>Bereich</p>' };
+  it('keeps admin BCC hidden while adding a distinct visible CC', () => {
+    expect(mailCopies({ smtp_cc: 'admin@example.test', smtp_additional_cc: 'orga@example.test' }, 'helper@example.test')).toEqual({ bcc: 'admin@example.test', cc: 'orga@example.test' });
+    expect(mailCopies({ smtp_cc: 'admin@example.test', smtp_additional_cc: 'ADMIN@example.test' }, 'helper@example.test')).toEqual({ bcc: 'admin@example.test', cc: undefined });
+    expect(mailCopies({ smtp_cc: 'admin@example.test', smtp_additional_cc: 'helper@example.test' }, 'helper@example.test')).toEqual({ bcc: 'admin@example.test', cc: undefined });
+  });
+  const options = { from: 'sender@example.test', to: 'one@example.test, two@example.test', bcc: 'admin@example.test', cc: 'orga@example.test', html: '<p>Bereich</p>' };
   it('includes the admin in the SMTP envelope but hides BCC in the message headers', async () => {
     // Capture the same MIME stream/envelope used by SMTP without a network connection.
     const transport = nodemailer.createTransport({ name: 'capture', version: '1', send(mail: any, callback: any) {
@@ -15,9 +20,11 @@ describe('SMTP recipient acceptance', () => {
     } });
     const result = await transport.sendMail(options);
     expect(result.envelope.to).toContain('admin@example.test');
+    expect(result.envelope.to).toContain('orga@example.test');
     const message = result.message.toString();
     expect(message).not.toMatch(/^Bcc:/im);
     expect(message).not.toContain('admin@example.test');
+    expect(message).toMatch(/^Cc: orga@example.test/im);
   });
   it('accepts a station mail only when all recipients were accepted', async () => {
     const result = { accepted: ['one@example.test', 'two@example.test', 'admin@example.test'], rejected: [] };
