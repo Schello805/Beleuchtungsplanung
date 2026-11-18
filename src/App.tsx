@@ -992,12 +992,8 @@ export const App: React.FC = () => {
   };
 
   const handleUpdateHelper = async (id: string, name: string, color?: string, phone?: string, email?: string) => {
-    try {
-      await api.updateHelper(id, name, color, phone, email);
-      await loadData();
-    } catch (err: any) {
-      alert(err.message);
-    }
+    await api.updateHelper(id, name, color, phone, email);
+    await loadData();
   };
 
   const handleDeleteHelper = async (id: string) => {

@@ -31,6 +31,7 @@ import {
   Zap
 } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import { HelperEditForm } from './HelperEditForm';
 import { SingleHelperMailModal } from './SingleHelperMailModal';
 import { SectionOverlapCheck } from './SectionOverlapCheck';
 import type { Section, Helper, Street } from '../utils/api';
@@ -117,7 +118,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   // Helper management form
   const [newHelperName, setNewHelperName] = useState<string>('');
   const [editingHelperId, setEditingHelperId] = useState<string | null>(null);
-  const [editHelperName, setEditHelperName] = useState<string>('');
   const [mailHelper, setMailHelper] = useState<Helper | null>(null);
   const [helperSearch, setHelperSearch] = useState('');
   const normalizeSearch = (value: string) => value.toLocaleLowerCase('de').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/ß/g, 'ss');
@@ -232,12 +232,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
     const workbook = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(workbook, worksheet, 'Helfer');
     XLSX.writeFile(workbook, 'lichternacht-helfer-vorlage.xlsx');
-  };
-
-  const handleSaveEditHelper = async (id: string) => {
-    if (!editHelperName.trim()) return;
-    await onUpdateHelper(id, editHelperName.trim());
-    setEditingHelperId(null);
   };
 
   // Run auto fair assignment
@@ -1203,7 +1197,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </form>
 
             <div style={{ fontSize: 11, color: 'var(--text-light)', marginBottom: 10 }}>
-              Du kannst Helfernamen anklicken zum Bearbeiten oder neue hinzufügen:
+              Klicken Sie auf einen Helfernamen oder den Stift, um Name und E-Mail-Adressen zu bearbeiten.
             </div>
 
             {/* Helpers List */}
@@ -1225,63 +1219,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 const assignedMeters = assigned.reduce((sum, s) => sum + s.lengthMeters, 0);
 
                 if (editingHelperId === h.id) {
-                  return (
-                    <div
-                      key={h.id}
-                      style={{
-                        display: 'flex',
-                        gap: 6,
-                        padding: '6px 8px',
-                        background: 'var(--bg-secondary)',
-                        borderRadius: 'var(--radius-sm)',
-                        alignItems: 'center'
-                      }}
-                    >
-                      <input
-                        type="text"
-                        value={editHelperName}
-                        data-planning-editor="true"
-                        onChange={e => setEditHelperName(e.target.value)}
-                        autoFocus
-                        style={{
-                          flex: 1,
-                          padding: '4px 6px',
-                          fontSize: 12,
-                          background: 'var(--bg-input)',
-                          color: 'var(--text-main)',
-                          border: '1px solid var(--accent-gold)',
-                          borderRadius: 4
-                        }}
-                      />
-                      <button
-                        onClick={() => handleSaveEditHelper(h.id)}
-                        style={{
-                          background: '#10B981',
-                          color: 'white',
-                          border: 'none',
-                          padding: '4px 8px',
-                          borderRadius: 4,
-                          fontSize: 11,
-                          cursor: 'pointer'
-                        }}
-                      >
-                        OK
-                      </button>
-                      <button
-                        onClick={() => setEditingHelperId(null)}
-                        style={{
-                          background: 'transparent',
-                          color: 'var(--text-muted)',
-                          border: 'none',
-                          padding: '4px 6px',
-                          fontSize: 11,
-                          cursor: 'pointer'
-                        }}
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  );
+                  return <HelperEditForm key={h.id} helper={h} onSave={onUpdateHelper} onClose={() => setEditingHelperId(null)} />;
                 }
 
                 return (
@@ -1304,9 +1242,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         style={{ fontWeight: 600, color: 'var(--text-main)', cursor: 'pointer' }}
                         onClick={() => {
                           setEditingHelperId(h.id);
-                          setEditHelperName(h.name);
                         }}
-                        title="Klicken zum Bearbeiten des Namens"
+                        title="Klicken zum Bearbeiten von Name und E-Mail-Adressen"
                       >
                         {h.name}
                       </span>
@@ -1350,7 +1287,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       <button
                         onClick={() => {
                           setEditingHelperId(h.id);
-                          setEditHelperName(h.name);
                         }}
                         style={{
                           background: 'transparent',
