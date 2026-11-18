@@ -119,6 +119,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [editingHelperId, setEditingHelperId] = useState<string | null>(null);
   const [editHelperName, setEditHelperName] = useState<string>('');
   const [mailHelper, setMailHelper] = useState<Helper | null>(null);
+  const [helperSearch, setHelperSearch] = useState('');
+  const normalizeSearch = (value: string) => value.toLocaleLowerCase('de').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/ß/g, 'ss');
+  const helperSearchTerms = normalizeSearch(helperSearch).trim().split(/\s+/).filter(Boolean);
+  const visibleHelpers = helpers.filter(helper => {
+    const text = normalizeSearch([helper.name, helper.source_station_id, helper.email, helper.phone].filter(Boolean).join(' '));
+    return helperSearchTerms.every(term => text.includes(term));
+  });
 
   // Auto assign dialog state
   const [isAutoAssigning, setIsAutoAssigning] = useState<boolean>(false);
@@ -1200,8 +1207,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
             </div>
 
             {/* Helpers List */}
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 700, color: 'var(--text-main)', marginBottom: 6 }} htmlFor="helper-list-search">Helfer suchen</label>
+            <div style={{ display: 'flex', gap: 6, alignItems: 'center', marginBottom: 6 }}>
+              <input id="helper-list-search" type="search" value={helperSearch} onChange={event => setHelperSearch(event.target.value)}
+                placeholder="Name, Stationsnummer, E-Mail …"
+                style={{ flex: 1, minWidth: 0, minHeight: 44, padding: '8px 10px', borderRadius: 6, background: 'var(--bg-input)', color: 'var(--text-main)', border: '1px solid var(--border-subtle)', fontSize: 14 }} />
+              {helperSearch && <button type="button" onClick={() => setHelperSearch('')} aria-label="Helfersuche zurücksetzen" title="Suche zurücksetzen"
+                style={{ minHeight: 44, minWidth: 44, background: 'var(--bg-card)', color: 'var(--text-main)', border: '1px solid var(--border-subtle)', borderRadius: 6, cursor: 'pointer' }}><X size={16} /></button>}
+            </div>
+            <div role="status" style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 10 }}>
+              {helperSearch.trim() ? `${visibleHelpers.length} von ${helpers.length} Helfern gefunden` : `${helpers.length} Helfer`}
+              {helperSearch.trim() && visibleHelpers.length === 0 && ' · Bitte einen anderen Suchbegriff verwenden.'}
+            </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-              {helpers.map(h => {
+              {visibleHelpers.map(h => {
                 const assigned = sections.filter(s => s.assigned_helper_id === h.id);
                 const assignedMeters = assigned.reduce((sum, s) => sum + s.lengthMeters, 0);
 
